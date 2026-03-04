@@ -1,0 +1,55 @@
+#if !defined(AFX_CLRLISTBOX_H__F1A4D3EC_E8EF_47B2_98FC_C54A6722EDAF__INCLUDED_)
+#define AFX_CLRLISTBOX_H__F1A4D3EC_E8EF_47B2_98FC_C54A6722EDAF__INCLUDED_
+
+#if _MSC_VER > 1000
+#pragma once
+#endif // _MSC_VER > 1000
+// ClrListBox.h : header file
+//
+
+/////////////////////////////////////////////////////////////////////////////
+// CClrListBox window
+
+class CClrListBox : public CListBox
+{
+// Construction
+public:
+	CClrListBox();
+
+// Attributes
+public:
+
+// Operations
+public:
+	int AddString(LPCTSTR lpszItem);											// Adds a string to the list box
+	int AddString(LPCTSTR lpszItem, COLORREF rgb);						// Adds a colored string to the list box
+	int InsertString(int nIndex, LPCTSTR lpszItem);						// Inserts a string to the list box
+	int InsertString(int nIndex, LPCTSTR lpszItem, COLORREF rgb);	// Inserts a colored string to the list box
+	void SetItemColor(int nIndex, COLORREF rgb);							// Sets the color of an item in the list box
+	int GetTextLen(LPCTSTR lpszText);
+// Overrides
+	// ClassWizard generated virtual function overrides
+	//{{AFX_VIRTUAL(CColorListBox)
+	public:
+	virtual void DrawItem(LPDRAWITEMSTRUCT lpDrawItemStruct);
+	virtual void MeasureItem(LPMEASUREITEMSTRUCT lpMeasureItemStruct);
+	//}}AFX_VIRTUAL
+
+// Implementation
+public:
+	virtual ~CClrListBox();
+
+	// Generated message map functions
+protected:
+	//{{AFX_MSG(CColorListBox)
+	//}}AFX_MSG
+
+	DECLARE_MESSAGE_MAP()
+};
+
+/////////////////////////////////////////////////////////////////////////////
+
+//{{AFX_INSERT_LOCATION}}
+// Microsoft Developer Studio will insert additional declarations immediately before the previous line.
+
+#endif // !defined(AFX_CLRLISTBOX_H__F1A4D3EC_E8EF_47B2_98FC_C54A6722EDAF__INCLUDED_)

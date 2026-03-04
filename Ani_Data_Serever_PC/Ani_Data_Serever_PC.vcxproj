@@ -1,0 +1,571 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="_SYSTEM_AMTAFT_|Win32">
+      <Configuration>_SYSTEM_AMTAFT_</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="_SYSTEM_AMTAFT_|x64">
+      <Configuration>_SYSTEM_AMTAFT_</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="_SYSTEM_GAMMA_|Win32">
+      <Configuration>_SYSTEM_GAMMA_</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="_SYSTEM_GAMMA_|x64">
+      <Configuration>_SYSTEM_GAMMA_</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="_SYSTEM_INDEX_|Win32">
+      <Configuration>_SYSTEM_INDEX_</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="_SYSTEM_INDEX_|x64">
+      <Configuration>_SYSTEM_INDEX_</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="_SYSTEM_UNLOADER_|Win32">
+      <Configuration>_SYSTEM_UNLOADER_</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="_SYSTEM_UNLOADER_|x64">
+      <Configuration>_SYSTEM_UNLOADER_</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{12106FB4-FDFE-4BFF-AF16-828CBAA097CE}</ProjectGuid>
+    <RootNamespace>Ani_Data_Serever_PC</RootNamespace>
+    <Keyword>MFCProj</Keyword>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_INDEX_|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseOfMfc>Dynamic</UseOfMfc>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_AMTAFT_|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseOfMfc>Dynamic</UseOfMfc>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_UNLOADER_|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseOfMfc>Dynamic</UseOfMfc>
+    <PlatformToolset>v142</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_INDEX_|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseOfMfc>Dynamic</UseOfMfc>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_AMTAFT_|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseOfMfc>Dynamic</UseOfMfc>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_UNLOADER_|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseOfMfc>Dynamic</UseOfMfc>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_GAMMA_|Win32'">
+    <PlatformToolset>v142</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_GAMMA_|x64'">
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseOfMfc>Dynamic</UseOfMfc>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_INDEX_|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_AMTAFT_|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_UNLOADER_|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_INDEX_|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_AMTAFT_|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_UNLOADER_|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_INDEX_|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>..\bin</OutDir>
+    <IncludePath>D:\ZSDK\OpenCV;D:\ZSDK\OpenCV\include;$(IncludePath)</IncludePath>
+    <ReferencePath>$(ReferencePath)</ReferencePath>
+    <LibraryPath>F:\syt11\Gvo_Align_PC\Library\OpenCV\lib;D:\ZSDK\OpenCV\lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_AMTAFT_|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>..\bin</OutDir>
+    <IncludePath>D:\ZSDK\OpenCV;D:\ZSDK\OpenCV\include;$(IncludePath)</IncludePath>
+    <ReferencePath>$(ReferencePath)</ReferencePath>
+    <LibraryPath>F:\syt11\Gvo_Align_PC\Library\OpenCV\lib;D:\ZSDK\OpenCV\lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_UNLOADER_|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>..\bin</OutDir>
+    <IncludePath>D:\ZSDK\OpenCV;D:\ZSDK\OpenCV\include;$(IncludePath)</IncludePath>
+    <ReferencePath>$(ReferencePath)</ReferencePath>
+    <LibraryPath>F:\syt11\Gvo_Align_PC\Library\OpenCV\lib;D:\ZSDK\OpenCV\lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_INDEX_|x64'">
+    <IncludePath>D:\ZSDK\OpenCV;D:\ZSDK\OpenCV\include;$(IncludePath)</IncludePath>
+    <ReferencePath>$(ReferencePath)</ReferencePath>
+    <LibraryPath>D:\ZSDK\OpenCV\lib;$(LibraryPath)</LibraryPath>
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>D:\\ANI\\DataServer\\Bin</OutDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_AMTAFT_|x64'">
+    <IncludePath>D:\ZSDK\OpenCV;D:\ZSDK\OpenCV\include;$(IncludePath)</IncludePath>
+    <ReferencePath>$(ReferencePath)</ReferencePath>
+    <LibraryPath>D:\ZSDK\OpenCV\lib;$(LibraryPath)</LibraryPath>
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>D:\\ANI\\DataServer\\Bin</OutDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_UNLOADER_|x64'">
+    <IncludePath>D:\ZSDK\OpenCV;D:\ZSDK\OpenCV\include;$(IncludePath)</IncludePath>
+    <ReferencePath>$(ReferencePath)</ReferencePath>
+    <LibraryPath>F:\syt11\Gvo_Align_PC\Library\OpenCV\lib;D:\ZSDK\OpenCV\lib;$(LibraryPath)</LibraryPath>
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>D:\\ANI\\DataServer\\Bin</OutDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_GAMMA_|x64'">
+    <OutDir>D:\\ANI\\DataServer\\Bin</OutDir>
+    <IncludePath>D:\ZSDK\OpenCV;D:\ZSDK\OpenCV\include;$(IncludePath)</IncludePath>
+    <ReferencePath>$(ReferencePath)</ReferencePath>
+    <LibraryPath>D:\ZSDK\OpenCV\lib;$(LibraryPath)</LibraryPath>
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_INDEX_|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>.\Dlg\AMT\Unload;.\Comm;.\Communication;.\Dlg\AMT;.\Thread\AMT;.\Thread\Gamma;.\Thread;.\View;.\Util;.\Melsec;.\Main;.\DFS;.\Dlg;.\;D:\ZSDK\MIL_64\Include;D:\ZSDK\OpenCV2.4.9\opencv\build\include\opencv;D:\ZSDK\StGigE SDK\Includes;D:\ZSDK\OpenCV2.4.9\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <SDLCheck>true</SDLCheck>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>.\Melsec;D:\ZSDK\OpenCV\bin;D:\ZSDK\OpenCV\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+    <Midl>
+      <MkTypLibCompatible>false</MkTypLibCompatible>
+      <ValidateAllParameters>true</ValidateAllParameters>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </Midl>
+    <ResourceCompile>
+      <Culture>0x0412</Culture>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_AMTAFT_|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>.\Dlg\AMT\Unload;.\Comm;.\Communication;.\Dlg\AMT;.\Thread\AMT;.\Thread\Gamma;.\Thread;.\View;.\Util;.\Melsec;.\Main;.\DFS;.\Dlg;.\;D:\ZSDK\MIL_64\Include;D:\ZSDK\OpenCV2.4.9\opencv\build\include\opencv;D:\ZSDK\StGigE SDK\Includes;D:\ZSDK\OpenCV2.4.9\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <SDLCheck>true</SDLCheck>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>.\Melsec;D:\ZSDK\OpenCV\bin;D:\ZSDK\OpenCV\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+    <Midl>
+      <MkTypLibCompatible>false</MkTypLibCompatible>
+      <ValidateAllParameters>true</ValidateAllParameters>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </Midl>
+    <ResourceCompile>
+      <Culture>0x0412</Culture>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_UNLOADER_|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>.\Dlg\AMT\Unload;.\Comm;.\Communication;.\Dlg\AMT;.\Thread\AMT;.\Thread\Gamma;.\Thread;.\View;.\Util;.\Melsec;.\Main;.\DFS;.\Dlg;.\;D:\ZSDK\MIL_64\Include;D:\ZSDK\OpenCV2.4.9\opencv\build\include\opencv;D:\ZSDK\StGigE SDK\Includes;D:\ZSDK\OpenCV2.4.9\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <SDLCheck>true</SDLCheck>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>.\Melsec;D:\ZSDK\OpenCV\bin;D:\ZSDK\OpenCV\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+    <Midl>
+      <MkTypLibCompatible>false</MkTypLibCompatible>
+      <ValidateAllParameters>true</ValidateAllParameters>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </Midl>
+    <ResourceCompile>
+      <Culture>0x0412</Culture>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_INDEX_|x64'">
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_CRT_SECURE_NO_WARNINGS;_SYSTEM_INDEX_;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>.\Comm;.\Communication;.\Dlg\AMT;.\Thread\AMT;.\Thread;.\View;.\Util;.\Melsec;.\Main;.\DFS;.\Dlg;.\;D:\ZSDK\MIL_64\Include;D:\ZSDK\OpenCV2.4.9\opencv\build\include\opencv;D:\ZSDK\StGigE SDK\Includes;D:\ZSDK\OpenCV2.4.9\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <SDLCheck>true</SDLCheck>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>.\Melsec;D:\ZSDK\OpenCV\bin;D:\ZSDK\OpenCV\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opencv_core249.lib;opencv_imgproc249.lib;opencv_highgui249.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Midl>
+      <MkTypLibCompatible>false</MkTypLibCompatible>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </Midl>
+    <ResourceCompile>
+      <Culture>0x0412</Culture>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_AMTAFT_|x64'">
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_CRT_SECURE_NO_WARNINGS;_SYSTEM_AMTAFT_;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>.\Comm;.\Communication;.\Dlg\AMT;.\Thread\AMT;.\Thread;.\View;.\Util;.\Melsec;.\Main;.\DFS;.\Dlg;.\;D:\ZSDK\MIL_64\Include;E:\附件1.CSOT_PH1_AFT151相机改造提供资料\opencv\build\include\opencv;D:\ZSDK\StGigE SDK\Includes;E:\附件1.CSOT_PH1_AFT151相机改造提供资料\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <SDLCheck>true</SDLCheck>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>.\Melsec;E:\附件1.CSOT_PH1_AFT151相机改造提供资料\opencv\build\x64\vc12\bin;E:\附件1.CSOT_PH1_AFT151相机改造提供资料\opencv\build\x64\vc12\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opencv_core249.lib;opencv_imgproc249.lib;opencv_highgui249.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
+    </Link>
+    <Midl>
+      <MkTypLibCompatible>false</MkTypLibCompatible>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </Midl>
+    <ResourceCompile>
+      <Culture>0x0412</Culture>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_UNLOADER_|x64'">
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_CRT_SECURE_NO_WARNINGS;_SYSTEM_UNLOADER_;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>.\Communication\UNLOADER;.\Dlg\AMT;.\Comm;.\Communication;.\Dlg\UNLOADER;.\Thread\UNLOADER;.\Thread;.\View;.\Util;.\Melsec;.\Main;.\DFS;.\Dlg;.\;D:\ZSDK\MIL_64\Include;D:\ZSDK\OpenCV2.4.9\opencv\build\include\opencv;D:\ZSDK\StGigE SDK\Includes;D:\ZSDK\OpenCV2.4.9\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <SDLCheck>true</SDLCheck>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>.\Melsec;D:\ZSDK\OpenCV\bin;D:\ZSDK\OpenCV\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opencv_core249.lib;opencv_imgproc249.lib;opencv_highgui249.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Midl>
+      <MkTypLibCompatible>false</MkTypLibCompatible>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </Midl>
+    <ResourceCompile>
+      <Culture>0x0412</Culture>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_GAMMA_|x64'">
+    <ClCompile>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_CRT_SECURE_NO_WARNINGS;_SYSTEM_GAMMA_;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>.\Communication\GAMMA;.\Dlg\AMT;.\Comm;.\Communication;.\Dlg\GAMMA;.\Thread\GAMMA;.\Thread;.\View;.\Util;.\Melsec;.\Main;.\DFS;.\Dlg;.\;D:\ZSDK\MIL_64\Include;D:\ZSDK\OpenCV2.4.9\opencv\build\include\opencv;D:\ZSDK\StGigE SDK\Includes;D:\ZSDK\OpenCV2.4.9\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <MinimalRebuild>true</MinimalRebuild>
+      <WarningLevel>Level3</WarningLevel>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>.\Melsec;D:\ZSDK\OpenCV\bin;D:\ZSDK\OpenCV\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opencv_core249.lib;opencv_imgproc249.lib;opencv_highgui249.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+    </Link>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <Culture>0x0412</Culture>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <Text Include="ReadMe.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Ani_Data_Serever_PC.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="res\Ani_Data_Serever_PC.ico" />
+    <Image Include="res\Ani_Data_Serever_PCDoc.ico" />
+    <Image Include="res\Toolbar.bmp" />
+    <Image Include="res\Toolbar256.bmp" />
+    <Image Include="UserImages.bmp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="res\Ani_Data_Serever_PC.rc2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Communication\AlignManager.h" />
+    <ClInclude Include="Communication\CommThread.h" />
+    <ClInclude Include="Communication\MachineManager.h" />
+    <ClInclude Include="Communication\OpvManager.h" />
+    <ClInclude Include="Communication\PgManager.h" />
+    <ClInclude Include="Communication\SerialCom.h" />
+    <ClInclude Include="Communication\SerialRS485.h" />
+    <ClInclude Include="Communication\SocketComm.h" />
+    <ClInclude Include="Communication\TpManager.h" />
+    <ClInclude Include="Comm\DataInfo.h" />
+    <ClInclude Include="Comm\DefectInfo.h" />
+    <ClInclude Include="Comm\ImageViewNG.h" />
+    <ClInclude Include="Comm\Tact.h" />
+    <ClInclude Include="DFS\DFSInfo.h" />
+    <ClInclude Include="DFS\DFSSession.h" />
+    <ClInclude Include="DFS\FTPClient.h" />
+    <ClInclude Include="DFS\DFSClient.h" />
+    <ClInclude Include="DFS\FtpSite.h" />
+    <ClInclude Include="Dlg\AMT\DlgAddRankCode.h" />
+    <ClInclude Include="Dlg\AMT\DlgAlignStatus.h" />
+    <ClInclude Include="Dlg\AMT\DlgDefectCount.h" />
+    <ClInclude Include="Dlg\AMT\DlgDefectCountHistory.h" />
+    <ClInclude Include="Dlg\AMT\DlgInspect.h" />
+    <ClInclude Include="Dlg\AMT\DlgMainLog.h" />
+    <ClInclude Include="Dlg\AMT\DlgMainView.h" />
+    <ClInclude Include="Dlg\AMT\DlgOkGrade.h" />
+    <ClInclude Include="Dlg\AMT\DlgReslutCode.h" />
+    <ClInclude Include="Dlg\AMT\DlgSetRank.h" />
+    <ClInclude Include="Dlg\AMT\DLGSetVision.h" />
+    <ClInclude Include="Dlg\AMT\DlgTimeInspect.h" />
+    <ClInclude Include="Dlg\AMT\DlgUnloaderInspect.h" />
+    <ClInclude Include="Dlg\AMT\DlgUnloaderTimeInspect.h" />
+    <ClInclude Include="Dlg\DlgAlarmHistory.h" />
+    <ClInclude Include="Dlg\DLGChangeSySemData.h" />
+    <ClInclude Include="Dlg\DlgCurUserAdd.h" />
+    <ClInclude Include="Dlg\DlgIdCardHistory.h" />
+    <ClInclude Include="Dlg\DlgLogin.h" />
+    <ClInclude Include="Dlg\DlgAlignCount.h" />
+    <ClInclude Include="Dlg\DLGSetSystem.h" />
+    <ClInclude Include="Dlg\DlgTactTimeHistory.h" />
+    <ClInclude Include="Dlg\DlgUserAddChange.h" />
+    <ClInclude Include="Dlg\GAMMA\DlgGammaAlignStatus.h" />
+    <ClInclude Include="Dlg\GAMMA\DlgGammaInspect.h" />
+    <ClInclude Include="Dlg\GAMMA\DlgGammaMain.h" />
+    <ClInclude Include="Dlg\GAMMA\DlgGammaTimeInspect.h" />
+    <ClInclude Include="Dlg\GetNumDlg.h" />
+    <ClInclude Include="Dlg\GetTextDlg.h" />
+    <ClInclude Include="Dlg\InitDialogBar.h" />
+    <ClInclude Include="Dlg\MsgBox.h" />
+    <ClInclude Include="Dlg\SetTimerDlg.h" />
+    <ClInclude Include="Dlg\UserList.h" />
+    <ClInclude Include="Main\Ani_Data_Serever_PC.h" />
+    <ClInclude Include="Main\Ani_Data_Serever_PCDoc.h" />
+    <ClInclude Include="Main\MainFrm.h" />
+    <ClInclude Include="Main\Migration.h" />
+    <ClInclude Include="Main\stdafx.h" />
+    <ClInclude Include="Melsec\EqInterface.h" />
+    <ClInclude Include="Melsec\Mdfunc.h" />
+    <ClInclude Include="Melsec\MNetH.h" />
+    <ClInclude Include="Melsec\MNetHData.h" />
+    <ClInclude Include="Melsec\ProfileDataIF.h" />
+    <ClInclude Include="Resource.h" />
+    <ClInclude Include="Thread\AlignThread.h" />
+    <ClInclude Include="Thread\AllPassModeThread.h" />
+    <ClInclude Include="Thread\AMT\LumitopThread.h" />
+    <ClInclude Include="Thread\AMT\ManualThread.h" />
+    <ClInclude Include="Thread\AMT\PgIndex.h" />
+    <ClInclude Include="Thread\AMT\RankThread.h" />
+    <ClInclude Include="Thread\AMT\ViewingAngleThread.h" />
+    <ClInclude Include="Thread\AMT\VisionThread.h" />
+    <ClInclude Include="Thread\GAMMA\GammaThread.h" />
+    <ClInclude Include="Thread\PlcThread.h" />
+    <ClInclude Include="Thread\TpThread.h" />
+    <ClInclude Include="Util\AniUtil.h" />
+    <ClInclude Include="Util\btnenh.h" />
+    <ClInclude Include="Util\cellsmanager.h" />
+    <ClInclude Include="Util\ClrListBox.h" />
+    <ClInclude Include="Util\EZIni.h" />
+    <ClInclude Include="Util\FileSupport.h" />
+    <ClInclude Include="Util\font.h" />
+    <ClInclude Include="Util\HeaderCtrlEx.h" />
+    <ClInclude Include="Util\ListCtrlEx.h" />
+    <ClInclude Include="Util\Logger.h" />
+    <ClInclude Include="Util\MyListCtrl.h" />
+    <ClInclude Include="Util\StringManager.h" />
+    <ClInclude Include="Util\StringSupport.h" />
+    <ClInclude Include="Util\StringTable.h" />
+    <ClInclude Include="Util\surfacecolor.h" />
+    <ClInclude Include="Util\textdescriptor.h" />
+    <ClInclude Include="Util\texture.h" />
+    <ClInclude Include="Util\TimeCheck.h" />
+    <ClInclude Include="View\AddrView.h" />
+    <ClInclude Include="View\Ani_Data_Serever_PCView.h" />
+    <ClInclude Include="View\ComGammaView.h" />
+    <ClInclude Include="View\ComView.h" />
+    <ClInclude Include="View\DefectView.h" />
+    <ClInclude Include="View\MainUnloaderView.h" />
+    <ClInclude Include="View\TopCtrl.h" />
+    <ClInclude Include="View\ViewCtrl.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Communication\AlignManager.cpp" />
+    <ClCompile Include="Communication\CommThread.cpp" />
+    <ClCompile Include="Communication\MachineManager.cpp" />
+    <ClCompile Include="Communication\OpvManager.cpp" />
+    <ClCompile Include="Communication\PgManager.cpp" />
+    <ClCompile Include="Communication\SerialCom.cpp" />
+    <ClCompile Include="Communication\SerialRS485.cpp" />
+    <ClCompile Include="Communication\SocketComm.cpp" />
+    <ClCompile Include="Communication\TpManager.cpp" />
+    <ClCompile Include="Comm\DataInfo.cpp" />
+    <ClCompile Include="Comm\ImageViewNG.cpp" />
+    <ClCompile Include="Comm\Tact.cpp" />
+    <ClCompile Include="DFS\DFSInfo.cpp" />
+    <ClCompile Include="DFS\DFSSession.cpp" />
+    <ClCompile Include="DFS\FTPClient.cpp" />
+    <ClCompile Include="DFS\DFSClient.cpp" />
+    <ClCompile Include="DFS\FtpSite.cpp" />
+    <ClCompile Include="Dlg\AMT\DlgAddRankCode.cpp" />
+    <ClCompile Include="Dlg\AMT\DlgAlignStatus.cpp" />
+    <ClCompile Include="Dlg\AMT\DlgDefectCount.cpp" />
+    <ClCompile Include="Dlg\AMT\DlgDefectCountHistory.cpp" />
+    <ClCompile Include="Dlg\AMT\DlgInspect.cpp" />
+    <ClCompile Include="Dlg\AMT\DlgMainLog.cpp" />
+    <ClCompile Include="Dlg\AMT\DlgMainView.cpp" />
+    <ClCompile Include="Dlg\AMT\DlgOkGrade.cpp" />
+    <ClCompile Include="Dlg\AMT\DlgReslutCode.cpp" />
+    <ClCompile Include="Dlg\AMT\DlgSetRank.cpp" />
+    <ClCompile Include="Dlg\AMT\DLGSetVision.cpp" />
+    <ClCompile Include="Dlg\AMT\DlgTimeInspect.cpp" />
+    <ClCompile Include="Dlg\AMT\DlgUnloaderInspect.cpp" />
+    <ClCompile Include="Dlg\AMT\DlgUnloaderTimeInspect.cpp" />
+    <ClCompile Include="Dlg\DlgAlarmHistory.cpp" />
+    <ClCompile Include="Dlg\DLGChangeSySemData.cpp" />
+    <ClCompile Include="Dlg\DlgCurUserAdd.cpp" />
+    <ClCompile Include="Dlg\DlgIdCardHistory.cpp" />
+    <ClCompile Include="Dlg\DlgLogin.cpp" />
+    <ClCompile Include="Dlg\DlgAlignCount.cpp" />
+    <ClCompile Include="Dlg\DLGSetSystem.cpp" />
+    <ClCompile Include="Dlg\DlgTactTimeHistory.cpp" />
+    <ClCompile Include="Dlg\DlgUserAddChange.cpp" />
+    <ClCompile Include="Dlg\GAMMA\DlgGammaAlignStatus.cpp" />
+    <ClCompile Include="Dlg\GAMMA\DlgGammaInspect.cpp" />
+    <ClCompile Include="Dlg\GAMMA\DlgGammaMain.cpp" />
+    <ClCompile Include="Dlg\GAMMA\DlgGammaTimeInspect.cpp" />
+    <ClCompile Include="Dlg\GetNumDlg.cpp" />
+    <ClCompile Include="Dlg\GetTextDlg.cpp" />
+    <ClCompile Include="Dlg\InitDialogBar.cpp" />
+    <ClCompile Include="Dlg\MsgBox.cpp" />
+    <ClCompile Include="Dlg\SetTimerDlg.cpp" />
+    <ClCompile Include="Dlg\UserList.cpp" />
+    <ClCompile Include="Main\Ani_Data_Serever_PC.cpp" />
+    <ClCompile Include="Main\Ani_Data_Serever_PCDoc.cpp" />
+    <ClCompile Include="Main\MainFrm.cpp" />
+    <ClCompile Include="Main\stdafx.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_INDEX_|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_AMTAFT_|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_UNLOADER_|x64'">Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="Melsec\EqInterface.cpp" />
+    <ClCompile Include="Melsec\MNetH.cpp" />
+    <ClCompile Include="Melsec\MNetHData.cpp" />
+    <ClCompile Include="Melsec\ProfileDataIF.cpp" />
+    <ClCompile Include="Thread\AlignThread.cpp" />
+    <ClCompile Include="Thread\AllPassModeThread.cpp" />
+    <ClCompile Include="Thread\AMT\LumitopThread.cpp" />
+    <ClCompile Include="Thread\AMT\ManualThread.cpp" />
+    <ClCompile Include="Thread\AMT\PgIndex.cpp" />
+    <ClCompile Include="Thread\AMT\RankThread.cpp" />
+    <ClCompile Include="Thread\AMT\ViewingAngleThread.cpp" />
+    <ClCompile Include="Thread\AMT\VisionThread.cpp" />
+    <ClCompile Include="Thread\GAMMA\GammaThread.cpp" />
+    <ClCompile Include="Thread\PlcThread.cpp" />
+    <ClCompile Include="Thread\TpThread.cpp" />
+    <ClCompile Include="Util\AniUtil.cpp" />
+    <ClCompile Include="Util\btnenh.cpp" />
+    <ClCompile Include="Util\cellsmanager.cpp" />
+    <ClCompile Include="Util\ClrListBox.cpp" />
+    <ClCompile Include="Util\EZIni.cpp" />
+    <ClCompile Include="Util\FileSupport.cpp" />
+    <ClCompile Include="Util\font.cpp" />
+    <ClCompile Include="Util\HeaderCtrlEx.cpp" />
+    <ClCompile Include="Util\ListCtrlEx.cpp" />
+    <ClCompile Include="Util\Logger.cpp" />
+    <ClCompile Include="Util\MyListCtrl.cpp" />
+    <ClCompile Include="Util\StringManager.cpp" />
+    <ClCompile Include="Util\StringSupport.cpp" />
+    <ClCompile Include="Util\StringTable.cpp" />
+    <ClCompile Include="Util\surfacecolor.cpp" />
+    <ClCompile Include="Util\textdescriptor.cpp" />
+    <ClCompile Include="Util\texture.cpp" />
+    <ClCompile Include="Util\TimeCheck.cpp" />
+    <ClCompile Include="View\AddrView.cpp" />
+    <ClCompile Include="View\Ani_Data_Serever_PCView.cpp" />
+    <ClCompile Include="View\ComGammaView.cpp" />
+    <ClCompile Include="View\ComView.cpp" />
+    <ClCompile Include="View\DefectView.cpp" />
+    <ClCompile Include="View\MainUnloaderView.cpp" />
+    <ClCompile Include="View\TopCtrl.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_GAMMA_|x64'">Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="View\ViewCtrl.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_GAMMA_|x64'">Create</PrecompiledHeader>
+    </ClCompile>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+  <ProjectExtensions>
+    <VisualStudio>
+      <UserProperties RESOURCE_FILE="Ani_Data_Serever_PC.rc" />
+    </VisualStudio>
+  </ProjectExtensions>
+</Project>

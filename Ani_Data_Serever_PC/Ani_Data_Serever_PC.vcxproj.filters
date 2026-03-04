@@ -1,0 +1,662 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="리소스 파일">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Comm">
+      <UniqueIdentifier>{8fed7680-f044-4289-a484-b0b543fef0df}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="DFS">
+      <UniqueIdentifier>{5e91a77f-e876-4152-98e1-51ef1cb2d4aa}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Dlg">
+      <UniqueIdentifier>{5510db07-f9c8-473b-9b88-c96bc783dd35}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Main">
+      <UniqueIdentifier>{d52ea54f-c8f6-43cd-ad54-94a9f537d0f5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Melsec">
+      <UniqueIdentifier>{00ab1eaf-a45f-4e19-96c7-00847bd01001}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Thread">
+      <UniqueIdentifier>{a641416e-9ca5-4b05-b0a5-a3e4b8c377e7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Util">
+      <UniqueIdentifier>{0c15f543-e353-4169-b6e7-2653f61e589d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="View">
+      <UniqueIdentifier>{f07f03fe-6093-4d6e-ac5b-10dbe79cfc03}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Dlg\AMT">
+      <UniqueIdentifier>{4d524956-c886-4189-bca9-e6f6008de1e6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Thread\AMT">
+      <UniqueIdentifier>{bcb377a0-9cf6-42a8-b297-af1bbb6ef514}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Communication">
+      <UniqueIdentifier>{ad9e9ada-100f-45b7-a201-d66a2a78712a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Dlg\GAMMA">
+      <UniqueIdentifier>{d944becd-7d1e-4203-b0f5-f5e6e5969b11}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Thread\GAMMA">
+      <UniqueIdentifier>{d4679db6-674e-448f-aca1-90c76291c527}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="ReadMe.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Ani_Data_Serever_PC.rc">
+      <Filter>리소스 파일</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="UserImages.bmp">
+      <Filter>리소스 파일</Filter>
+    </Image>
+    <Image Include="res\Ani_Data_Serever_PCDoc.ico">
+      <Filter>리소스 파일</Filter>
+    </Image>
+    <Image Include="res\Ani_Data_Serever_PC.ico">
+      <Filter>리소스 파일</Filter>
+    </Image>
+    <Image Include="res\Toolbar.bmp">
+      <Filter>리소스 파일</Filter>
+    </Image>
+    <Image Include="res\Toolbar256.bmp">
+      <Filter>리소스 파일</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="res\Ani_Data_Serever_PC.rc2">
+      <Filter>리소스 파일</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Resource.h" />
+    <ClInclude Include="Comm\DefectInfo.h">
+      <Filter>Comm</Filter>
+    </ClInclude>
+    <ClInclude Include="Comm\ImageViewNG.h">
+      <Filter>Comm</Filter>
+    </ClInclude>
+    <ClInclude Include="Comm\Tact.h">
+      <Filter>Comm</Filter>
+    </ClInclude>
+    <ClInclude Include="Communication\PgManager.h">
+      <Filter>Communication</Filter>
+    </ClInclude>
+    <ClInclude Include="Communication\SocketComm.h">
+      <Filter>Communication</Filter>
+    </ClInclude>
+    <ClInclude Include="Communication\TpManager.h">
+      <Filter>Communication</Filter>
+    </ClInclude>
+    <ClInclude Include="DFS\DFSInfo.h">
+      <Filter>DFS</Filter>
+    </ClInclude>
+    <ClInclude Include="DFS\DFSSession.h">
+      <Filter>DFS</Filter>
+    </ClInclude>
+    <ClInclude Include="DFS\FtpSite.h">
+      <Filter>DFS</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\DlgAlarmHistory.h">
+      <Filter>Dlg</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\DLGChangeSySemData.h">
+      <Filter>Dlg</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\DlgLogin.h">
+      <Filter>Dlg</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\DLGSetSystem.h">
+      <Filter>Dlg</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\DlgTactTimeHistory.h">
+      <Filter>Dlg</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\GetNumDlg.h">
+      <Filter>Dlg</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\GetTextDlg.h">
+      <Filter>Dlg</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\InitDialogBar.h">
+      <Filter>Dlg</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\MsgBox.h">
+      <Filter>Dlg</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\SetTimerDlg.h">
+      <Filter>Dlg</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\AMT\DlgAddRankCode.h">
+      <Filter>Dlg\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\AMT\DlgAlignStatus.h">
+      <Filter>Dlg\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\AMT\DlgInspect.h">
+      <Filter>Dlg\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\AMT\DlgMainLog.h">
+      <Filter>Dlg\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\AMT\DlgMainView.h">
+      <Filter>Dlg\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\AMT\DlgOkGrade.h">
+      <Filter>Dlg\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\AMT\DlgReslutCode.h">
+      <Filter>Dlg\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\AMT\DlgSetRank.h">
+      <Filter>Dlg\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\AMT\DlgTimeInspect.h">
+      <Filter>Dlg\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Main\Ani_Data_Serever_PC.h">
+      <Filter>Main</Filter>
+    </ClInclude>
+    <ClInclude Include="Main\Ani_Data_Serever_PCDoc.h">
+      <Filter>Main</Filter>
+    </ClInclude>
+    <ClInclude Include="Main\MainFrm.h">
+      <Filter>Main</Filter>
+    </ClInclude>
+    <ClInclude Include="Main\Migration.h">
+      <Filter>Main</Filter>
+    </ClInclude>
+    <ClInclude Include="Main\stdafx.h">
+      <Filter>Main</Filter>
+    </ClInclude>
+    <ClInclude Include="Melsec\EqInterface.h">
+      <Filter>Melsec</Filter>
+    </ClInclude>
+    <ClInclude Include="Melsec\Mdfunc.h">
+      <Filter>Melsec</Filter>
+    </ClInclude>
+    <ClInclude Include="Melsec\MNetH.h">
+      <Filter>Melsec</Filter>
+    </ClInclude>
+    <ClInclude Include="Melsec\MNetHData.h">
+      <Filter>Melsec</Filter>
+    </ClInclude>
+    <ClInclude Include="Melsec\ProfileDataIF.h">
+      <Filter>Melsec</Filter>
+    </ClInclude>
+    <ClInclude Include="View\AddrView.h">
+      <Filter>View</Filter>
+    </ClInclude>
+    <ClInclude Include="View\Ani_Data_Serever_PCView.h">
+      <Filter>View</Filter>
+    </ClInclude>
+    <ClInclude Include="View\ComView.h">
+      <Filter>View</Filter>
+    </ClInclude>
+    <ClInclude Include="View\DefectView.h">
+      <Filter>View</Filter>
+    </ClInclude>
+    <ClInclude Include="View\TopCtrl.h">
+      <Filter>View</Filter>
+    </ClInclude>
+    <ClInclude Include="View\ViewCtrl.h">
+      <Filter>View</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\AniUtil.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\btnenh.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\cellsmanager.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\ClrListBox.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\EZIni.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\FileSupport.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\font.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\HeaderCtrlEx.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\ListCtrlEx.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\Logger.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\MyListCtrl.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\StringManager.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\StringSupport.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\StringTable.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\surfacecolor.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\textdescriptor.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\texture.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\TimeCheck.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Thread\AlignThread.h">
+      <Filter>Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="Thread\PlcThread.h">
+      <Filter>Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="Thread\AMT\PgIndex.h">
+      <Filter>Thread\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Thread\AMT\RankThread.h">
+      <Filter>Thread\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Thread\AMT\ViewingAngleThread.h">
+      <Filter>Thread\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Thread\AMT\VisionThread.h">
+      <Filter>Thread\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Thread\AllPassModeThread.h">
+      <Filter>Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="Comm\DataInfo.h">
+      <Filter>Comm</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\DlgIdCardHistory.h">
+      <Filter>Dlg</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\UserList.h">
+      <Filter>Dlg</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\DlgUserAddChange.h">
+      <Filter>Dlg</Filter>
+    </ClInclude>
+    <ClInclude Include="Communication\SerialCom.h">
+      <Filter>Communication</Filter>
+    </ClInclude>
+    <ClInclude Include="Communication\CommThread.h">
+      <Filter>Communication</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\DlgCurUserAdd.h">
+      <Filter>Dlg</Filter>
+    </ClInclude>
+    <ClInclude Include="Thread\GAMMA\GammaThread.h">
+      <Filter>Thread\GAMMA</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\GAMMA\DlgGammaAlignStatus.h">
+      <Filter>Dlg\GAMMA</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\GAMMA\DlgGammaInspect.h">
+      <Filter>Dlg\GAMMA</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\GAMMA\DlgGammaTimeInspect.h">
+      <Filter>Dlg\GAMMA</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\GAMMA\DlgGammaMain.h">
+      <Filter>Dlg\GAMMA</Filter>
+    </ClInclude>
+    <ClInclude Include="View\ComGammaView.h">
+      <Filter>View</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\DlgAlignCount.h">
+      <Filter>Dlg</Filter>
+    </ClInclude>
+    <ClInclude Include="Communication\AlignManager.h">
+      <Filter>Communication</Filter>
+    </ClInclude>
+    <ClInclude Include="Communication\OpvManager.h">
+      <Filter>Communication</Filter>
+    </ClInclude>
+    <ClInclude Include="Communication\SerialRS485.h">
+      <Filter>Communication</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\AMT\DlgDefectCount.h">
+      <Filter>Dlg\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\AMT\DlgDefectCountHistory.h">
+      <Filter>Dlg\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\AMT\DlgUnloaderInspect.h">
+      <Filter>Dlg\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\AMT\DlgUnloaderTimeInspect.h">
+      <Filter>Dlg\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Thread\AMT\ManualThread.h">
+      <Filter>Thread\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="View\MainUnloaderView.h">
+      <Filter>View</Filter>
+    </ClInclude>
+    <ClInclude Include="Thread\AMT\LumitopThread.h">
+      <Filter>Thread\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Thread\TpThread.h">
+      <Filter>Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="DFS\DFSClient.h">
+      <Filter>DFS</Filter>
+    </ClInclude>
+    <ClInclude Include="DFS\FTPClient.h">
+      <Filter>DFS</Filter>
+    </ClInclude>
+    <ClInclude Include="Dlg\AMT\DLGSetVision.h">
+      <Filter>Dlg\AMT</Filter>
+    </ClInclude>
+    <ClInclude Include="Communication\MachineManager.h">
+      <Filter>Communication</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Comm\ImageViewNG.cpp">
+      <Filter>Comm</Filter>
+    </ClCompile>
+    <ClCompile Include="Comm\Tact.cpp">
+      <Filter>Comm</Filter>
+    </ClCompile>
+    <ClCompile Include="Communication\PgManager.cpp">
+      <Filter>Communication</Filter>
+    </ClCompile>
+    <ClCompile Include="Communication\SocketComm.cpp">
+      <Filter>Communication</Filter>
+    </ClCompile>
+    <ClCompile Include="Communication\TpManager.cpp">
+      <Filter>Communication</Filter>
+    </ClCompile>
+    <ClCompile Include="DFS\DFSInfo.cpp">
+      <Filter>DFS</Filter>
+    </ClCompile>
+    <ClCompile Include="DFS\DFSSession.cpp">
+      <Filter>DFS</Filter>
+    </ClCompile>
+    <ClCompile Include="DFS\FtpSite.cpp">
+      <Filter>DFS</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\DlgAlarmHistory.cpp">
+      <Filter>Dlg</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\DLGChangeSySemData.cpp">
+      <Filter>Dlg</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\DlgLogin.cpp">
+      <Filter>Dlg</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\DLGSetSystem.cpp">
+      <Filter>Dlg</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\DlgTactTimeHistory.cpp">
+      <Filter>Dlg</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\GetNumDlg.cpp">
+      <Filter>Dlg</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\GetTextDlg.cpp">
+      <Filter>Dlg</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\InitDialogBar.cpp">
+      <Filter>Dlg</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\MsgBox.cpp">
+      <Filter>Dlg</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\SetTimerDlg.cpp">
+      <Filter>Dlg</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\AMT\DlgAddRankCode.cpp">
+      <Filter>Dlg\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\AMT\DlgAlignStatus.cpp">
+      <Filter>Dlg\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\AMT\DlgInspect.cpp">
+      <Filter>Dlg\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\AMT\DlgMainLog.cpp">
+      <Filter>Dlg\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\AMT\DlgMainView.cpp">
+      <Filter>Dlg\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\AMT\DlgOkGrade.cpp">
+      <Filter>Dlg\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\AMT\DlgReslutCode.cpp">
+      <Filter>Dlg\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\AMT\DlgSetRank.cpp">
+      <Filter>Dlg\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\AMT\DlgTimeInspect.cpp">
+      <Filter>Dlg\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Main\Ani_Data_Serever_PC.cpp">
+      <Filter>Main</Filter>
+    </ClCompile>
+    <ClCompile Include="Main\Ani_Data_Serever_PCDoc.cpp">
+      <Filter>Main</Filter>
+    </ClCompile>
+    <ClCompile Include="Main\MainFrm.cpp">
+      <Filter>Main</Filter>
+    </ClCompile>
+    <ClCompile Include="Main\stdafx.cpp">
+      <Filter>Main</Filter>
+    </ClCompile>
+    <ClCompile Include="Melsec\EqInterface.cpp">
+      <Filter>Melsec</Filter>
+    </ClCompile>
+    <ClCompile Include="Melsec\MNetH.cpp">
+      <Filter>Melsec</Filter>
+    </ClCompile>
+    <ClCompile Include="Melsec\MNetHData.cpp">
+      <Filter>Melsec</Filter>
+    </ClCompile>
+    <ClCompile Include="Melsec\ProfileDataIF.cpp">
+      <Filter>Melsec</Filter>
+    </ClCompile>
+    <ClCompile Include="View\AddrView.cpp">
+      <Filter>View</Filter>
+    </ClCompile>
+    <ClCompile Include="View\Ani_Data_Serever_PCView.cpp">
+      <Filter>View</Filter>
+    </ClCompile>
+    <ClCompile Include="View\ComView.cpp">
+      <Filter>View</Filter>
+    </ClCompile>
+    <ClCompile Include="View\DefectView.cpp">
+      <Filter>View</Filter>
+    </ClCompile>
+    <ClCompile Include="View\TopCtrl.cpp">
+      <Filter>View</Filter>
+    </ClCompile>
+    <ClCompile Include="View\ViewCtrl.cpp">
+      <Filter>View</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\AniUtil.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\btnenh.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\cellsmanager.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\ClrListBox.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\EZIni.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\FileSupport.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\font.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\HeaderCtrlEx.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\ListCtrlEx.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\Logger.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\MyListCtrl.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\StringManager.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\StringSupport.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\StringTable.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\surfacecolor.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\textdescriptor.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\texture.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\TimeCheck.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Thread\AlignThread.cpp">
+      <Filter>Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="Thread\PlcThread.cpp">
+      <Filter>Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="Thread\AMT\PgIndex.cpp">
+      <Filter>Thread\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Thread\AMT\RankThread.cpp">
+      <Filter>Thread\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Thread\AMT\ViewingAngleThread.cpp">
+      <Filter>Thread\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Thread\AMT\VisionThread.cpp">
+      <Filter>Thread\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Thread\AllPassModeThread.cpp">
+      <Filter>Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="Comm\DataInfo.cpp">
+      <Filter>Comm</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\DlgIdCardHistory.cpp">
+      <Filter>Dlg</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\UserList.cpp">
+      <Filter>Dlg</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\DlgUserAddChange.cpp">
+      <Filter>Dlg</Filter>
+    </ClCompile>
+    <ClCompile Include="Communication\CommThread.cpp">
+      <Filter>Communication</Filter>
+    </ClCompile>
+    <ClCompile Include="Communication\SerialCom.cpp">
+      <Filter>Communication</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\DlgCurUserAdd.cpp">
+      <Filter>Dlg</Filter>
+    </ClCompile>
+    <ClCompile Include="Thread\GAMMA\GammaThread.cpp">
+      <Filter>Thread\GAMMA</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\GAMMA\DlgGammaAlignStatus.cpp">
+      <Filter>Dlg\GAMMA</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\GAMMA\DlgGammaInspect.cpp">
+      <Filter>Dlg\GAMMA</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\GAMMA\DlgGammaTimeInspect.cpp">
+      <Filter>Dlg\GAMMA</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\GAMMA\DlgGammaMain.cpp">
+      <Filter>Dlg\GAMMA</Filter>
+    </ClCompile>
+    <ClCompile Include="View\ComGammaView.cpp">
+      <Filter>View</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\DlgAlignCount.cpp">
+      <Filter>Dlg</Filter>
+    </ClCompile>
+    <ClCompile Include="Communication\AlignManager.cpp">
+      <Filter>Communication</Filter>
+    </ClCompile>
+    <ClCompile Include="Communication\OpvManager.cpp">
+      <Filter>Communication</Filter>
+    </ClCompile>
+    <ClCompile Include="Communication\SerialRS485.cpp">
+      <Filter>Communication</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\AMT\DlgDefectCount.cpp">
+      <Filter>Dlg\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\AMT\DlgDefectCountHistory.cpp">
+      <Filter>Dlg\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\AMT\DlgUnloaderInspect.cpp">
+      <Filter>Dlg\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\AMT\DlgUnloaderTimeInspect.cpp">
+      <Filter>Dlg\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Thread\AMT\ManualThread.cpp">
+      <Filter>Thread\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="View\MainUnloaderView.cpp">
+      <Filter>View</Filter>
+    </ClCompile>
+    <ClCompile Include="Thread\AMT\LumitopThread.cpp">
+      <Filter>Thread\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Thread\TpThread.cpp">
+      <Filter>Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="DFS\DFSClient.cpp">
+      <Filter>DFS</Filter>
+    </ClCompile>
+    <ClCompile Include="DFS\FTPClient.cpp">
+      <Filter>DFS</Filter>
+    </ClCompile>
+    <ClCompile Include="Dlg\AMT\DLGSetVision.cpp">
+      <Filter>Dlg\AMT</Filter>
+    </ClCompile>
+    <ClCompile Include="Communication\MachineManager.cpp">
+      <Filter>Communication</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
