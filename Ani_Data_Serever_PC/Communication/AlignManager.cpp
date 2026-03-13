@@ -9,6 +9,42 @@
 #endif
 #include "AlignManager.h"
 
+/*
+======================================================================
+VS/MC 对齐通信流程简要说明（给非软件工程人员看的说明）
+----------------------------------------------------------------------
+1. 模块作用
+   - `CAlignManager` 负责“对位（Align）相关的 Socket 通信”和“结果写入 PLC”。
+   - 一端连接对位视觉 PC（VS，对齐相机），另一端通过 `MNetH` 接口把对位结果写入 PLC。
+
+2. 典型对位流程（Pattern Align / Tray Align 等）
+   1）PLC 侧：面板到位 → PLC 置位“开始对位”信号比特
+   2）Data Server：PLC 线程检测到信号后，调用对位线程，最终通过 `CAlignManager::SocketSendto`
+       - 发送 MC_* 命令给 VS（例如：MC_INSPECTION_START / MC_GRAB_READY_REQUEST 等）
+   3）VS 侧：收到命令后进行拍照和运算，完成后通过 VS_* 命令把结果回传
+       - 结果格式：STX + 命令号 + "," + 结果参数 + ETX
+   4）Data Server：在 `CAlignManager::OnDataReceived` 中解析 VS 返回的数据
+       - 按命令号分支处理（心跳、状态、模型切换、GRAB_END 等）
+       - 对于 GRAB_END，会解析出对位结果 X/Y/T 和 OK/NG
+   5）Data Server：在 `AlignGrabEnd` / `AlignTrayAlignGrabEnd` / `AlignTrayCheckGrabEnd`
+       - 把结果转换成 PLC 需要的数值格式（乘以 10000，转成整形）
+       - 通过 `MNetH` (`SetAlignResult` / `SetTrayCheckResult` 等) 写入 PLC 数据区
+       - 置位“对位结束”比特，通知 PLC 对位完成
+   6）PLC：读取对位结果和结束信号，决定后续机械动作（继续搬运、NG 流程等）。
+
+3. 日志与问题排查
+   - 所有收发 VS 的命令都会写入 `AlignSendReceiverLog` 和主界面对位日志窗口：
+     - `[MC -> VS] ...`：本系统发给对位 PC 的命令
+     - `[VS -> MC] ...`：对位 PC 回来的响应
+   - 对位异常（如 STX/ETX 错误、命令解析失败），会在 `LogWrite` 日志中体现。
+
+4. 如何在现场快速判断问题方向（给非软件人员参考）
+   - 日志中只有 `[MC -> VS]` 没有 `[VS -> MC]`：多为网络或对位 PC 端问题
+   - `[VS -> MC]` 有返回，但 PLC 侧结果不变：多为 PLC 通信（MNetH）或地址配置问题
+   - PLC 结果 OK，但机械动作不对：需检查 PLC 程序逻辑，与本模块无直接关系。
+======================================================================
+*/
+
 CAlignManager::CAlignManager(int iAlignType, int iAlignTypeNum, int iAlignNum)
 {
 	m_iAlignType = iAlignType;
@@ -50,17 +86,34 @@ void CAlignManager::LogWrite(int iNum, CString strContents)
 	theApp.m_AlignLog->LOG_INFO(strContents);
 }
 
+/**
+ * @brief 向VS (视觉系统) 发送协议数据包
+ * 
+ * 协议格式：STX + 命令内容 + ETX
+ * - STX: 起始符 (0x02)
+ * - 命令内容：命令码,参数1,参数2,... (逗号分隔)
+ * - ETX: 结束符 (0x03)
+ * 
+ * @param iNum 对齐系统编号 (0, 1, 2...)
+ * @param strContents 命令内容，格式：命令码,参数1,参数2,...
+ *                    例如："0,ModelName" 表示 MC_ARE_YOU_THERE 命令
+ * @param iCommand 命令枚举值，对应 MC_PacketNameTable 中的索引
+ *                 用于日志记录，标识发送的命令类型
+ */
 void CAlignManager::SocketSendto(int iNum, CString strContents, int iCommand)
 {
 	if (theApp.m_bExitFlag == FALSE)
 		return;
 
+	// 构造协议数据包：STX + 命令内容 + ETX
 	CString strCommand = CStringSupport::FormatString(_T("%c%s%c"), _STX, strContents, _ETX);
 	char *lpCommand = StringToChar(strCommand);
+	// 通过Socket发送数据包，超时时间100ms
 	theApp.m_AlignSocketManager[iNum]->WriteComm((BYTE*)lpCommand, strlen(lpCommand), 100L);
 	delete lpCommand;
 
 	m_lastContent = strContents;
+	// 记录发送日志：[MC -> VS] 表示从机器控制器发送到视觉系统
 	theApp.m_pAlignSendReceiverLog[iNum]->LOG_INFO(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents));
 }
 
@@ -74,6 +127,19 @@ void CAlignManager::AlignLightOff(int iNum)
 	}
 }
 
+/**
+ * @brief 接收来自VS (视觉系统) 的协议数据包并处理
+ * 
+ * 协议解析流程：
+ * 1. 数据包格式：STX + 命令码,参数1,参数2,... + ETX
+ * 2. 按ETX分割，可能包含多个数据包
+ * 3. 验证STX起始符
+ * 4. 提取命令码和参数
+ * 5. 根据命令码执行相应处理
+ * 
+ * @param lpBuffer 接收到的数据缓冲区
+ * @param dwCount 数据长度（字节数）
+ */
 void CAlignManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 {
 	if (theApp.m_bExitFlag == FALSE)
@@ -81,26 +147,30 @@ void CAlignManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 
 	CString strData, m_strHeader, m_strCommand, m_strContents, strParsing;
 	int iFind, iFindSTX;
+	// 将接收到的字节数据转换为Unicode字符串
 	MultiByteToWideChar(CP_ACP, 0, reinterpret_cast<LPCSTR>(lpBuffer), dwCount, strData.GetBuffer(dwCount + 1), dwCount + 1);
 	strData.ReleaseBuffer(dwCount);
 
 	CStringArray responseTokens;
+	// 按ETX (0x03) 分割数据包，可能包含多个数据包
 	CStringSupport::GetTokenArray(strData, _ETX, responseTokens);
 
 	//theApp.m_pAlignSendReceiverLog[m_iAlignNum]->LOG_INFO(strData);		//TWICE
 
+	// 如果没有ETX分隔符，说明数据包格式错误
 	if (responseTokens.GetSize() == 1)
 	{
 		LogWrite(m_iAlignNum,_T("ETX No Message!!!"));
 		return;
 	}
 
+	// 遍历每个数据包（最后一个token是空字符串，所以减1）
 	for (int ii = 0; ii < responseTokens.GetSize() - 1; ii++)
 	{
 		strParsing = responseTokens[ii];
 
+		// 检查STX起始符 (0x02)
 		m_strHeader.Format(_T("%x"), strParsing.GetAt(0));
-
 		UINT iHeader = (UINT)_ttoi(m_strHeader);
 
 		if (iHeader != _STX)
@@ -109,67 +179,79 @@ void CAlignManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 			return;
 		}
 
+		// 查找第一个逗号，分隔命令码和参数
 		iFind = strParsing.Find(',');
 		m_strCommand = strParsing.Left(iFind);
 
+		// 跳过STX字符，提取命令码（数字字符串）
 		iFindSTX = strParsing.Find((char)_STX);
 		m_strCommand = m_strCommand.Mid(iFindSTX + 1, m_strCommand.GetLength());
 
+		// 将命令码字符串转换为整数，对应VS_PacketNameTable中的索引
 		int iCommand = _ttoi(m_strCommand);
 
+		// 提取命令参数部分（逗号后的内容）
 		m_strContents = strParsing.Mid(iFind + 1, strParsing.GetLength());
 
 		m_lastCommand = VS_PacketNameTable[iCommand];
 		m_lastRequest = m_strContents;
 
+		// 记录接收日志：[VS -> MC] 表示从视觉系统发送到机器控制器
 		theApp.m_pAlignSendReceiverLog[m_iAlignNum]->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand, strData));
 
 		CString sendMsg;
+		// 根据命令码执行相应处理
 		switch (iCommand)
 		{
-		case VS_ARE_YOU_THERE:
+		case VS_ARE_YOU_THERE:  // VS心跳检测命令
+			// 重置心跳检测计数器，表示VS在线
 			theApp.m_AlignThread[m_iAlignNum]->m_AlignCheckCount = 0;
 			break;
-		case VS_PCTIME_REQUEST:
+		case VS_PCTIME_REQUEST:  // VS请求PC时间同步
 			LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("[VS -> MC] %s"), _T("RCV : VS_PCTIME_REQUEST")));
-			AlignPcTimeRequest();
+			AlignPcTimeRequest();  // 发送PC时间给VS
 			break;
-		case VS_STATE:
+		case VS_STATE:  // VS发送状态信息
+			// 参数：0=停止，1=运行
 			theApp.m_AlignPCStatus[m_iAlignNum] = m_strContents == _T("0") ? FALSE : TRUE;
 			LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("[VS_%d -> MC] %s->%s"), m_iAlignNum,  _T("RCV : VS_STATE"), theApp.m_AlignPCStatus[m_iAlignNum] == TRUE ? _T("Start") : _T("Stop")));
 			break;
-		case VS_MODEL_REQUEST:
+		case VS_MODEL_REQUEST:  // VS请求当前模型名称
 			LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("[VS -> MC] %s"), _T("RCV : VS_MODEL_REQUEST")));
-			AlignModelRequest();
+			AlignModelRequest();  // 发送当前模型名称给VS
 			break;
-		case VS_MODEL_CREATE:
+		case VS_MODEL_CREATE:  // VS通知模型创建完成
 			LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("[VS -> MC] %s"), _T("RCV : VS_MODEL_CREATE")));
-			theApp.m_CreateModelAlign = FALSE;
+			theApp.m_CreateModelAlign = FALSE;  // 清除模型创建标志
+			// 通知PLC线程模型创建完成
 			theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelCreate"), _T("Align"), theApp.m_CreateModelAlign);
 			theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Align Model Create Success")));
 
+			// 如果模型需要切换，发送模型切换命令
 			if (theApp.m_ChangeModelAlign)
 			{
 				sendMsg.Format(_T("%d,%s"), MC_MODEL_CHANGE, theApp.m_CurrentModel.m_AlignPcCurrentModelName);
 				theApp.m_AlignSocketManager[m_iAlignNum]->SocketSendto(m_iAlignNum, sendMsg, MC_MODEL_CHANGE);
 			}
 			break;
-		case VS_MODEL_CHANGE:
+		case VS_MODEL_CHANGE:  // VS通知模型切换完成
 			LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("[VS -> MC] %s"), _T("RCV : VS_MODEL_CHANGE")));
-			theApp.m_ChangeModelAlign = FALSE;
+			theApp.m_ChangeModelAlign = FALSE;  // 清除模型切换标志
+			// 通知PLC线程模型切换完成
 			theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelChange"), _T("Align"), theApp.m_ChangeModelAlign);
 			theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Align Model Change Success")));
 			break;
-		case VS_GRAB_END:
+		case VS_GRAB_END:  // VS通知图像采集完成
 			LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("[VS -> MC] %s->%s"), _T("RCV : VS_GRAB_END"), m_strContents));
 	
-			if (m_iAlignType == PatternAlign)
+			// 根据对齐类型处理图像采集结果
+			if (m_iAlignType == PatternAlign)  // 图案对齐
 				AlignGrabEnd(m_strContents);
-			else if (m_iAlignType == TrayCheck)
+			else if (m_iAlignType == TrayCheck)  // 托盘检查
 				AlignTrayCheckGrabEnd(m_strContents);
-			else if (m_iAlignType == TrayLowerAlign)
+			else if (m_iAlignType == TrayLowerAlign)  // 托盘下对齐
 				AlignTrayLowerAlignGrabEnd(m_strContents); 
-			else if (m_iAlignType == TrayAlign)
+			else if (m_iAlignType == TrayAlign)  // 托盘对齐
 				AlignTrayAlignGrabEnd(m_strContents);
 		
 			break;

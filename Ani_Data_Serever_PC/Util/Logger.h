@@ -24,7 +24,7 @@ using namespace std;
 
 const int MAX_MESSAGE = 1024;
 
-typedef enum ELogLevel
+enum ELogLevel
 {
 	eLogAlways = 0,
 	eLogFatal,
@@ -36,7 +36,7 @@ typedef enum ELogLevel
 	eLogMax
 };
 
-typedef enum ELogPeriod
+enum ELogPeriod
 {
 	eLogMinute = 0,
 	eLogHour,
@@ -49,7 +49,7 @@ typedef enum ELogPeriod
 	eLogMonth
 };
 
-typedef enum EDelPeriod
+enum EDelPeriod
 {
 	eDelNo = -1,
 	eDelHour = 0,
@@ -64,12 +64,12 @@ typedef enum EDelPeriod
 
 struct LogInfo
 {
-	tstring m_strLevel;	// Log 레벨
-	tstring m_strSrcFile; // Log 발생 소스 파일
-	int m_iSrcLine; // Log 발생 위치
-	DWORD m_dwSrcThreadId; // Log 발생 Thread
-	tstring m_strMsg; // 메세지
-	volatile BOOL m_bSrc; // Log 소스 유무 체크
+	tstring m_strLevel;	// Log ????
+	tstring m_strSrcFile; // Log ??? ??? ????
+	int m_iSrcLine; // Log ??? ???
+	DWORD m_dwSrcThreadId; // Log ??? Thread
+	tstring m_strMsg; // ?????
+	volatile BOOL m_bSrc; // Log ??? ???? ??
 
 	LogInfo() : m_bSrc(FALSE) {}
 };

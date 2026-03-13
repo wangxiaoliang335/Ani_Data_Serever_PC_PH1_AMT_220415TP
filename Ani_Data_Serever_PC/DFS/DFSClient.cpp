@@ -6,6 +6,7 @@
 
 #include "DFSClient.h"
 #include "DfsInfo.h"
+#include "DFSInfo.h"
 #include "DataInfo.h"
 #include "Ani_Data_Serever_PC.h"
 
@@ -354,7 +355,7 @@ void CDFSClient::UploadFile(CString &source, CString &dest, BOOL &bSend)
 	m_pFtpConnection->GetCurrentDirectory(strDir);
 	m_strCurrentDirectory = strDir + _T("/") + m_strCurrentDirectory;
 	// set current directory
-	if (!m_pFtpConnection->SetCurrentDirectory(m_strCurrentDirectory)) //¿©±â¼­ °æ·Î ¼³Á¤ÇÏ°í ¾ÈµÇ¸é Æú´õ »ý¼º ±×¸®°í¾ÈµÇ¸é ³ª°¡! 
+	if (!m_pFtpConnection->SetCurrentDirectory(m_strCurrentDirectory)) //
 	{
 		if (m_pFtpConnection->CreateDirectory(m_strCurrentDirectory))
 		{
@@ -622,6 +623,57 @@ void CDFSClient::RunDfsUploadThread()
 					DfsDataValue result;
 					result = DataInfo.SetLoadFile(strPanelID);
 
+					// 从 MySQL 数据库查询点灯检测结果（AOI 点灯检结果，直接从数据库读取）
+					CString strAOIResult, strCodeAOI, strGradeAOI;
+					BOOL bValid = FALSE;
+					CString strUniqueID = theApp.GetLightingUniqueIDByBarcode(strPanelID);
+					theApp.GetLightingResultByBarcode(strPanelID, strAOIResult, strCodeAOI, strGradeAOI, bValid);
+					if (bValid)
+					{
+						// 将点灯结果填充到 result 结构
+						// m_Lumitop 字段用于存储点灯结果（OK/NG）
+						if (strAOIResult.CompareNoCase(_T("OK")) == 0)
+							result.m_Lumitop = _T("OK");
+						else
+							result.m_Lumitop = _T("NG");
+
+						// 将点灯检测结果填充到 DFS 数据中
+						DfsInfo.m_PanelSummaryInfo.LUMITOP_PAENL_GRADE = strAOIResult;
+						DfsInfo.m_strLumitopResult = strAOIResult;
+
+						// 如果有点灯缺陷，更新 MainDefectCode
+						if (!strCodeAOI.IsEmpty() && strAOIResult.CompareNoCase(_T("OK")) != 0)
+						{
+							DfsInfo.m_PanelSummaryInfo.strMainDefectCode = strCodeAOI;
+						}
+
+						theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+							_T("DFS: Lighting result from MySQL for PanelID=%s: AOIResult=%s, Code=%s, Grade=%s"),
+							strPanelID, strAOIResult, strCodeAOI, strGradeAOI));
+
+						// 从 MySQL 数据库查询点灯缺陷详情列表（AOI 缺陷详情）
+						if (!strUniqueID.IsEmpty())
+						{
+							std::vector<SDFSDefectDataBegin> vecAOIDefects;
+							if (theApp.QueryAOIDefectList(strUniqueID, vecAOIDefects))
+							{
+								// 将缺陷详情添加到 DfsInfo（点灯缺陷填充到 m_DefectDataList）
+								for (size_t i = 0; i < vecAOIDefects.size(); i++)
+								{
+									DfsInfo.m_DefectDataList.push_back(vecAOIDefects[i]);
+								}
+								theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+									_T("DFS: Loaded %d lighting defects from MySQL for PanelID=%s"),
+									vecAOIDefects.size(), strPanelID));
+							}
+						}
+					}
+					else
+					{
+						theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+							_T("DFS: No lighting result found in MySQL for PanelID=%s"), strPanelID));
+					}
+
 					if (_ttoi(result.m_ChNum) > 2)
 					{
 						if (result.m_ChNum == _T("3"))
@@ -666,10 +718,18 @@ void CDFSClient::RunDfsUploadThread()
 					DfsInfo.m_EQPDataInfo.strOPERATOR_ID = theApp.m_OpvSocketManager[_ttoi(DfsInfo.m_EQPDataInfo.strUNLOAD_STAGE_NO)-1].m_strOPID;
 
 					DfsInfo.m_PanelSummaryInfo.CONTACT_PAENL_GRADE = dfsData.m_Contact;
-					DfsInfo.m_PanelSummaryInfo.AOI_PAENL_GRADE = dfsData.m_AOIInpsect;
+					// 点灯检代替 AOI：若 MySQL 点灯结果有效，则用其填充 AOI 结果
+					if (bValid)
+						DfsInfo.m_PanelSummaryInfo.AOI_PAENL_GRADE = strAOIResult;
+					else
+						DfsInfo.m_PanelSummaryInfo.AOI_PAENL_GRADE = dfsData.m_AOIInpsect;
 					DfsInfo.m_PanelSummaryInfo.PRE_PAENL_GRADE = dfsData.m_PreGamma;
 					DfsInfo.m_PanelSummaryInfo.DOT_PAENL_GRADE = dfsData.m_TpResult2;
-					DfsInfo.m_PanelSummaryInfo.LUMITOP_PAENL_GRADE = dfsData.m_Lumitop;
+					// 点灯结果：优先用 MySQL 点灯结果，否则用 PLC 值
+					if (bValid)
+						DfsInfo.m_PanelSummaryInfo.LUMITOP_PAENL_GRADE = strAOIResult;
+					else
+						DfsInfo.m_PanelSummaryInfo.LUMITOP_PAENL_GRADE = dfsData.m_Lumitop;
 					DfsInfo.m_PanelSummaryInfo.OPV_PAENL_GRADE = dfsData.m_opViewResult;
 					DfsInfo.m_PanelSummaryInfo.OPERATOR_ID = theApp.m_OpvSocketManager[_ttoi(DfsInfo.m_EQPDataInfo.strUNLOAD_STAGE_NO) - 1].m_strOPID;
 	

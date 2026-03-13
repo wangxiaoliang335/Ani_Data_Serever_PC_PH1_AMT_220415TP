@@ -1,14 +1,15 @@
 
-// Ani_Data_Serever_PCApp.h : CAni_Data_Serever_PCApp ���� ���α׷��� ���� �� ��� ����
+// Ani_Data_Serever_PCApp.h : CAni_Data_Serever_PCApp
 //
 #pragma once
 
 #ifndef __AFXWIN_H__
-#error "PCH�� ���� �� ������ �����ϱ� ���� 'stdafx.h'�� �����մϴ�."
+#error "PCH stdafx.h"
 #endif
 
-#include "resource.h"       // �� ��ȣ�Դϴ�.
+#include "resource.h"       //
 #include "stdafx.h"
+#include <mysql/jdbc.h>
 #include "Logger.h"
 #include "MsgBox.h"
 #include "AlignThread.h"
@@ -18,6 +19,9 @@
 #include "PgManager.h"
 #include "TpManager.h"
 #include "OpvManager.h"
+#include "LightingManager.h"
+
+#include "DFS/DFSInfo.h"  // 包含完整的 DFSInfo 定义，包括 SDFSDefectDataBegin 和 LUMITOP_SDFSDefectDataBegin
 #include "DFSClient.h"
 #include "FTPClient.h"
 #include "AllPassModeThread.h"
@@ -38,11 +42,10 @@
 #endif
 
 // CAni_Data_Serever_PCApp:
-// �� Ŭ������ ������ ���ؼ��� CAni_Data_Serever_PCApp.cpp�� �����Ͻʽÿ�.
 //
 
 class CManualThread;
-class CAni_Data_Serever_PCApp : public CWinApp
+class CAni_Data_Serever_PCApp : public CWinApp, public ILightingEventHandler
 {
 public:
 	CAni_Data_Serever_PCApp();
@@ -88,6 +91,11 @@ public:
 	CLogger* m_pOpvSendReceiver2Log;
 
 	CLogger* m_pGammaSendReceiverLog;
+	CLogger* m_pLightingLog;
+	CLogger* m_pLightingSendReceiverLog;
+
+	//>> Code Log for MachineManager (MesAdapter)
+	CLogger* m_pCodeLog[10];
 
 	ModelName m_CurrentModel;
 	BOOL m_CreateModelAlign;
@@ -126,10 +134,12 @@ public:
 	BOOL m_PgConectStatus[PgServerMaxCount];
 	BOOL m_TpConectStatus;
 	BOOL m_OpvConectStatus[ChMaxCount];
+	BOOL m_LightingConectStatus;
 
 	BOOL m_PgThreadOpenFlag[PgServerMaxCount];
 	BOOL m_TpThreadOpenFlag;
 	BOOL m_OpvThreadOpenFlag[ChMaxCount];
+	BOOL m_LightingThreadOpenFlag;
 #else
 	BOOL m_PgConectStatus[PgServerMaxCount];
 	BOOL m_PgThreadOpenFlag[PgServerMaxCount];
@@ -188,13 +198,80 @@ public:
 	CPgManager m_PgSocketManager[PgServerMaxCount];
 	CTpManager m_TpSocketManager;
 	COpvManager m_OpvSocketManager[ChMaxCount];
-	//>>210422
-	CComView *m_pComView;
-	CLogger* m_pCodeLog[SocketCodeMax];
-	//<<
+#if _SYSTEM_AMTAFT_
+	CLightingManager m_LightingSocketManager;
+	CComView* m_pComView;
+
+	// 点灯检（Lighting 新协议）流程状态（由 PLC Start 触发，Lighting 回包推进）
+	// - Running@    : 表示点灯检已开始
+	// - SnapFN@     : 表示采图完成（可移动）
+	// - FN$xxxxxxxx@: 表示检测完成（结果已入库；此处先补齐 PLC 握手位，结果查询后续可接 DB）
+	CCriticalSection m_csLightingFlow;
+	BOOL m_bLightingCycleInProgress;
+	BOOL m_bLightingRunning;
+	BOOL m_bLightingSnapDone;
+	BOOL m_bLightingActiveSlot[4]; // slot 1..4 -> index 0..3
+	DWORD m_dwLightingStartTick;
+	DWORD m_dwLightingTimeoutMs; // 默认 60s，避免一直卡住（可后续改成 INI 配置）
+
+	// PLC -> Lighting : Start$xxxxxxxx$xxxxxxxx@ 触发入口（由 LumitopThread 调用）
+	BOOL TryStartLightingFromPlc(const BOOL startFlags[4]);
+	void LightingFlowTimeoutCheck();
+
+	// Lighting 事件回调函数 (实现 ILightingEventHandler 接口)
+	virtual void OnLightingRunning() override;
+	virtual void OnLightingSnapFN() override;
+	virtual void OnLightingResult(const int resultCode[4]) override;
+
+	// Lighting ID 映射和结果更新(MySQL 待实现)
+	BOOL UpdateLightingIdMap(int fixtureNo, CString uniqueID, CString screenID, CString markID);
+	BOOL LoadLightingInspectionResult(CString uniqueID);
+	BOOL UpdateLightingInspectionResult(CString uniqueID);
+
+	// Lighting 检测结果缓存（从 MySQL 查询后存储）
+	struct LightingInspectionResult {
+		CString m_strGUID;
+		CString m_strScreenID;
+		CString m_strUniqueID;
+		CString m_strAOIResult;      // OK/NG/BrightDot/BlackDot/Line/Mura/Block/BM
+		CString m_strCodeAOI;        // 缺陷代码
+		CString m_strGradeAOI;       // 缺陷等级
+		CString m_strStartTime;
+		CString m_strStopTime;
+		BOOL m_bValid;
+		LightingInspectionResult() : m_bValid(FALSE) {}
+	};
+	LightingInspectionResult m_LightingInspResult[4]; // 4个治具的检测结果
+
+	// MySQL Connector/C++ 数据库连接
+	sql::Connection* m_pLightingConn;
+	BOOL m_bLightingDBConnected;
+	CString m_strLightingDBServer;
+	CString m_strLightingDBName;
+	CString m_strLightingDBUser;
+	CString m_strLightingDBPassword;
+
+	// MySQL 数据库连接和操作
+	BOOL InitLightingDatabase();
+	BOOL ConnectLightingDatabase();
+	void CloseLightingDatabase();
+	LightingInspectionResult QueryInspectionResult(CString uniqueID);
+	BOOL QueryIdMapByFixtureNo(int fixtureNo, CString& uniqueID, CString& screenID, CString& markID);
+
+	// DFS 模块调用：直接从 MySQL 查询点灯检测结果
+	LightingInspectionResult GetLightingResultByUniqueID(CString uniqueID);
+	// 根据 Barcode/PanelID 查询点灯结果，返回各个字段
+	void GetLightingResultByBarcode(CString strBarcode, CString& strAOIResult, CString& strCodeAOI, CString& strGradeAOI, BOOL& bValid);
+	// 根据 UniqueID 查询点灯缺陷详情列表
+	BOOL QueryLightingDefectList(CString strUniqueID, std::vector<LUMITOP_SDFSDefectDataBegin>& vecDefects);
+	// 根据 UniqueID 查询 AOI 缺陷详情列表（点灯缺陷）
+	BOOL QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects);
+	// 根据 Barcode 查询 UniqueID
+	CString GetLightingUniqueIDByBarcode(CString strBarcode);
 #else
 	CGammaThread* m_GammaThread[MaxGammaStage];
 	CPgManager m_PgSocketManager[PgServerMaxCount];
+#endif
 #endif
 
 #if _SYSTEM_AMTAFT_
@@ -221,7 +298,7 @@ public:
 #endif	
 	CTact m_pTactTimeList[50];
 
-	//<Melsec ���
+	//<Melsec
 	CEqInterface* m_pEqIf;
 	std::vector<CString> m_VecInspDefectData[eNumShift];
 	std::vector<IndexList>  m_indexList;
@@ -252,7 +329,7 @@ public:
 	std::vector<PGCoderesult> m_VecPGCode_PG;
 	std::vector<PGCoderesult> m_VecPGCode_Mes;
 
-	//TP Code ���� �߰�
+	//TP Code
 	std::vector<PGCoderesult> m_VecTPCode_TP;
 	std::vector<PGCoderesult> m_VecTPCode_Mes;
 
@@ -277,7 +354,7 @@ public:
 
 	int m_CurrentIndexZone;
 	int m_iUserClass;
-	int m_lastShiftIndex = 99;
+	int m_lastShiftIndex;
 	CString m_strCurrentToday;
 	CString m_strEqpId;
 	CString m_strEqpNum;
@@ -297,6 +374,8 @@ public:
 	CString m_strARSPortNum;
 	CString m_strFFUEndPoint;
 	CString m_strPGName;
+	CString m_strLightingIP;
+	CString m_strLightingPort;
 
 	CString m_strDefectTitleName[DefectTitleMaxCount];
 	BOOL m_bContact[PG_MAX_CH];
@@ -317,7 +396,7 @@ public:
 	CString m_strSameDefectMaxCount;
 	CString m_strSameDefectAlarmMaxCount;
 	CCriticalSection		m_csIndexCheck;
-	// �������Դϴ�.
+	//
 public:
 	virtual BOOL InitInstance();
 	virtual int ExitInstance();
@@ -432,11 +511,11 @@ public:
 	{
 		BOOL operator()(pair<CString, int> &pair1, pair<CString, int> &pair2)
 		{
-			return pair1.second > pair2.second; // ��������
+			return pair1.second > pair2.second;
 		}
 	}comp;
 
-	// �����Դϴ�.
+	
 	afx_msg void OnAppAbout();
 	DECLARE_MESSAGE_MAP()
 };

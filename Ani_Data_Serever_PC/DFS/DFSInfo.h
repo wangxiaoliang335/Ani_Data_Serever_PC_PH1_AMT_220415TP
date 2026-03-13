@@ -8,7 +8,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 #include <vector>
 #include <map>
-#include "Ani_Data_Serever_PC.h"
+#include <afx.h>
 
 using namespace std;
 
@@ -326,7 +326,7 @@ enum
 class CDFSInfo{
 public:
 #if _SYSTEM_AMTAFT_
-	BOOL AMTAFTSavePanelDFS_SUM(DfsDataValue DfsInfo, CString strPanelID, CString strFpcID, CString strVisionPath, CString strViewingPath, CString strLumitopPath, CString strOpvPath, CString strSumPath);
+	BOOL AMTAFTSavePanelDFS_SUM(DfsDataValue& DfsInfo, CString strPanelID, CString strFpcID, CString strVisionPath, CString strViewingPath, CString strLumitopPath, CString strOpvPath, CString strSumPath);
 
 	BOOL DFSDefectBeginLoad(CString strFileName, CString strTypeName, BOOL bTotalDfs);
 	BOOL DFSDefectBeginLoad_OP(CString strFileName, CString strTypeName, BOOL bTotalDfs);

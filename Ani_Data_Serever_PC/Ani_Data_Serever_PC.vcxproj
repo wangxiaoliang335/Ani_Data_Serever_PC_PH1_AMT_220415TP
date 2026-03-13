@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="_SYSTEM_AMTAFT_|Win32">
@@ -38,7 +38,7 @@
     <ProjectGuid>{12106FB4-FDFE-4BFF-AF16-828CBAA097CE}</ProjectGuid>
     <RootNamespace>Ani_Data_Serever_PC</RootNamespace>
     <Keyword>MFCProj</Keyword>
-    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.19041.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_INDEX_|Win32'" Label="Configuration">
@@ -268,15 +268,15 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_CRT_SECURE_NO_WARNINGS;_SYSTEM_AMTAFT_;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>.\Comm;.\Communication;.\Dlg\AMT;.\Thread\AMT;.\Thread;.\View;.\Util;.\Melsec;.\Main;.\DFS;.\Dlg;.\;D:\ZSDK\MIL_64\Include;E:\附件1.CSOT_PH1_AFT151相机改造提供资料\opencv\build\include\opencv;D:\ZSDK\StGigE SDK\Includes;E:\附件1.CSOT_PH1_AFT151相机改造提供资料\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Comm;.\Communication;.\Dlg\AMT;.\Thread\AMT;.\Thread;.\View;.\Util;.\Melsec;.\Main;.\DFS;.\Dlg;.\;D:\ZSDK\MIL_64\Include;E:\CSOT_PH1_AFT151_CAMERA\opencv\build\include\opencv;D:\ZSDK\StGigE SDK\Includes;E:\CSOT_PH1_AFT151_CAMERA\opencv\build\include;E:\CSOT_PH1_AFT151_CAMERA\AMT 4# Data Server软件\Ani_Data_Serever_PC_PH1_AMT_220415TP\mysql-connector-c++-9.6.0-winx64\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <SDLCheck>true</SDLCheck>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>.\Melsec;E:\附件1.CSOT_PH1_AFT151相机改造提供资料\opencv\build\x64\vc12\bin;E:\附件1.CSOT_PH1_AFT151相机改造提供资料\opencv\build\x64\vc12\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>opencv_core249.lib;opencv_imgproc249.lib;opencv_highgui249.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>.\Melsec;E:\CSOT_PH1_AFT151_CAMERA\opencv\build\x64\vc12\bin;E:\CSOT_PH1_AFT151_CAMERA\opencv\build\x64\vc12\lib;E:\CSOT_PH1_AFT151_CAMERA\AMT 4# Data Server软件\Ani_Data_Serever_PC_PH1_AMT_220415TP\mysql-connector-c++-9.6.0-winx64\lib64\vs14;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opencv_core249.lib;opencv_imgproc249.lib;opencv_highgui249.lib;mysqlcppconn.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
     </Link>
     <Midl>
@@ -355,6 +355,7 @@
     <None Include="res\Ani_Data_Serever_PC.rc2" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Communication\LightingManager.h" />
     <ClInclude Include="Communication\AlignManager.h" />
     <ClInclude Include="Communication\CommThread.h" />
     <ClInclude Include="Communication\MachineManager.h" />
@@ -456,6 +457,7 @@
     <ClInclude Include="View\ViewCtrl.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Communication\LightingManager.cpp" />
     <ClCompile Include="Communication\AlignManager.cpp" />
     <ClCompile Include="Communication\CommThread.cpp" />
     <ClCompile Include="Communication\MachineManager.cpp" />

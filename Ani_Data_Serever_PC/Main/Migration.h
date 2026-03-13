@@ -5,6 +5,74 @@
 #pragma once
 #endif // _MSC_VER > 1000
 
+/*
+======================================================================
+整体系统与外部模块协议流程总览（给非软件工程人员看的说明）
+----------------------------------------------------------------------
+1. 本软件在整机中的角色
+   - 本程序是 4# Data Server，相当于“中间翻译”和“数据中枢”：
+     - 一侧连接 Machine Controller / PLC（整机控制、轴控、设备状态）
+     - 另一侧连接各类外部设备/软件：视觉系统 VS、Pattern Generator (PG)、TP 测试设备、OPV 终检系统、
+       DFS/MES 文件服务器等
+   - 所有检测结果、代码、等级、面板信息，最终都会通过这里进行统一管理和转发。
+
+2. VS（视觉系统）与 MC（机器控制器）的基本流程
+   - 典型检测流程（AOI 或对位）：
+     1）PLC 检测面板到位 → 写入 PLC 数据区
+     2）MC 通过 MC_* 命令（见下面 MC 枚举和 `MC_PacketNameTable`）发起检测/对位请求
+     3）Data Server 将命令通过 Socket 发送给 VS 电脑
+     4）VS 完成拍照和运算后，通过 VS_* 命令（见 VS 枚举和 `VS_PacketNameTable`）返回结果
+     5）Data Server 解析结果，换算成 PLC 所需的坐标/OKNG 码，写回 PLC 指定地址
+     6）PLC 根据返回结果决定机械动作（继续生产、NG 流程等）
+   - 命名规则说明：
+     - 前缀 VS_* 表示“视觉 → 机器控制器”的方向
+     - 前缀 MC_* 表示“机器控制器 → 视觉”的方向
+     - 名称中包含 START/END/RESULT/JUDGE 等词，表示“开始 / 结束 / 结果 / 判定”等阶段。
+
+3. PG（Pattern Generator）相关流程
+   - PG 主要负责点亮图案、Gamma/Pre-Gamma 测试、接触 ON/OFF 等操作。
+   - 典型流程示例：
+     1）Data Server 根据 PLC/MC 请求，按通道 Ch 生成 PG 命令（TURNON、CONTACT、PREGAMMA 等）
+     2）通过 Socket 将命令发送给 PG（协议格式在本文件 PG 命令枚举和 `PG_PacketNameTable` 中定义）
+     3）PG 执行后返回 DONE / GOOD / NG 等结果
+     4）Data Server 将结果写回 PLC，对应的 OK/NG 码和 Gamma/Contact 结果记录到生产统计中
+   - 在 AOI 模式下，PG 与 VS/TP 协同完成：点亮合适图案 → 视觉检测或 TP 测试 → 结果统一写回 PLC。
+
+4. TP（触摸测试）设备流程
+   - TP 主要用于触摸功能测试（Touch Panel）。
+   - 基本交互步骤：
+     1）Data Server 向 TP 发送开始测试命令（#ST*通道号#），并在内部记录该 Panel 的 TP 状态
+     2）TP 设备完成测试后，通过 #RT*通道号*OK/NG# 返回结果
+     3）Data Server 将结果写入 PLC 指定地址，同时在 DFS 文件中记录 TP 结果
+     4）如需比对 TP Code（#TP*通道号*Code#），会与 MES/DFS 中下发的标准 Code 进行对比，并给出 OK/NG。
+
+5. PLC / MES / DFS 之间的数据流向
+   - PLC：
+     - 通过 MNetH 通信，将面板 ID、作业信息、工位状态、结果码等读写到 PLC 寄存器
+     - 本文件中的枚举（如 PLCRESULTMAX 等）以及 `MNetHData` 相关结构体描述了这些数据的编码方式
+   - MES：
+     - MES 主要通过文件或 Socket 给 Data Server 下发模块信息（模块 ID、批次、工艺等）
+     - 本文件的 `SDataModuleShop` / `SJobDataShop` 对应 MES 数据结构
+   - DFS（Data File System）：
+     - 检测完成后，Data Server 将面板结果、缺陷列表、TP/Pre-Gamma/OPV 等信息写入 DFS 文件
+     - 其他上位系统（如 OPV、工艺分析系统）再从 DFS 文件中读取这些结果。
+
+6. OPV / LUMITOP / Viewing 等其他模块
+   - OPV：负责人工判定/复判，Data Server 将 AOI/TP 结果和缺陷列表输出给 OPV，OPV 的最终判定再回写到本系统。
+   - LUMITOP / Viewing：负责亮度、色度、视角等光学测试，测试流程与 VS/PG 类似：
+     - Data Server 发送开始命令 → 外部设备测试 → 返回结果 → 写 PLC / 记录 DFS。
+
+7. 如何看懂下面的枚举和常量表
+   - 所有 *_PACKET_MAX_NUM 类枚举，用于限定命令表的大小，并与 `xxx_PacketNameTable` 一一对应。
+   - 当你在代码中看到某个命令号（整数），可以在本文件中：
+     - 先在对应的 enum 中找到含义（如 MC_INSPECTION_START）
+     - 再在 `MC_PacketNameTable` 中找到实际发送的字符串（如 "MC_INSPECTION_START"）
+   - 对于非软件工程人员，只需要把握：
+     - 谁发给谁（MC → VS、VS → MC、MC → PG、MC → TP、PLC ↔ Data Server 等）
+     - 什么时候 START、什么时候 END、什么时候 RESULT/JUDGE
+======================================================================
+*/
+
 #define MS_YESNO 0
 #define MS_OK 1
 
@@ -28,6 +96,7 @@
 static USHORT m_codeReset = 0;
 static USHORT m_codeOk = 1;
 static USHORT m_codeFail = 2;
+static USHORT m_codeNg = 2;  // NG 代码，与 m_codeFail 相同
 static USHORT m_codeTimeOut = 3;
 static USHORT m_codeResponseError = 4;
 static USHORT m_codePlcSendReceiverError = 5;
@@ -132,114 +201,160 @@ const COLORREF DATA_ITEM_BACKGROUND_COLOR = CYAN;
 #define SET_KEY_VALUE(scope, key, value)	::WritePrivateProfileString(scope, key, (LPWSTR)(LPCWSTR)value, (LPWSTR)(LPCWSTR)sFileName);
 #define MAX_TACT_NUM 10
 
+/**
+ * @brief Vision System (视觉系统) 发送给 Machine Controller (机器控制器) 的协议命令枚举
+ * 
+ * 协议格式说明：
+ * - 协议采用TCP/IP Socket通信
+ * - 数据包格式：STX + 命令码 + 内容 + ETX
+ * - STX: 起始符 (0x02)
+ * - ETX: 结束符 (0x03)
+ * - 命令码：数字字符串，对应本枚举值
+ * - 内容：逗号分隔的参数列表
+ */
 enum{
-	VS_ARE_YOU_THERE,
-	VS_PCTIME_REQUEST,
-	VS_STATE,
-	VS_STATE_REQUEST,
-	VS_MODEL,
-	VS_MODEL_REQUEST,
-	VS_MODEL_CREATE,
-	VS_MODEL_DELETE,
-	VS_MODEL_MODIFY,
-	VS_MODEL_CHANGE,
-	VS_GRAB_START,
-	VS_GRAB_END,
-	VS_INSPECTION_OK,
-	VS_INSPECTION_RESULT,
-	VS_INSPECTION_JUDGE,
-	VS_INSECTION_OTP_OK,
-	VS_INSECTION_OTP_RESULT,
-	VS_INSECTION_START_ING,
-	VS_ALIGN_AXIS_RESULT_START,
-	VS_AUTO_CAM_SET_START,
-	VS_Z_MOVE_REQUEST,
-	VS_FOCUS_MOVE_REQUEST,
-	VS_Z_SAVE_POS_REQUEST,
-	VS_FOCUS_SAVE_POS_REQUEST,
-	VS_OPV_LOGIN_REQUEST,
-	VS_OPV_LOGOUT_REQUEST,
-	VS_VISION_TEST,
-	VS_VIEWING_TEST,
-	VS_LUMITOP_TEST,
-	VS_PACKET_MAX_NUM
+	VS_ARE_YOU_THERE,              // VS -> MC: 心跳检测命令，用于检测MC是否在线
+	VS_PCTIME_REQUEST,             // VS -> MC: 请求PC时间同步，用于校准VS系统时间
+	VS_STATE,                      // VS -> MC: 发送VS当前状态（空闲/运行/错误等）
+	VS_STATE_REQUEST,              // VS -> MC: 请求MC当前状态
+	VS_MODEL,                      // VS -> MC: 发送当前使用的模型名称
+	VS_MODEL_REQUEST,              // VS -> MC: 请求MC当前使用的模型名称
+	VS_MODEL_CREATE,               // VS -> MC: 通知创建新模型
+	VS_MODEL_DELETE,               // VS -> MC: 通知删除模型
+	VS_MODEL_MODIFY,               // VS -> MC: 通知修改模型参数
+	VS_MODEL_CHANGE,               // VS -> MC: 通知切换模型
+	VS_GRAB_START,                 // VS -> MC: 开始图像采集命令
+	VS_GRAB_END,                   // VS -> MC: 图像采集完成通知
+	VS_INSPECTION_OK,              // VS -> MC: 检测结果OK通知
+	VS_INSPECTION_RESULT,          // VS -> MC: 发送检测结果（包含缺陷信息）
+	VS_INSPECTION_JUDGE,           // VS -> MC: 发送检测判定结果（OK/NG）
+	VS_INSECTION_OTP_OK,           // VS -> MC: OTP(光学测试模式)检测OK通知
+	VS_INSECTION_OTP_RESULT,       // VS -> MC: 发送OTP检测结果
+	VS_INSECTION_START_ING,        // VS -> MC: 检测进行中状态通知
+	VS_ALIGN_AXIS_RESULT_START,    // VS -> MC: 开始发送对齐轴结果（X/Y/T偏移量）
+	VS_AUTO_CAM_SET_START,         // VS -> MC: 开始自动相机设置
+	VS_Z_MOVE_REQUEST,             // VS -> MC: 请求Z轴移动
+	VS_FOCUS_MOVE_REQUEST,         // VS -> MC: 请求焦距调整
+	VS_Z_SAVE_POS_REQUEST,         // VS -> MC: 请求保存Z轴位置
+	VS_FOCUS_SAVE_POS_REQUEST,     // VS -> MC: 请求保存焦距位置
+	VS_OPV_LOGIN_REQUEST,          // VS -> MC: 请求OPV(光学验证)登录
+	VS_OPV_LOGOUT_REQUEST,          // VS -> MC: 请求OPV登出
+	VS_VISION_TEST,                // VS -> MC: 视觉系统测试命令
+	VS_VIEWING_TEST,               // VS -> MC: 视角测试命令
+	VS_LUMITOP_TEST,               // VS -> MC: LUMITOP测试命令
+	VS_PACKET_MAX_NUM              // 协议命令总数，用于数组大小定义
 };
+/**
+ * @brief 检测类型枚举
+ * 用于标识不同的检测模式
+ */
 enum {
-	_LUMITOP,
-	_AOI,
-	_PREGAMMA,
-	_DOT,
-	_CONTACT,
-	_MAX
-};
-enum{
-	MC_ARE_YOU_THERE,
-	MC_PCTIME,
-	MC_STATE,
-	MC_STATE_REQUEST,
-	MC_MODEL,
-	MC_MODEL_REQUEST,
-	MC_MODEL_CREATE,
-	MC_MODEL_DELETE,
-	MC_MODEL_MODIFY,
-	MC_MODEL_CHANGE,
-	MC_INSPECTION_START,
-	MC_GRAB_READY_REQUEST,
-	MC_GRAB_END_RECEIVE,
-	MC_INSPECTION_REQUEST,
-	MC_INSPECTION_END,
-	MC_INSPECTION_RESULT_RECEIVE,
-	MC_INSPECTION_JUDGE_REQUEST,
-	MC_INSPECTION_JUDGE_RECEIVE,
-	MC_INSECTION_OTP_START,
-	MC_INSECTION_OTP_END,
-	MC_INSECTION_OTP_RESULT_RECEIVE,
-	MC_ALIGN_LIGHT_CONTROL,
-	MC_ALIGN_AXIS_RESULT_END,
-	MC_ALIGN_LIGHT_OFF,
-	MC_Z_MOVE_DONE,
-	MC_FOCUS_MOVE_DONE,
-	MC_Z_SAVE_POS_DONE,
-	MC_FOCUS_SAVE_POS_DONE,
-	MC_OPV_LOGIN_DONE,
-	MC_OPV_LOGOUT_DONE,
-	MC_NG_PANEL,
-	MC_MANUAL_TP_NG,
-	MC_PACKET_MAX_NUM
+	_LUMITOP,      // LUMITOP检测模式
+	_AOI,          // AOI (自动光学检测) 模式
+	_PREGAMMA,     // Pre-Gamma (预伽马) 检测模式
+	_DOT,          // DOT (点缺陷) 检测模式
+	_CONTACT,      // 接触检测模式
+	_MAX           // 最大枚举值
 };
 
+/**
+ * @brief Machine Controller (机器控制器) 发送给 Vision System (视觉系统) 的协议命令枚举
+ * 
+ * 协议格式说明：
+ * - 协议采用TCP/IP Socket通信
+ * - 数据包格式：STX + 命令码 + 内容 + ETX
+ * - STX: 起始符 (0x02)
+ * - ETX: 结束符 (0x03)
+ * - 命令码：数字字符串，对应本枚举值
+ * - 内容：逗号分隔的参数列表
+ */
+enum{
+	MC_ARE_YOU_THERE,              // MC -> VS: 心跳检测命令，用于检测VS是否在线
+	MC_PCTIME,                     // MC -> VS: 发送PC时间，用于VS时间同步
+	MC_STATE,                      // MC -> VS: 发送MC当前状态（空闲/运行/错误等）
+	MC_STATE_REQUEST,              // MC -> VS: 请求VS当前状态
+	MC_MODEL,                      // MC -> VS: 发送当前使用的模型名称
+	MC_MODEL_REQUEST,              // MC -> VS: 请求VS当前使用的模型名称
+	MC_MODEL_CREATE,               // MC -> VS: 通知创建新模型
+	MC_MODEL_DELETE,               // MC -> VS: 通知删除模型
+	MC_MODEL_MODIFY,               // MC -> VS: 通知修改模型参数
+	MC_MODEL_CHANGE,               // MC -> VS: 通知切换模型
+	MC_INSPECTION_START,           // MC -> VS: 开始检测命令，触发VS开始图像采集和检测
+	MC_GRAB_READY_REQUEST,          // MC -> VS: 请求VS准备图像采集（设备已就绪）
+	MC_GRAB_END_RECEIVE,           // MC -> VS: 确认收到图像采集完成通知
+	MC_INSPECTION_REQUEST,         // MC -> VS: 请求开始检测流程
+	MC_INSPECTION_END,             // MC -> VS: 通知检测流程结束
+	MC_INSPECTION_RESULT_RECEIVE,  // MC -> VS: 确认收到检测结果
+	MC_INSPECTION_JUDGE_REQUEST,   // MC -> VS: 请求检测判定结果
+	MC_INSPECTION_JUDGE_RECEIVE,   // MC -> VS: 确认收到判定结果
+	MC_INSECTION_OTP_START,        // MC -> VS: 开始OTP(光学测试模式)检测
+	MC_INSECTION_OTP_END,          // MC -> VS: OTP检测结束通知
+	MC_INSECTION_OTP_RESULT_RECEIVE, // MC -> VS: 确认收到OTP检测结果
+	MC_ALIGN_LIGHT_CONTROL,        // MC -> VS: 控制对齐光源开关
+	MC_ALIGN_AXIS_RESULT_END,      // MC -> VS: 对齐轴结果发送完成通知
+	MC_ALIGN_LIGHT_OFF,            // MC -> VS: 关闭对齐光源
+	MC_Z_MOVE_DONE,                // MC -> VS: Z轴移动完成通知
+	MC_FOCUS_MOVE_DONE,            // MC -> VS: 焦距调整完成通知
+	MC_Z_SAVE_POS_DONE,            // MC -> VS: Z轴位置保存完成通知
+	MC_FOCUS_SAVE_POS_DONE,        // MC -> VS: 焦距位置保存完成通知
+	MC_OPV_LOGIN_DONE,             // MC -> VS: OPV登录完成通知
+	MC_OPV_LOGOUT_DONE,            // MC -> VS: OPV登出完成通知
+	MC_NG_PANEL,                   // MC -> VS: NG面板通知（面板判定为不良）
+	MC_MANUAL_TP_NG,               // MC -> VS: 手动TP(测试模式) NG通知
+	MC_PACKET_MAX_NUM              // 协议命令总数，用于数组大小定义
+};
+
+/**
+ * @brief MES (制造执行系统) 通信序列枚举
+ * 用于标识MES通信协议中的不同数据字段序列
+ */
 //>>210422
 enum {
-	MesASeq_MES,
-	MesASeq_PanelID,
-	MesASeq_ProductSpec,
-	MesASeq_End,
-	MesASeq_OkNg,
-	MesASeq_PGCode,
-	MesASeq_PGCodeList,
-	MesASeq_MAX_NUM
+	MesASeq_MES,           // MES系统标识
+	MesASeq_PanelID,       // 面板ID序列
+	MesASeq_ProductSpec,   // 产品规格序列
+	MesASeq_End,           // 结束标识序列
+	MesASeq_OkNg,          // OK/NG判定结果序列
+	MesASeq_PGCode,        // PG (Pattern Generator) 代码序列
+	MesASeq_PGCodeList,    // PG代码列表序列
+	MesASeq_MAX_NUM        // 最大序列数
 };
 
 
 //<<
+/**
+ * @brief Pattern Generator (图案发生器) 命令枚举
+ * 
+ * PG协议说明：
+ * - 协议格式：Ch,Number,Command,Parameters
+ * - Ch: 通道号 (Channel Number)
+ * - Number: 设备编号
+ * - Command: 命令类型（对应本枚举）
+ * - Parameters: 命令参数（可选）
+ * 
+ * 示例：
+ * - "Ch,1,TURNON" - 通道1开启
+ * - "Ch,1,PTRN,123" - 通道1切换到图案123
+ * - "Ch,1,CONTACT,CELLID001" - 通道1接触，面板ID为CELLID001
+ */
 enum
 {
-	PgCommand_KeyReset,
-	PgCommand_KeyEnter,
-	PgCommand_KeyBack,
-	PgCommand_KeyNext,
-	PgCommand_KeyFunc,
-	PgCommand_KeyUp,
-	PgCommand_KeyAuto,
-	PgCommand_KeyDown,
-	PgCommand_TurnOn,
-	PgCommand_TurnOff,
-	PgCommand_Pattern,
-	PgCommand_GammaStart,
-	PgCommand_Contact,
-	PgCommand_TSPStart,
-	PgCommand_GammaVerify,
-	PgCommand_Max_Num
+	PgCommand_KeyReset,      // 按键复位命令
+	PgCommand_KeyEnter,      // 按键确认命令
+	PgCommand_KeyBack,       // 按键返回命令
+	PgCommand_KeyNext,       // 按键下一个命令
+	PgCommand_KeyFunc,       // 按键功能键命令
+	PgCommand_KeyUp,         // 按键向上命令
+	PgCommand_KeyAuto,       // 按键自动模式命令
+	PgCommand_KeyDown,       // 按键向下命令
+	PgCommand_TurnOn,        // 开启命令（开启PG设备）
+	PgCommand_TurnOff,       // 关闭命令（关闭PG设备）
+	PgCommand_Pattern,       // 图案切换命令（参数：图案编号）
+	PgCommand_GammaStart,    // Gamma开始命令（开始Gamma测试）
+	PgCommand_Contact,       // 接触命令（参数：面板ID）
+	PgCommand_TSPStart,      // TSP (触摸屏) 开始命令
+	PgCommand_GammaVerify,   // Gamma验证命令（Pre-Gamma验证）
+	PgCommand_Max_Num        // 最大命令数
 };
 
 enum {
@@ -310,6 +425,7 @@ enum
 	_THREAD_TP,
 	_THREAD_OPV,
 	_THREAD_LUMITOP,
+	_THREAD_LIGHTING,
 	_THREAD_TOTAL_COUNT
 };
 
@@ -894,6 +1010,7 @@ enum
 	Machine_AOI,
 	Machine_ULD,
 	Machine_GAMMA,
+	Machine_Lumitop,  // 点灯检测
 };
 
 enum
@@ -994,6 +1111,8 @@ const CString LOG_TP_SEND_RECIEVER_PATH = LOG_PATH + _T("TpSendReceiverLog\\");
 const CString LOG_OPV_PATH = LOG_PATH + _T("OpvLog\\");
 const CString LOG_OPV_SEND_RECIEVER1_PATH = LOG_PATH + _T("OpvSendReceiver1Log\\");
 const CString LOG_OPV_SEND_RECIEVER2_PATH = LOG_PATH + _T("OpvSendReceiver2Log\\");
+const CString LOG_LIGHTING_PATH = LOG_PATH + _T("LightingLog\\");
+const CString LOG_LIGHTING_SEND_RECEIVER_PATH = LOG_PATH + _T("LightingSendReceiverLog\\");
 const CString LOG_USER_LOGIN_OUT_PATH = LOG_PATH + _T("UserLoginOutLog\\");
 const CString LOG_USER_PATH = LOG_PATH + _T("UserLog\\");
 const CString LOG_USER_HISTORY_PATH = LOG_PATH + _T("UserHistory\\");
@@ -1470,10 +1589,16 @@ struct InspResult
 	}
 };
 
+/**
+ * @brief 协议数据包结构
+ * 
+ * 用于封装协议通信中的数据包
+ * 协议格式：STX + 命令码 + 内容 + ETX
+ */
 struct Packet
 {
-	CString m_strCommand;
-	CString m_strContents;
+	CString m_strCommand;    // 命令码，对应VS_PacketNameTable或MC_PacketNameTable中的命令
+	CString m_strContents;   // 命令内容，逗号分隔的参数列表
 };
 
 struct IndexList
@@ -1756,92 +1881,118 @@ struct TactTimeName
 	CString m_strTactTimeName;
 };
 
+/**
+ * @brief 面板信息数据结构
+ * 
+ * 用于存储从DFS (Data File System) 文件中读取的面板基本信息
+ * 数据格式：TIME^PANEL_ID^FPC_ID^DEFECT_RESULT^PANEL_GRADE^PANEL_WIDTH^PANEL_HEIGHT^PREGAMMA_STATUS^MODEL_ID^INDEX_NUM^CH_NUM^VISION^VIEWING^TP_RESULT
+ * 分隔符：^ (字段分隔符), ; (记录结束符)
+ */
 struct SDataPanelInfo{
-	CString strTime;
-	CString strPanel_ID;
-	CString strFpc_ID;
-	CString strDefect_Result;
-	CString strPanel_Grade;
-	CString strPanel_Width;
-	CString strPanel_Hegiht;
-	CString strPreGammaContactStatus;
-	CString strModel_ID;
-	CString strIndexNum;
-	CString strChNum;
-	CString strVisionResult;
-	CString strViewingResult;
-	CString strTpResult;
-	CString strLumitopResult;
+	CString strTime;                    // 检测时间，格式：YYYYMMDDHHMMSS
+	CString strPanel_ID;                // 面板ID，唯一标识符
+	CString strFpc_ID;                  // FPC (柔性印刷电路板) ID
+	CString strDefect_Result;           // 缺陷检测结果：OK/NG
+	CString strPanel_Grade;             // 面板等级：A/B/C等
+	CString strPanel_Width;             // 面板宽度（单位：mm或pixel）
+	CString strPanel_Hegiht;            // 面板高度（单位：mm或pixel）
+	CString strPreGammaContactStatus;    // Pre-Gamma接触状态：OK/NG/BYPASS
+	CString strModel_ID;                // 模型ID，用于标识检测使用的模型
+	CString strIndexNum;                // 索引编号，用于标识检测位置
+	CString strChNum;                   // 通道编号，用于标识检测通道
+	CString strVisionResult;            // 视觉检测结果：OK/NG
+	CString strViewingResult;           // 视角检测结果：OK/NG
+	CString strTpResult;                // TP (触摸屏) 检测结果：OK/NG
+	CString strLumitopResult;          // LUMITOP检测结果：OK/NG
 };
 
 
+/**
+ * @brief 缺陷信息数据结构
+ * 
+ * 用于存储从DFS文件中读取的单个缺陷详细信息
+ * 数据格式：NO^INSPNAME^DEFECT_CODE^DEFECT_NAME^StartX^StartY^EndX^EndY^PATTERN^DEFECT_GRADE
+ * 分隔符：^ (字段分隔符), ; (记录结束符)
+ */
 struct SDataDefectInfo{
-	CString strNo;
-	CString strInspName;
-	CString strDefect_Code;
-	CString strDefect_Name;
-	CString strDefect_StartX;
-	CString strDefect_StartY;
-	CString strDefect_EndX;
-	CString strDefect_EndY;
-	CString strDefect_Pattern;
-	CString strDefect_Grade;
+	CString strNo;              // 缺陷序号，从1开始递增
+	CString strInspName;        // 检测名称，标识检测类型（如AOI、OPV等）
+	CString strDefect_Code;     // 缺陷代码，标准化的缺陷类型代码（如D001、D002等）
+	CString strDefect_Name;     // 缺陷名称，缺陷类型的描述性名称（如点缺陷、线缺陷等）
+	CString strDefect_StartX;   // 缺陷起始X坐标（单位：pixel）
+	CString strDefect_StartY;   // 缺陷起始Y坐标（单位：pixel）
+	CString strDefect_EndX;     // 缺陷结束X坐标（单位：pixel）
+	CString strDefect_EndY;     // 缺陷结束Y坐标（单位：pixel）
+	CString strDefect_Pattern;  // 缺陷图案类型，用于标识缺陷的图案特征
+	CString strDefect_Grade;    // 缺陷等级：A/B/C等，表示缺陷的严重程度
 };
 
+/**
+ * @brief 模块数据（MES系统）结构
+ * 
+ * 用于存储从MES (制造执行系统) 获取的模块/产品信息
+ * 这些数据通常来自上位机系统，用于产品追溯和生产管理
+ */
 struct SDataModuleShop
 {
-	CString Panel_ID;
-	CString FPC_ID;
-	CString Glass_Type;
-	CString Product_ID;
-	CString Owner_ID;
-	CString Owner_Code;
-	CString Owner_Type;
-	CString Lot_ID;
-	CString Process_ID;
-	CString Recipe_ID;
-	CString SaleOrder;
-	CString PreProcess_ID_1;
-	CString Group_ID;
-	CString Product_Info;
-	CString LOT_Info;
-	CString Product_Group;
-	CString From_Site;
-	CString Current_Site;
-	CString From_Shop;
-	CString Current_Shop;
-	CString Thickness;
-	CString MMGFlag;
-	CString Panel_Size;
+	CString Panel_ID;          // 面板ID，唯一标识符
+	CString FPC_ID;            // FPC (柔性印刷电路板) ID
+	CString Glass_Type;        // 玻璃类型，标识玻璃基板的类型
+	CString Product_ID;        // 产品ID，标识产品型号
+	CString Owner_ID;          // 所有者ID，标识产品所有者
+	CString Owner_Code;        // 所有者代码，所有者的编码
+	CString Owner_Type;       // 所有者类型，标识所有者的类型
+	CString Lot_ID;            // 批次ID，标识生产批次
+	CString Process_ID;        // 工艺ID，标识当前工艺步骤
+	CString Recipe_ID;         // 配方ID，标识使用的工艺配方
+	CString SaleOrder;         // 销售订单号
+	CString PreProcess_ID_1;   // 前道工艺ID，标识上一道工艺
+	CString Group_ID;          // 组ID，用于产品分组
+	CString Product_Info;      // 产品信息，产品相关的附加信息
+	CString LOT_Info;          // 批次信息，批次相关的附加信息
+	CString Product_Group;     // 产品组，产品所属的组别
+	CString From_Site;         // 来源站点，产品来源的站点代码
+	CString Current_Site;      // 当前站点，产品当前所在的站点代码
+	CString From_Shop;         // 来源车间，产品来源的车间代码
+	CString Current_Shop;      // 当前车间，产品当前所在的车间代码
+	CString Thickness;         // 厚度，面板厚度（单位：mm或um）
+	CString MMGFlag;           // MMG标志，标识是否为MMG产品
+	CString Panel_Size;        // 面板尺寸，格式：Width x Height（单位：mm）
 };
 
+/**
+ * @brief 作业数据（MES系统）结构
+ * 
+ * 用于存储从MES系统获取的作业（Job）信息
+ * 作业数据包含生产任务、批次信息、检测预约等关键信息
+ */
 struct SJobDataShop
 {
-	BOOL BCDataFileExist;
-	int TypeNum;
-	CString Cassette_Sequence_No;
-	CString Job_Sequence_No;
-	CString Group_Index;
-	CString Product_Type;
-	CString CST_Operation_Mode;
-	CString SubStrate_Type;
-	CString CIM_Mode;
-	CString Job_Type;
-	CString Job_Judge;
-	CString Sampling_Slot_Flag;
-	CString First_Run;
-	CString Job_Grade;
-	CString Job_ID;
-	CString INSP_Reservation;
-	CString EQP_Reservation;
-	CString LastGlass_Flag;
-	CString InspJudge_Data;
-	CString Tracking_Data;
-	CString EQP_Flag;
-	CString Chip_Count;
-	CString PP_ID;
-	CString FPC_ID;
-	CString Cassette_Setting_Code;
+	BOOL BCDataFileExist;          // BC数据文件是否存在标志
+	int TypeNum;                   // 类型编号，标识数据类型
+	CString Cassette_Sequence_No;   // 料盒序列号，标识料盒的顺序
+	CString Job_Sequence_No;       // 作业序列号，标识作业的顺序
+	CString Group_Index;           // 组索引，用于作业分组
+	CString Product_Type;          // 产品类型，标识产品的类型
+	CString CST_Operation_Mode;    // 料盒操作模式：AUTO/MANUAL等
+	CString SubStrate_Type;        // 基板类型，标识基板的类型
+	CString CIM_Mode;              // CIM (计算机集成制造) 模式：ON/OFF
+	CString Job_Type;              // 作业类型，标识作业的类型
+	CString Job_Judge;             // 作业判定，标识作业的判定结果
+	CString Sampling_Slot_Flag;     // 采样槽标志，标识是否为采样槽
+	CString First_Run;             // 首次运行标志，标识是否为首次运行
+	CString Job_Grade;             // 作业等级，标识作业的等级
+	CString Job_ID;                // 作业ID，唯一标识符
+	CString INSP_Reservation;      // 检测预约标志，标识是否预约检测
+	CString EQP_Reservation;       // 设备预约标志，标识是否预约设备
+	CString LastGlass_Flag;        // 最后玻璃标志，标识是否为最后一片玻璃
+	CString InspJudge_Data;        // 检测判定数据，存储检测判定相关信息
+	CString Tracking_Data;         // 追溯数据，用于产品追溯
+	CString EQP_Flag;              // 设备标志，标识设备相关状态
+	CString Chip_Count;            // 芯片数量，标识芯片的数量
+	CString PP_ID;                 // PP (Process Plan) ID，工艺计划ID
+	CString FPC_ID;                // FPC (柔性印刷电路板) ID
+	CString Cassette_Setting_Code; // 料盒设置代码，标识料盒的设置
 
 	void Reset()
 	{

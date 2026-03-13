@@ -1,8 +1,9 @@
-﻿
-// Ani_Data_Serever_PCApp.cpp : ÀÀ¿ë ÇÁ·Î±×·¥¿¡ ´ëÇÑ Å¬·¡½º µ¿ÀÛÀ» Á¤ÀÇÇÕ´Ï´Ù.
+
+// Ani_Data_Serever_PCApp.cpp
 //
 
 #include "stdafx.h"
+#include <memory>
 #include "afxwinappex.h"
 #include "afxdialogex.h"
 #include "Ani_Data_Serever_PC.h"
@@ -13,6 +14,8 @@
 #include "MsgBox.h"
 #include <locale.h>
 
+// ODBC for MySQL Database
+
 #ifdef _DEBUGUNLOADER_MAIN_TOP_VIEW
 #define new DEBUG_NEW
 #endif
@@ -21,39 +24,40 @@
 
 BEGIN_MESSAGE_MAP(CAni_Data_Serever_PCApp, CWinApp)
 	ON_COMMAND(ID_APP_ABOUT, &CAni_Data_Serever_PCApp::OnAppAbout)
-	// Ç¥ÁØ ÆÄÀÏÀ» ±âÃÊ·Î ÇÏ´Â ¹®¼­ ¸í·ÉÀÔ´Ï´Ù.
 	ON_COMMAND(ID_FILE_NEW, &CWinApp::OnFileNew)
 	ON_COMMAND(ID_FILE_OPEN, &CWinApp::OnFileOpen)
 END_MESSAGE_MAP()
 
 
-// CAni_Data_Serever_PCApp »ý¼º
+// CAni_Data_Serever_PCApp
 
-CAni_Data_Serever_PCApp::CAni_Data_Serever_PCApp() :m_pEqIf(NULL), m_pComView(NULL)
+CAni_Data_Serever_PCApp::CAni_Data_Serever_PCApp() :m_pEqIf(NULL), m_pComView(NULL), m_lastShiftIndex(99), m_bLightingCycleInProgress(FALSE), m_bLightingRunning(FALSE), m_bLightingSnapDone(FALSE), m_dwLightingStartTick(0), m_dwLightingTimeoutMs(60000), m_bLightingDBConnected(FALSE)
 {
 	m_dwRestartManagerSupportFlags = AFX_RESTART_MANAGER_SUPPORT_ALL_ASPECTS;
+
+	// Initialize arrays
+	memset(m_bLightingActiveSlot, 0, sizeof(m_bLightingActiveSlot));
+	memset(m_LightingInspResult, 0, sizeof(m_LightingInspResult));
+	m_pLightingConn = NULL;
 #ifdef _MANAGED
-	// ÀÀ¿ë ÇÁ·Î±×·¥À» °ø¿ë ¾ð¾î ·±Å¸ÀÓ Áö¿øÀ» »ç¿ëÇÏ¿© ºôµåÇÑ °æ¿ì(/clr):
-	//     1) ÀÌ Ãß°¡ ¼³Á¤Àº ´Ù½Ã ½ÃÀÛ °ü¸®ÀÚ Áö¿øÀÌ Á¦´ë·Î ÀÛµ¿ÇÏ´Â µ¥ ÇÊ¿äÇÕ´Ï´Ù.
-	//     2) ÇÁ·ÎÁ§Æ®¿¡¼­ ºôµåÇÏ·Á¸é System.Windows.Forms¿¡ ´ëÇÑ ÂüÁ¶¸¦ Ãß°¡ÇØ¾ß ÇÕ´Ï´Ù.
 	System::Windows::Forms::Application::SetUnhandledExceptionMode(System::Windows::Forms::UnhandledExceptionMode::ThrowException);
 #endif
 
-	// TODO: ¾Æ·¡ ÀÀ¿ë ÇÁ·Î±×·¥ ID ¹®ÀÚ¿­À» °íÀ¯ ID ¹®ÀÚ¿­·Î ¹Ù²Ù½Ê½Ã¿À(±ÇÀå).
-	// ¹®ÀÚ¿­¿¡ ´ëÇÑ ¼­½Ä: CompanyName.ProductName.SubProduct.VersionInformation
+	// TODO
+	// CompanyName.ProductName.SubProduct.VersionInformation
 	SetAppID(_T("Ani_Data_Serever_PC.AppID.NoVersion"));
 
 
-	// TODO: ¿©±â¿¡ »ý¼º ÄÚµå¸¦ Ãß°¡ÇÕ´Ï´Ù.
-	// InitInstance¿¡ ¸ðµç Áß¿äÇÑ ÃÊ±âÈ­ ÀÛ¾÷À» ¹èÄ¡ÇÕ´Ï´Ù.
+	// TODO: 
+	// InitInstance
 }
 
-// À¯ÀÏÇÑ CAni_Data_Serever_PCApp °³Ã¼ÀÔ´Ï´Ù.
+// CAni_Data_Serever_PCApp
 
 CAni_Data_Serever_PCApp theApp;
 
 
-// CAni_Data_Serever_PCApp ÃÊ±âÈ­
+// CAni_Data_Serever_PCApp
 
 BOOL CAni_Data_Serever_PCApp::InitInstance()
 {
@@ -117,7 +121,7 @@ BOOL CAni_Data_Serever_PCApp::InitInstance()
 		return FALSE;
 	AddDocTemplate(pDocTemplate);
 
-	//indexNum ±¸ÇÏ±â
+	//indexNum
 	m_indexList.resize(4);
 	for (int ii = 0; ii < MaxZone; ii++)
 	{
@@ -274,6 +278,17 @@ BOOL CAni_Data_Serever_PCApp::InitInstance()
 	strPath.Format(_T("%sOpvSendReceiver2Log.log"), LOG_OPV_SEND_RECIEVER2_PATH);
 	m_pOpvSendReceiver2Log = new CLogger(_T("OpvSendReceiver2Log"), strPath, FALSE);
 	theApp.m_pOpvSendReceiver2Log->LOG_INFO(_T("************************ SYSTEM START ************************"));
+
+	strPath.Format(_T("%sLightingLog.log"), LOG_LIGHTING_PATH);
+	m_pLightingLog = new CLogger(_T("LightingLog"), strPath, FALSE);
+	theApp.m_pLightingLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+
+	// 初始化 Lighting 数据库连接
+	InitLightingDatabase();
+
+	strPath.Format(_T("%sLightingSendReceiverLog.log"), LOG_LIGHTING_SEND_RECEIVER_PATH);
+	m_pLightingSendReceiverLog = new CLogger(_T("LightingSendReceiverLog"), strPath, FALSE);
+	theApp.m_pLightingSendReceiverLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
 #endif
 
 	CCommandLineInfo cmdInfo;
@@ -301,7 +316,7 @@ BOOL CAni_Data_Serever_PCApp::InitInstance()
 
 int CAni_Data_Serever_PCApp::ExitInstance()
 {
-	//TODO: Ãß°¡ÇÑ Ãß°¡ ¸®¼Ò½º¸¦ Ã³¸®ÇÕ´Ï´Ù.
+	//TODO:
 	AfxOleTerm(FALSE);
 
 	for (int ii = 0; ii < theApp.m_AlignThread.size(); ii++)
@@ -569,6 +584,10 @@ void CAni_Data_Serever_PCApp::MakeDefaultDir()
 	CreateDirectory(strPath, NULL);
 	strPath = LOG_OPV_SEND_RECIEVER2_PATH;
 	CreateDirectory(strPath, NULL);
+	strPath = LOG_LIGHTING_PATH;
+	CreateDirectory(strPath, NULL);
+	strPath = LOG_LIGHTING_SEND_RECEIVER_PATH;
+	CreateDirectory(strPath, NULL);
 
 	strPath = DATA_INSPECT_PATH;
 	CreateDirectory(strPath, NULL);
@@ -675,21 +694,21 @@ void CAni_Data_Serever_PCApp::LanguageChange()
 #endif
 }
 
-// CAni_Data_Serever_PCApp ¸Þ½ÃÁö Ã³¸®±â
+// CAni_Data_Serever_PCApp
 
 
-// ÀÀ¿ë ÇÁ·Î±×·¥ Á¤º¸¿¡ »ç¿ëµÇ´Â CAboutDlg ´ëÈ­ »óÀÚÀÔ´Ï´Ù.
+// CAboutDlg
 
 class CAboutDlg : public CDialog
 {
 public:
 	CAboutDlg();
 
-	// ´ëÈ­ »óÀÚ µ¥ÀÌÅÍÀÔ´Ï´Ù. 
+	// 
 	enum { IDD = IDD_ABOUTBOX };
 
 protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV Áö¿øÀÔ´Ï´Ù.
+	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV
 
 	// ±¸ÇöÀÔ´Ï´Ù.
 protected:
@@ -709,14 +728,14 @@ void CAboutDlg::DoDataExchange(CDataExchange* pDX)
 BEGIN_MESSAGE_MAP(CAboutDlg, CDialog)
 END_MESSAGE_MAP()
 
-// ´ëÈ­ »óÀÚ¸¦ ½ÇÇàÇÏ±â À§ÇÑ ÀÀ¿ë ÇÁ·Î±×·¥ ¸í·ÉÀÔ´Ï´Ù.
+// 
 void CAni_Data_Serever_PCApp::OnAppAbout()
 {
 	CAboutDlg aboutDlg;
 	aboutDlg.DoModal();
 }
 
-// CAni_Data_Serever_PCApp ¸Þ½ÃÁö Ã³¸®±â
+// CAni_Data_Serever_PCApp
 
 
 void CAboutDlg::OnCancel()
@@ -893,7 +912,7 @@ void CAni_Data_Serever_PCApp::SaveSetTimer()
 
 		if (iShiftStart > 2300)
 		{
-			//ºÐÀÌ¾øÀ¸¸é µÚ¿¡ µÎÀÚ¸® 0ÀÌ µé¾î°¥²¨°í ºÐÀÌ ÀÖÀ¸¸é µÚ¿¡ ºÐÀÚ¸® µÎ°³ ÀÚµ¿µé¾î°¥¼öÀÖµµ·Ï
+			//
 			strMsg.Format(_T("%d"), iShiftStart);
 			iShiftEnd = _ttoi(strMsg.Right(2));
 		}
@@ -3600,8 +3619,6 @@ CString CAni_Data_Serever_PCApp::GammaDefectInfoLoad(CString strPanelID, CString
 void CAni_Data_Serever_PCApp::AlarmDataSave(vector<AlarmDataItem> alarmData, BOOL bFlag)
 {
 	CStdioFile sFile;
-
-	//ÃÊ±â ÆÄÀÏ ¾øÀ»°æ¿ì¿¡¸¸ ½ÇÇà
 	if (!FileExists(LOG_ALARM_HISTORY_PATH + _T("History")))
 		bFlag = TRUE;
 
@@ -3790,6 +3807,10 @@ void CAni_Data_Serever_PCApp::GetSystemData()
 	theApp.m_strARSPortNum = ini[_T("DATA")][_T("ARS_PORT")];
 	theApp.m_strFFUEndPoint = ini[_T("DATA")][_T("FFU_END")];
 	theApp.m_strPGName = ini[_T("PG")][_T("PGNAME")];
+	theApp.m_strLightingIP = ini[_T("LIGHTING")][_T("IP")];
+	theApp.m_strLightingPort = ini[_T("LIGHTING")][_T("PORT")];
+	if (theApp.m_strLightingPort.IsEmpty())
+		theApp.m_strLightingPort = _T("6501");  // 默认端口
 
 	//>>210422 
 	theApp.m_bPGCodeUsable = ini[_T("PG")][_T("PGCODE_USABLE")];
@@ -4093,7 +4114,7 @@ void CAni_Data_Serever_PCApp::PGDfsInfoSave(PGDfsList PgList)
 	strPath.Format(_T("%s\\%s_%s"), DATA_PG_DFS_INFO_PATH, theApp.m_strCurrentToday, strShift);
 	CreateFolders(strPath);
 
-	strFilePath.Format(_T("%s\\%s.ini"), strPath, PgList.strPanelID);//CelliD쓸지 FPCBID 쓸지 정하자 바꾸면 LOAD도 바꿔죠.
+	strFilePath.Format(_T("%s\\%s.ini"), strPath, PgList.strPanelID);//CelliD
 	EZIni ini(strFilePath);
 
 	ini[_T("PG_DFS")][_T("PANEL_ID")] = PgList.strPanelID;
@@ -4211,4 +4232,812 @@ void CAni_Data_Serever_PCApp::ThreadCreateDelete(BOOL bdelete, int OldAlignCnt)
 		if (bdelete)
 			theApp.m_AlignSocketManager[i]->SocketServerOpen(ALIGN_PORT_NUM[AlignCount_1 + i]);
 	}
+}
+
+// ILightingEventHandler 接口实现
+void CAni_Data_Serever_PCApp::OnLightingRunning()
+{
+	// 点灯检开始 Running
+	theApp.m_pLightingLog->LOG_INFO(_T("Lighting inspection started (Running)"));
+	m_csLightingFlow.Lock();
+	m_bLightingRunning = TRUE;
+	m_csLightingFlow.Unlock();
+}
+
+void CAni_Data_Serever_PCApp::OnLightingSnapFN()
+{
+	// 点灯采图完成 SnapFN，产品可以移动
+	theApp.m_pLightingLog->LOG_INFO(_T("Lighting snap completed (SnapFN), product can move"));
+
+	m_csLightingFlow.Lock();
+	m_bLightingSnapDone = TRUE;
+	BOOL active[4] = { m_bLightingActiveSlot[0], m_bLightingActiveSlot[1], m_bLightingActiveSlot[2], m_bLightingActiveSlot[3] };
+	m_csLightingFlow.Unlock();
+
+	// SnapFN -> GrabEnd：对当前周期内的治具位写 GrabEnd
+	for (int i = 0; i < 4; ++i)
+	{
+		if (active[i])
+			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopGrabEnd1 + i, OffSet_0, TRUE);
+	}
+}
+
+void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4])
+{
+	//点灯检测完成，resultCode[0..3] 对应4个治具的结果码
+	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+		_T("Lighting inspection completed, results: [%02d][%02d][%02d][%02d]"),
+		resultCode[0], resultCode[1], resultCode[2], resultCode[3]));
+
+	// TODO: 根据resultCode和治具号，从数据库读取检测结果
+	// 并更新 IVS_LCD_InspectionResult 和 IVS_LCD_AOIDefect 表
+	// 同时写入PLC和DFS文件
+	// 先补齐 PLC 流程闭环：FN$...@ 到达时，置 End，并写入一个“临时默认结果”
+	// - FN$ 的数字为“完成的治具号”，不是 OK/NG；OK/NG 需要查 DB（后续可接入）
+	// - 为保证 PLC 不被卡住：这里默认写 OK，并打日志提示（如果要更严谨，可改成 Timeout/NG 并报警）
+	BOOL active[4] = { FALSE, FALSE, FALSE, FALSE };
+	m_csLightingFlow.Lock();
+	for (int i = 0; i < 4; ++i) active[i] = m_bLightingActiveSlot[i];
+	m_csLightingFlow.Unlock();
+
+	for (int i = 0; i < 4; ++i)
+	{
+		const int fixtureNo = resultCode[i]; // 1..4, empty = 0
+		if (fixtureNo <= 0)
+			continue;
+
+		const int slotIdx = fixtureNo - 1;
+		if (slotIdx < 0 || slotIdx >= 4)
+			continue;
+
+		if (!active[slotIdx])
+		{
+			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+				_T("Lighting result fixtureNo=%d but slot not active (ignored)"), fixtureNo));
+			continue;
+		}
+
+	// 根据治具号查询 UniqueID 和 ScreenID
+		CString uniqueID, screenID, markID;
+		if (QueryIdMapByFixtureNo(fixtureNo, uniqueID, screenID, markID))
+		{
+			// 根据 UniqueID 查询检测结果
+			CAni_Data_Serever_PCApp::LightingInspectionResult inspResult = QueryInspectionResult(uniqueID);
+
+			if (inspResult.m_bValid)
+			{
+				// 保存检测结果到缓存
+				m_LightingInspResult[slotIdx] = inspResult;
+				m_LightingInspResult[slotIdx].m_strUniqueID = uniqueID;
+
+				// 根据检测结果写入 PLC
+				// AOIResult: OK=良品, NG=异常, BrightDot/BlackDot/Line/Mura/Block/BM=各类缺陷
+				USHORT plcResult = 0;
+				if (inspResult.m_strAOIResult.CompareNoCase(_T("OK")) == 0)
+				{
+					plcResult = m_codeOk;  // OK
+				}
+				else
+				{
+					plcResult = m_codeNg;  // NG
+				}
+
+				// 写入检测结果到 PLC
+				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_PreGammaResult1 + slotIdx, &plcResult);
+
+				// ========== DFS 数据整合与上传 ==========
+				DfsDataValue dfsData;
+				dfsData.Reset();
+				dfsData.m_FpcID = screenID;         // Barcode（产品码）
+				dfsData.m_PanelID = screenID;       // PanelID 同 Barcode
+				dfsData.m_StartTime = inspResult.m_strStartTime;
+				dfsData.m_EndTime = inspResult.m_strStopTime;
+				dfsData.m_ModelID = _T("");          // 配方名（如有需要可从 PLC 读取）
+				dfsData.m_IndexNum = markID;         // 治具号 "01"~"04"
+				dfsData.m_ChNum.Format(_T("%d"), slotIdx);
+
+				// 点灯结果：OK/NG/BrightDot/BlackDot/Line/Mura/Block/BM
+				// 转换为 DFS 格式：OK=OK, 其他=NG
+				CString strLumitopResult = inspResult.m_strAOIResult;
+				if (strLumitopResult.CompareNoCase(_T("OK")) == 0)
+					dfsData.m_Lumitop = _T("OK");
+				else
+					dfsData.m_Lumitop = _T("NG");
+
+				dfsData.m_TypeNum = Machine_Lumitop;  // 点灯机台类型
+				dfsData.m_StageNum = slotIdx + 1;
+
+				// 添加到 DFS 上传队列
+				theApp.m_pFTP->DfsAddTransferFile(dfsData);
+
+				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+					_T("Writing to PLC: Slot=%d, FixtureNo=%d, UniqueID=%s, Result=%s (Code=%s, Grade=%s), DFS uploaded"),
+					slotIdx, fixtureNo, uniqueID, inspResult.m_strAOIResult, inspResult.m_strCodeAOI, inspResult.m_strGradeAOI));
+			}
+			else
+			{
+				// 查询失败，写入默认值
+				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+					_T("Failed to query inspection result for UniqueID=%s, writing default result"), uniqueID));
+
+				USHORT tmpResult = m_codeOk;  // 默认写 OK，避免 PLC 卡住
+				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_PreGammaResult1 + slotIdx, &tmpResult);
+			}
+		}
+		else
+		{
+			// 查询不到映射关系，写入默认值
+			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+				_T("Failed to query ID map for FixtureNo=%d, writing default result"), fixtureNo));
+			USHORT tmpResult = m_codeOk;  // 默认写 OK，避免 PLC 卡住
+			theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_PreGammaResult1 + slotIdx, &tmpResult);
+		}
+	}
+
+	m_csLightingFlow.Lock();
+	m_bLightingCycleInProgress = FALSE;
+	m_bLightingRunning = FALSE;
+	m_bLightingSnapDone = FALSE;
+	for (int i = 0; i < 4; ++i) m_bLightingActiveSlot[i] = FALSE;
+	m_dwLightingStartTick = 0;
+	m_csLightingFlow.Unlock();
+}
+
+BOOL CAni_Data_Serever_PCApp::TryStartLightingFromPlc(const BOOL startFlags[4])
+{
+	if (!m_LightingThreadOpenFlag || !m_LightingConectStatus)
+		return FALSE;
+
+	m_csLightingFlow.Lock();
+	if (m_bLightingCycleInProgress)
+	{
+		m_csLightingFlow.Unlock();
+		theApp.m_pLightingLog->LOG_INFO(_T("Lighting Start requested but previous cycle still in progress (ignored)"));
+		return FALSE;
+	}
+
+	BOOL any = FALSE;
+	for (int i = 0; i < 4; ++i)
+	{
+		m_bLightingActiveSlot[i] = (startFlags[i] == TRUE);
+		if (m_bLightingActiveSlot[i]) any = TRUE;
+	}
+
+	if (!any)
+	{
+		m_csLightingFlow.Unlock();
+		return FALSE;
+	}
+
+	m_bLightingCycleInProgress = TRUE;
+	m_bLightingRunning = FALSE;
+	m_bLightingSnapDone = FALSE;
+	m_dwLightingStartTick = ::GetTickCount();
+	m_csLightingFlow.Unlock();
+
+	// 发送开始检测前，更新 ivs_lcd_idmap 对应治具号记录，供检测软件使用
+	if (m_bLightingDBConnected || ConnectLightingDatabase())
+	{
+		PanelData pPanelData;
+		FpcIDData pFpcData;
+
+		for (int i = 0; i < 4; ++i)
+		{
+			if (!startFlags[i])
+				continue;
+
+			int fixtureNo = i + 1;  // 治具号 1~4
+			theApp.m_pEqIf->m_pMNetH->GetPanelData(eWordType_PreGammaPanel1 + i, &pPanelData);
+			theApp.m_pEqIf->m_pMNetH->GetFpcIdData(eWordType_PreGammaFpcID1 + i, &pFpcData);
+
+			CString strPanelID = CStringSupport::ToWString(pPanelData.m_PanelData, sizeof(pPanelData.m_PanelData));
+			CString strFpcID = CStringSupport::ToWString(pFpcData.m_FpcIDData, sizeof(pFpcData.m_FpcIDData));
+			strPanelID.Trim();
+			strFpcID.Trim();
+			if (strPanelID.IsEmpty())
+				strPanelID = strFpcID;
+			if (strFpcID.IsEmpty())
+				strFpcID = strPanelID;
+
+			// UniqueID 使用 GUID 保证全局唯一性
+			CString strUniqueID;
+			CStringSupport::GetGuid(strUniqueID);
+
+			// Barcode=产品码（使用 FpcID 或 PanelID），MarkID=治具号 "01"~"04"
+			CString strMarkID;
+			strMarkID.Format(_T("%02d"), fixtureNo);
+			UpdateLightingIdMap(fixtureNo, strUniqueID, strFpcID.IsEmpty() ? strPanelID : strFpcID, strMarkID);
+		}
+	}
+	else
+	{
+		theApp.m_pLightingLog->LOG_INFO(_T("TryStartLightingFromPlc: DB not connected, skip idmap update"));
+	}
+
+	// Start$xxxxxxxx$xxxxxxxx@
+	int usedSlots[4] = { 0,0,0,0 };
+	int maxSlots[4] = { 1,2,3,4 };
+	for (int i = 0; i < 4; ++i)
+		usedSlots[i] = startFlags[i] ? (i + 1) : 0;
+
+	theApp.m_LightingSocketManager.SendStart(usedSlots, maxSlots);
+	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+		_T("Lighting Start sent (slots=%02d%02d%02d%02d)"),
+		usedSlots[0], usedSlots[1], usedSlots[2], usedSlots[3]));
+
+	return TRUE;
+}
+
+void CAni_Data_Serever_PCApp::LightingFlowTimeoutCheck()
+{
+	if (!m_LightingThreadOpenFlag || !m_LightingConectStatus)
+		return;
+
+	BOOL inProgress = FALSE;
+	DWORD startTick = 0;
+	DWORD timeoutMs = 0;
+	BOOL active[4] = { FALSE, FALSE, FALSE, FALSE };
+
+	m_csLightingFlow.Lock();
+	inProgress = m_bLightingCycleInProgress;
+	startTick = m_dwLightingStartTick;
+	timeoutMs = m_dwLightingTimeoutMs;
+	for (int i = 0; i < 4; ++i) active[i] = m_bLightingActiveSlot[i];
+	m_csLightingFlow.Unlock();
+
+	if (!inProgress || startTick == 0 || timeoutMs == 0)
+		return;
+
+	const DWORD now = ::GetTickCount();
+	if (now - startTick < timeoutMs)
+		return;
+
+	theApp.m_pLightingLog->LOG_INFO(_T("Lighting flow TIMEOUT: forcing PLC End/Result to avoid hang"));
+
+	for (int i = 0; i < 4; ++i)
+	{
+		if (!active[i])
+			continue;
+		USHORT tmpResult = m_codeTimeOut;
+		theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_PreGammaResult1 + i, &tmpResult);
+		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopGrabEnd1 + i, OffSet_0, TRUE);
+		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopEnd1 + i, OffSet_0, TRUE);
+	}
+
+	m_csLightingFlow.Lock();
+	m_bLightingCycleInProgress = FALSE;
+	m_bLightingRunning = FALSE;
+	m_bLightingSnapDone = FALSE;
+	for (int i = 0; i < 4; ++i) m_bLightingActiveSlot[i] = FALSE;
+	m_dwLightingStartTick = 0;
+	m_csLightingFlow.Unlock();
+}
+
+// 点灯检数据库操作函数 - 使用 MySQL Connector/C++
+BOOL CAni_Data_Serever_PCApp::UpdateLightingIdMap(int fixtureNo, CString uniqueID, CString screenID, CString markID)
+{
+	if (!m_bLightingDBConnected)
+	{
+		if (!ConnectLightingDatabase())
+		{
+			theApp.m_pLightingLog->LOG_INFO(_T("UpdateLightingIdMap: Database not connected"));
+			return FALSE;
+		}
+	}
+
+	// ivs_lcd_idmap 表结构：MarkID/MainAoiFixID=治具号('01'~'04'), UniqueID=唯一ID, Barcode=产品码
+	// screenID 参数对应表字段 Barcode（产品码）, markID 对应治具号字符串如 "01"
+	CString strMarkID;
+	strMarkID.Format(_T("%02d"), fixtureNo);  // 1->"01", 2->"02", 3->"03", 4->"04"
+
+	// 转义 SQL 字符串中的单引号（避免注入与语法错误）
+	CString strUniqueID = uniqueID;
+	strUniqueID.Replace(_T("'"), _T("''"));
+	CString strBarcode = screenID;
+	strBarcode.Replace(_T("'"), _T("''"));
+
+	try {
+		// 按 MarkID 更新对应治具号记录，供检测软件使用
+		CString strSQL;
+		strSQL.Format(_T("UPDATE ivs_lcd_idmap SET UniqueID='%s', Barcode='%s', MainAoiFixID='%s' WHERE MarkID='%s'"),
+			strUniqueID, strBarcode, strMarkID, strMarkID);
+
+		std::auto_ptr<sql::Statement> stmt(m_pLightingConn->createStatement());
+		int affected = stmt->execute((std::string)CT2A(strSQL));
+
+		if (affected >= 0)
+		{
+			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+				_T("Updated ivs_lcd_idmap: MarkID=%s, UniqueID=%s, Barcode=%s (for detection software)"),
+				strMarkID, uniqueID, screenID));
+			return TRUE;
+		}
+		else
+		{
+			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+				_T("Failed to update ivs_lcd_idmap (MarkID=%s): No rows affected"), strMarkID));
+			return FALSE;
+		}
+	}
+	catch (sql::SQLException& e) {
+		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+			_T("Failed to update ivs_lcd_idmap (MarkID=%s): %s"), strMarkID, CString(e.what())));
+		return FALSE;
+	}
+}
+
+BOOL CAni_Data_Serever_PCApp::LoadLightingInspectionResult(CString uniqueID)
+{
+	if (!m_bLightingDBConnected)
+	{
+		if (!ConnectLightingDatabase())
+		{
+			theApp.m_pLightingLog->LOG_INFO(_T("LoadLightingInspectionResult: Database not connected"));
+			return FALSE;
+		}
+	}
+
+	LightingInspectionResult result = QueryInspectionResult(uniqueID);
+
+	if (result.m_bValid)
+	{
+		// 找到对应的治具号并保存结果
+		// 这里需要根据 uniqueID 找到对应的治具号
+		// 暂时遍历所有治具进行匹配
+		for (int i = 0; i < 4; i++)
+		{
+			if (m_LightingInspResult[i].m_strUniqueID == uniqueID)
+			{
+				m_LightingInspResult[i] = result;
+				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+					_T("Loaded inspection result: UniqueID=%s, Result=%s, Code=%s, Grade=%s"),
+					uniqueID, result.m_strAOIResult, result.m_strCodeAOI, result.m_strGradeAOI));
+				return TRUE;
+			}
+		}
+		// 如果没找到对应的治具，保存到第一个空槽位
+		for (int i = 0; i < 4; i++)
+		{
+			if (!m_LightingInspResult[i].m_bValid)
+			{
+				m_LightingInspResult[i] = result;
+				m_LightingInspResult[i].m_strUniqueID = uniqueID;
+				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+					_T("Loaded inspection result to slot %d: UniqueID=%s, Result=%s, Code=%s, Grade=%s"),
+					i, uniqueID, result.m_strAOIResult, result.m_strCodeAOI, result.m_strGradeAOI));
+				return TRUE;
+			}
+		}
+	}
+	else
+	{
+		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+			_T("No inspection result found for UniqueID=%s"), uniqueID));
+	}
+
+	return FALSE;
+}
+
+BOOL CAni_Data_Serever_PCApp::UpdateLightingInspectionResult(CString uniqueID)
+{
+	// 更新检测结果的状态（如果需要）
+	// 根据业务需求决定是否需要更新数据库
+	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+		_T("UpdateLightingInspectionResult: UniqueID=%s"), uniqueID));
+	return TRUE;
+}
+
+// MySQL 数据库初始化
+BOOL CAni_Data_Serever_PCApp::InitLightingDatabase()
+{
+	// 从配置文件读取数据库连接信息
+	// 配置文件路径: D:\ServerInfo.ini
+	EZIni ini(_T("D:\\ServerInfo.ini"));
+
+	// 读取数据库配置（根据实际配置文件调整）
+	CString sTemp;
+	m_strLightingDBServer = ini[_T("LightingDB")][_T("Server")]; sTemp = _T("127.0.0.1"); m_strLightingDBServer = (m_strLightingDBServer.IsEmpty()) ? sTemp : m_strLightingDBServer;
+	m_strLightingDBName = ini[_T("LightingDB")][_T("Database")]; sTemp = _T("IVS_LCD"); m_strLightingDBName = (m_strLightingDBName.IsEmpty()) ? sTemp : m_strLightingDBName;
+	m_strLightingDBUser = ini[_T("LightingDB")][_T("User")]; sTemp = _T("root"); m_strLightingDBUser = (m_strLightingDBUser.IsEmpty()) ? sTemp : m_strLightingDBUser;
+	m_strLightingDBPassword = ini[_T("LightingDB")][_T("Password")]; sTemp = _T("password"); m_strLightingDBPassword = (m_strLightingDBPassword.IsEmpty()) ? sTemp : m_strLightingDBPassword;
+
+	m_bLightingDBConnected = FALSE;
+	m_pLightingConn = NULL;
+
+	theApp.m_pLightingLog->LOG_INFO(_T("Lighting database environment initialized"));
+
+	// 尝试连接数据库
+	return ConnectLightingDatabase();
+}
+
+// 连接 MySQL 数据库
+BOOL CAni_Data_Serever_PCApp::ConnectLightingDatabase()
+{
+	if (m_bLightingDBConnected && m_pLightingConn != NULL)
+		return TRUE;
+
+	try {
+		// 创建 MySQL Connector/C++ 连接对象
+		sql::Driver* driver = get_driver_instance();
+		if (!driver) {
+			theApp.m_pLightingLog->LOG_INFO(_T("Failed to get MySQL driver"));
+			return FALSE;
+		}
+
+		// 构建连接 URL
+		CString strUrl;
+		strUrl.Format(_T("tcp://%s:3306"), m_strLightingDBServer);
+
+		// 连接数据库
+		m_pLightingConn = driver->connect((std::string)CT2A(strUrl), (std::string)CT2A(m_strLightingDBUser), (std::string)CT2A(m_strLightingDBPassword));
+
+		if (!m_pLightingConn) {
+			theApp.m_pLightingLog->LOG_INFO(_T("Failed to connect to MySQL database"));
+			return FALSE;
+		}
+
+		// 选择数据库
+		m_pLightingConn->setSchema((std::string)CT2A(m_strLightingDBName));
+
+		m_bLightingDBConnected = TRUE;
+		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+			_T("Connected to Lighting database: %s/%s"), m_strLightingDBServer, m_strLightingDBName));
+		return TRUE;
+	}
+	catch (sql::SQLException& e) {
+		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+			_T("Failed to connect to database: %s"), CString(e.what())));
+		return FALSE;
+	}
+}
+
+// 关闭数据库连接
+void CAni_Data_Serever_PCApp::CloseLightingDatabase()
+{
+	if (m_pLightingConn)
+	{
+		delete m_pLightingConn;
+		m_pLightingConn = NULL;
+	}
+
+	m_bLightingDBConnected = FALSE;
+	theApp.m_pLightingLog->LOG_INFO(_T("Lighting database connection closed"));
+}
+
+// 查询检测结果
+CAni_Data_Serever_PCApp::LightingInspectionResult CAni_Data_Serever_PCApp::QueryInspectionResult(CString uniqueID)
+{
+	LightingInspectionResult result;
+	result.m_bValid = FALSE;
+
+	if (!m_bLightingDBConnected)
+	{
+		if (!ConnectLightingDatabase())
+		{
+			theApp.m_pLightingLog->LOG_INFO(_T("QueryInspectionResult: Database not connected"));
+			return result;
+		}
+	}
+
+	try {
+		// 查询 IVS_LCD_InspectionResult 表
+		CString strSQL;
+		strSQL.Format(_T("SELECT GUID, ScreenID, AOIResult, Code_AOI, Grade_AOI, StartTime, StopTime FROM IVS_LCD_InspectionResult WHERE UniqueID = '%s'"), uniqueID);
+
+		std::auto_ptr<sql::Statement> stmt(m_pLightingConn->createStatement());
+		std::auto_ptr<sql::ResultSet> res(stmt->executeQuery((std::string)CT2A(strSQL)));
+
+		if (res->next())
+		{
+			result.m_strGUID = res->getString("GUID").c_str();
+			result.m_strScreenID = res->getString("ScreenID").c_str();
+			result.m_strUniqueID = uniqueID;
+			result.m_strAOIResult = res->getString("AOIResult").c_str();
+			result.m_strCodeAOI = res->getString("Code_AOI").c_str();
+			result.m_strGradeAOI = res->getString("Grade_AOI").c_str();
+			result.m_strStartTime = res->getString("StartTime").c_str();
+			result.m_strStopTime = res->getString("StopTime").c_str();
+			result.m_bValid = TRUE;
+
+			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+				_T("QueryInspectionResult: Found result for UniqueID=%s, AOIResult=%s, Code=%s, Grade=%s"),
+				uniqueID, result.m_strAOIResult, result.m_strCodeAOI, result.m_strGradeAOI));
+		}
+		else
+		{
+			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+				_T("QueryInspectionResult: No result found for UniqueID=%s"), uniqueID));
+		}
+	}
+	catch (sql::SQLException& e) {
+		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+			_T("QueryInspectionResult: SQL error: %s"), CString(e.what())));
+	}
+
+	return result;
+}
+
+// DFS 模块调用：直接从 MySQL 查询点灯检测结果
+#if _SYSTEM_AMTAFT_
+CAni_Data_Serever_PCApp::LightingInspectionResult CAni_Data_Serever_PCApp::GetLightingResultByUniqueID(CString uniqueID)
+{
+	// 直接调用内部的 QueryInspectionResult 方法
+	return QueryInspectionResult(uniqueID);
+}
+
+// DFS 模块调用 根据 Barcode/PanelID 查询点灯检测结果
+void CAni_Data_Serever_PCApp::GetLightingResultByBarcode(CString strBarcode, CString& strAOIResult, CString& strCodeAOI, CString& strGradeAOI, BOOL& bValid)
+{
+	strAOIResult = _T("");
+	strCodeAOI = _T("");
+	strGradeAOI = _T("");
+	bValid = FALSE;
+
+	if (!m_bLightingDBConnected)
+	{
+		if (!ConnectLightingDatabase())
+		{
+			theApp.m_pFTPLog->LOG_INFO(_T("GetLightingResultByBarcode: Database not connected"));
+			return;
+		}
+	}
+
+	// 先根据 Barcode 从 ivs_lcd_idmap 表找到 UniqueID
+	CString strUniqueID;
+
+	try {
+		CString strSQL;
+		strSQL.Format(_T("SELECT UniqueID FROM ivs_lcd_idmap WHERE Barcode = '%s'"), strBarcode);
+
+		std::auto_ptr<sql::Statement> stmt(m_pLightingConn->createStatement());
+		std::auto_ptr<sql::ResultSet> res(stmt->executeQuery((std::string)CT2A(strSQL)));
+
+		if (res->next())
+		{
+			strUniqueID = res->getString("UniqueID").c_str();
+			theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+				_T("GetLightingResultByBarcode: Found UniqueID=%s for Barcode=%s"), strUniqueID, strBarcode));
+		}
+		else
+		{
+			theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+				_T("GetLightingResultByBarcode: No UniqueID found for Barcode=%s"), strBarcode));
+			return;
+		}
+	}
+	catch (sql::SQLException& e) {
+		theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+			_T("GetLightingResultByBarcode: SQL error: %s"), CString(e.what())));
+		return;
+	}
+
+	// 再根据 UniqueID 查询 IVS_LCD_InspectionResult 表
+	CAni_Data_Serever_PCApp::LightingInspectionResult result = QueryInspectionResult(strUniqueID);
+	if (result.m_bValid)
+	{
+		strAOIResult = result.m_strAOIResult;
+		strCodeAOI = result.m_strCodeAOI;
+		strGradeAOI = result.m_strGradeAOI;
+		bValid = TRUE;
+	}
+}
+#endif
+
+// DFS 模块调用：根据 UniqueID 查询点灯缺陷详情列表（AOI 缺陷详情）
+BOOL CAni_Data_Serever_PCApp::QueryLightingDefectList(CString strUniqueID, std::vector<LUMITOP_SDFSDefectDataBegin>& vecDefects)
+{
+	vecDefects.clear();
+
+	if (!m_bLightingDBConnected)
+	{
+		if (!ConnectLightingDatabase())
+		{
+			theApp.m_pLightingLog->LOG_INFO(_T("QueryLightingDefectList: Database not connected"));
+			return FALSE;
+		}
+	}
+
+	try {
+		// 查询 IVS_LCD_AOIDefect 表
+		CString strSQL;
+		strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, "
+			_T("TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI ")
+			_T("FROM IVS_LCD_AOIDefect WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
+			strUniqueID);
+
+		std::auto_ptr<sql::Statement> stmt(m_pLightingConn->createStatement());
+		std::auto_ptr<sql::ResultSet> res(stmt->executeQuery((std::string)CT2A(strSQL)));
+
+		int iDefectCount = 0;
+		while (res->next())
+		{
+			LUMITOP_SDFSDefectDataBegin defect;
+
+			defect.strPANEL_ID = strUniqueID;
+			defect.strPOINT = res->getString("DefectIndex").c_str();
+			defect.strX = res->getString("Pos_x").c_str();
+			defect.strY = res->getString("Pos_y").c_str();
+
+			// PatternID 和 PatternName 组合为画面信息
+			CString strPatternID = CA2W(res->getString("PatternID").c_str());
+			CString strPatternName = CA2W(res->getString("PatternName").c_str());
+			defect.strLUMITOP_PTRN = strPatternName.IsEmpty() ? strPatternID : strPatternName;
+
+			// 亮度使用 GrayScale
+			defect.strLV = res->getString("GrayScale").c_str();
+
+			// CIE 坐标暂时用 0 填充（如有相关字段可补充）
+			defect.strCIE_X = _T("0");
+			defect.strCIE_Y = _T("0");
+
+			// CCT 相关字段暂时用 0 填充
+			defect.strCCT = _T("0");
+			defect.strMPCD = _T("0");
+			defect.strMPCD_MIN = _T("0");
+			defect.strMPCD_MAX = _T("0");
+			defect.strMPCD_DIFF = _T("0");
+			defect.strMPCD_CENTER = _T("0");
+			defect.strCCT_CENTER = _T("0");
+
+			vecDefects.push_back(defect);
+			iDefectCount++;
+		}
+
+		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+			_T("QueryLightingDefectList: Found %d defects for UniqueID=%s"),
+			iDefectCount, strUniqueID));
+
+		return TRUE;
+	}
+	catch (sql::SQLException& e) {
+		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+			_T("QueryLightingDefectList: SQL error: %s"), CString(e.what())));
+		return FALSE;
+	}
+}
+
+// DFS 模块调用：根据 UniqueID 查询 AOI 缺陷详情列表（点灯缺陷）
+BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects)
+{
+	vecDefects.clear();
+
+	if (!m_bLightingDBConnected)
+	{
+		if (!ConnectLightingDatabase())
+		{
+			theApp.m_pLightingLog->LOG_INFO(_T("QueryAOIDefectList: Database not connected"));
+			return FALSE;
+		}
+	}
+
+	try {
+		// 查询 IVS_LCD_AOIDefect 表
+		CString strSQL;
+		strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, "
+			_T("TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI ")
+			_T("FROM IVS_LCD_AOIDefect WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
+			strUniqueID);
+
+		std::auto_ptr<sql::Statement> stmt(m_pLightingConn->createStatement());
+		std::auto_ptr<sql::ResultSet> res(stmt->executeQuery((std::string)CT2A(strSQL)));
+
+		int iDefectCount = 0;
+		while (res->next())
+		{
+			SDFSDefectDataBegin defect;
+
+			defect.strPANEL_ID = strUniqueID;
+			defect.strDEFECT_DATA_NUM = res->getString("DefectIndex").c_str();
+			defect.strDEFECT_TYPE = res->getString("Type").c_str();
+
+			// PatternID 和 PatternName 组合
+			CString strPatternID = CA2W(res->getString("PatternID").c_str());
+			CString strPatternName = CA2W(res->getString("PatternName").c_str());
+			defect.strDEFECT_PTRN = strPatternName.IsEmpty() ? strPatternID : strPatternName;
+
+			defect.strDEFECT_CODE = res->getString("Code_AOI").c_str();
+			defect.strDEFECT_GRADE = res->getString("Grade_AOI").c_str();
+			defect.strX = res->getString("Pos_x").c_str();
+			defect.strY = res->getString("Pos_y").c_str();
+			defect.strSIZE = res->getString("TrueSize").c_str();
+
+			// 图像数据相关字段为空
+			defect.strIMAGE_DATA = _T("");
+			defect.strCAM_INSPECT = _T("");
+			defect.strZone = _T("");
+			defect.strInspName = _T("");
+
+			vecDefects.push_back(defect);
+			iDefectCount++;
+		}
+
+		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+			_T("QueryAOIDefectList: Found %d defects for UniqueID=%s"),
+			iDefectCount, strUniqueID));
+
+		return TRUE;
+	}
+	catch (sql::SQLException& e) {
+		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+			_T("QueryAOIDefectList: SQL error: %s"), CString(e.what())));
+		return FALSE;
+	}
+}
+
+// DFS 模块调用：根据 Barcode 查询 UniqueID
+CString CAni_Data_Serever_PCApp::GetLightingUniqueIDByBarcode(CString strBarcode)
+{
+	CString strUniqueID = _T("");
+
+	if (!m_bLightingDBConnected)
+	{
+		if (!ConnectLightingDatabase())
+		{
+			theApp.m_pFTPLog->LOG_INFO(_T("GetLightingUniqueIDByBarcode: Database not connected"));
+			return strUniqueID;
+		}
+	}
+
+	try {
+		CString strSQL;
+		strSQL.Format(_T("SELECT UniqueID FROM ivs_lcd_idmap WHERE Barcode = '%s'"), strBarcode);
+
+		std::auto_ptr<sql::Statement> stmt(m_pLightingConn->createStatement());
+		std::auto_ptr<sql::ResultSet> res(stmt->executeQuery((std::string)CT2A(strSQL)));
+
+		if (res->next())
+		{
+			strUniqueID = res->getString("UniqueID").c_str();
+		}
+	}
+	catch (sql::SQLException& e) {
+		theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+			_T("GetLightingUniqueIDByBarcode: SQL error: %s"), CString(e.what())));
+	}
+
+	return strUniqueID;
+}
+
+// 根据治具号查询 ID 映射
+BOOL CAni_Data_Serever_PCApp::QueryIdMapByFixtureNo(int fixtureNo, CString& uniqueID, CString& screenID, CString& markID)
+{
+	if (!m_bLightingDBConnected)
+	{
+		if (!ConnectLightingDatabase())
+		{
+			theApp.m_pLightingLog->LOG_INFO(_T("QueryIdMapByFixtureNo: Database not connected"));
+			return FALSE;
+		}
+	}
+
+	try {
+		// 查询 ivs_lcd_idmap 表：MarkID=治具号('01'~'04'), Barcode=产品码
+		CString strMarkID;
+		strMarkID.Format(_T("%02d"), fixtureNo);
+
+		CString strSQL;
+		strSQL.Format(_T("SELECT UniqueID, Barcode, MarkID FROM ivs_lcd_idmap WHERE MarkID = '%s'"), strMarkID);
+
+		std::auto_ptr<sql::Statement> stmt(m_pLightingConn->createStatement());
+		std::auto_ptr<sql::ResultSet> res(stmt->executeQuery((std::string)CT2A(strSQL)));
+
+		if (res->next())
+		{
+			uniqueID = res->getString("UniqueID").c_str();
+			screenID = res->getString("Barcode").c_str();  // 实际为 Barcode 产品码
+			markID = res->getString("MarkID").c_str();
+
+			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+				_T("QueryIdMapByFixtureNo: FixtureNo=%d, UniqueID=%s, Barcode=%s, MarkID=%s"),
+				fixtureNo, uniqueID, screenID, markID));
+
+			return TRUE;
+		}
+	}
+	catch (sql::SQLException& e) {
+		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+			_T("QueryIdMapByFixtureNo: SQL error: %s"), CString(e.what())));
+	}
+
+	return FALSE;
 }

@@ -638,14 +638,14 @@ bool CSocketComm::CreateSocketEx(LPCTSTR strHost, LPCTSTR strServiceName, int nF
 			sockAddr.CreateFrom(strHost, strServiceName, nFamily);
 		}
 		if (m_bMelsecSimulaion){
-			// 160925 jwan - TCP 용이 존재하지 않아 추가함.
+			// 160925 jwan - TCP ???? ???????? ??? ?????.
 			memset(&sockAddr, 0, sizeof(sockAddr));
 			sockAddr.sin_family = AF_INET;
 			sockAddr.sin_addr.s_addr = htonl(INADDR_ANY);
 			sockAddr.sin_port = htons(_ttoi(strServiceName));
 		}
 
-		if (SOCKET_ERROR == bind(sock, sockAddr, sockAddr.Size()))
+		if (SOCKET_ERROR == ::bind(sock, sockAddr, (int)sockAddr.Size()))
 		{
 			closesocket(sock);
 			return false;
@@ -720,7 +720,7 @@ bool CSocketComm::ConnectTo(LPCTSTR strDestination, LPCTSTR strServiceName, int 
 				return false;
 			}
 
-			if (SOCKET_ERROR == bind(sock, sockAddr, sockAddr.Size()))
+			if (SOCKET_ERROR == ::bind(sock, sockAddr, (int)sockAddr.Size()))
 			{
 				closesocket(sock);
 				return false;
@@ -736,7 +736,7 @@ bool CSocketComm::ConnectTo(LPCTSTR strDestination, LPCTSTR strServiceName, int 
 
 		}
 		if (m_bMelsecSimulaion){
-			//>> 160925 jwan - TCP Connection 존재하지 않아 추가함.
+			//>> 160925 jwan - TCP Connection ???????? ??? ?????.
 			memset(&sockAddr, 0, sizeof(SockAddrIn));
 			sockAddr.sin_family = AF_INET;
 			char *lpDest = StringToChar(strDestination);

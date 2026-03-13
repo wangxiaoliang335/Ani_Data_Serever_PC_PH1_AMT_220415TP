@@ -8,6 +8,56 @@
 #endif
 #include "PgManager.h"
 
+/*
+======================================================================
+PG（Pattern Generator）通信流程简要说明（给非软件工程人员看的说明）
+----------------------------------------------------------------------
+1. 模块作用
+   - `CPgManager` 负责与 PG 设备的 Socket 通信：
+     - 自动模式：AOI/UNLOADER 工位自动点亮图案、Gamma/Pre-Gamma 测试、接触 ON/OFF 等
+     - 手动模式：Manual Stage 上由工程人员手动触发 PG 步骤
+   - 一端连 PG 机（多通道 Ch1~Ch18/24），一端通过 `MNetH` 把结果写入 PLC。
+
+2. 命令方向：Data Server → PG（发命令）
+   - 由本程序根据 PLC/MC 请求生成命令字符串，例如：
+     - `Ch,1,TURNON`：打开 1 通道
+     - `Ch,1,CONTACT,PanelID`：1 通道进行接触
+     - `Ch,1,PREGAMMA,START,PanelID`：1 通道开始 Pre-Gamma 测试
+   - 在 `SendPGMessage` 中：
+     1）根据不同机型（AMT/Gamma）做通道号适配（例如 18 → 21 的特殊映射）
+     2）计算命令内容长度，封装为 PG 协议帧：`STX + DEST + 长度 + 命令内容 + ETX`
+     3）通过 Socket 发送给对应 PG 服务器，并记录发送日志 `[MC -> PG]`。
+
+3. 响应方向：PG → Data Server（回结果）
+   - PG 执行完成后回传 DONE/GOOD/NG 等信息，典型格式：
+     - `Ch,1,DONE,CONTACT,END,GOOD`
+     - `Ch,1,DONE,PREGAMMA,END,TEST0,NG`
+     - `Ch,1,DONE,GET_RECIPE,END,RecipeName`
+   - 在 `OnDataReceived` 中：
+     1）解析协议帧（检查 STX、长度），提取内容部分
+     2）根据当前工作模式分流：
+        - AOI 侧 → `AOIDataReceived`
+        - UNLOADER 侧 → `ULDDataReceived`
+        - Gamma 系统 → `GammaDataReceived`
+     3）在对应函数内，根据命令类型（CONTACT / PREGAMMA / KEY / GET_RECIPE 等）
+        - 把 GOOD/NG 结果写入 PLC 指定字地址
+        - 置位结束比特（End），通知 PLC 某一步骤完成
+        - 需要时将 Gamma/PG 电压值、PG Code 等写入 DFS 文件，供后续追溯。
+
+4. 与其他模块的协同关系
+   - 与 VS/对位：PG 负责点亮合适图案，VS 负责拍照和测量；两者的 OK/NG 结果都会回写到 PLC。
+   - 与 TP：
+     - 接触成功后会触发 TP 测试，TP 返回 OK/NG，再由本模块/TP 模块共同写回 PLC。
+   - 与 MES：
+     - 对于 GET_RECIPE/PG Code 比对，会从 MES/DFS 获取标准 PG Code，与 PG 实际 RecipeName 做一致性检查。
+
+5. 现场排查思路（给非软件人员参考）
+   - 日志中有 `[MC -> PG]` 但没有 `[PG -> MC]`：优先检查 PG 网络连接和 PG 本机程序状态。
+   - PG 回应 GOOD，但 PLC 结果仍为 NG：多为 PLC 地址映射或 MNetH 写入异常。
+   - PG 侧提示 Recipe/Code 不一致：需要同时核对 MES 下发的 PGCode 和 PG 上实际配置的 Recipe。
+======================================================================
+*/
+
 CPgManager::CPgManager()
 {
 #if _SYSTEM_AMTAFT_
@@ -25,6 +75,33 @@ CPgManager::~CPgManager()
 {
 }
 
+/**
+ * @brief 向PG (Pattern Generator, 图案发生器) 发送协议数据包
+ * 
+ * PG协议格式：STX + DEST + 长度(4位16进制) + 命令内容 + ETX
+ * - STX: 起始符 (0x02)
+ * - DEST: 目标设备ID (0x01)
+ * - 长度: 命令内容的字节长度，4位16进制字符串（如 "001A"）
+ * - 命令内容：Ch,Number,Command,Parameters
+ *   - Ch: 通道标识符（固定为"Ch"）
+ *   - Number: 设备编号（1-18或21等）
+ *   - Command: 命令类型（TURNON, TURNOFF, PTRN, CONTACT, CONTACTOFF, KEY, PREGAMMA等）
+ *   - Parameters: 命令参数（可选，如图案编号、面板ID等）
+ * - ETX: 结束符 (0x03)
+ * 
+ * 命令示例：
+ * - "Ch,1,TURNON" - 通道1开启
+ * - "Ch,1,TURNOFF" - 通道1关闭
+ * - "Ch,1,PTRN,123" - 通道1切换到图案123
+ * - "Ch,1,CONTACT,CELLID001" - 通道1接触，面板ID为CELLID001
+ * - "Ch,1,CONTACTOFF,CELLID001" - 通道1断开接触，面板ID为CELLID001
+ * - "Ch,1,KEY,ENTER" - 通道1按键确认
+ * - "Ch,1,PREGAMMA,START,CELLID001" - 通道1开始Pre-Gamma测试，面板ID为CELLID001
+ * 
+ * @param strMsg 命令消息，格式：Ch,Number,Command,Parameters
+ * @param iChNum 通道编号（1-18），用于日志记录
+ * @param iStageNum 工位编号（用于Gamma系统）
+ */
 void CPgManager::SendPGMessage(CString strMsg, int iChNum, int iStageNum)
 {
 	m_csSocketSend.Lock();
@@ -33,6 +110,7 @@ void CPgManager::SendPGMessage(CString strMsg, int iChNum, int iStageNum)
 
 	strAMsg = strMsg;
 
+	// AMT系统特殊处理：将设备编号18转换为21
 	if (theApp.m_iMachineType == SetAMT)
 	{
 		CStringArray responseTokens;
@@ -43,32 +121,37 @@ void CPgManager::SendPGMessage(CString strMsg, int iChNum, int iStageNum)
 		for (int ii = 0; ii < iSize; ii++)
 			strPacket[ii] = responseTokens[ii];
 	
-		//Ch,Number,PREGAMMA,START,CELLID 5
-		//Ch,Number,PTRN,PatternNumber 4
-		//Ch,Number,KEY,BACK 4
-		//Ch,Number,KEY,NEXT 4
-		//Ch,Number,CONTACTOFF,CELLID 4
-		//Ch,Number,CONTACT,CELLID 4
-		//Ch,Number,TURNOFF 3
-		//Ch,Number,TURNON 3
+		// 命令格式说明：
+		// Ch,Number,PREGAMMA,START,CELLID  (5个字段)
+		// Ch,Number,PTRN,PatternNumber      (4个字段)
+		// Ch,Number,KEY,BACK                (4个字段)
+		// Ch,Number,KEY,NEXT                (4个字段)
+		// Ch,Number,CONTACTOFF,CELLID        (4个字段)
+		// Ch,Number,CONTACT,CELLID           (4个字段)
+		// Ch,Number,TURNOFF                 (3个字段)
+		// Ch,Number,TURNON                  (3个字段)
 		if (!strPacket[1].Compare(_T("18")))
 		{
-			strPacket[1] = _T("21");
-			if (!strPacket[2].CompareNoCase(_T("PREGAMMA")))
+			strPacket[1] = _T("21");  // 设备编号18映射为21
+			// 根据命令类型重新构造消息
+			if (!strPacket[2].CompareNoCase(_T("PREGAMMA")))  // 5字段命令
 				strAMsg.Format(_T("%s,%s,%s,%s,%s"), strPacket[0], strPacket[1], strPacket[2], strPacket[3], strPacket[4]);
 			else if (!strPacket[2].CompareNoCase(_T("KEY")) || !strPacket[2].CompareNoCase(_T("PTRN")) || 
-				!strPacket[2].CompareNoCase(_T("CONTACTOFF")) || !strPacket[2].CompareNoCase(_T("CONTACT")))
+				!strPacket[2].CompareNoCase(_T("CONTACTOFF")) || !strPacket[2].CompareNoCase(_T("CONTACT")))  // 4字段命令
 				strAMsg.Format(_T("%s,%s,%s,%s"), strPacket[0], strPacket[1], strPacket[2], strPacket[3]);
-			else
+			else  // 3字段命令
 				strAMsg.Format(_T("%s,%s,%s"), strPacket[0], strPacket[1], strPacket[2]);
 		}
 	}
 
+	// 计算命令内容长度
 	int iLen = strAMsg.GetLength();
 	int iNum = iChNum - 1;
+	// 构造协议数据包：STX + DEST + 长度(4位16进制) + 命令内容 + ETX
 	strSendMsg.Format(_T("%c%c%04X%s%c"), _STX, _DEST, iLen, strAMsg, _ETX);
 
 	char *lpCommand = StringToChar(strSendMsg);
+	// 通过Socket发送数据包，超时时间100ms
 	theApp.m_PgSocketManager[m_iPcNum].WriteComm((BYTE*)lpCommand, strlen(lpCommand), 100L);
 #if _SYSTEM_AMTAFT_
 	m_lastContent[iNum] = strMsg;
@@ -94,30 +177,56 @@ void CPgManager::PgLogMessage(CString strContents)
 	m_csSocketSend.Unlock();
 }
 
+/**
+ * @brief 接收来自PG (Pattern Generator) 的协议数据包并处理
+ * 
+ * PG响应协议格式：STX + DEST + 长度(4位16进制) + 响应内容 + ETX
+ * - STX: 起始符 (0x02)
+ * - DEST: 目标设备ID
+ * - 长度: 响应内容的字节长度，4位16进制字符串
+ * - 响应内容：响应数据，格式根据命令类型而定
+ *   - 成功响应：通常包含状态码和结果数据
+ *   - 错误响应：包含错误码和错误信息
+ * - ETX: 结束符 (0x03)
+ * 
+ * 响应内容示例：
+ * - "Ch,1,OK" - 通道1命令执行成功
+ * - "Ch,1,NG,ErrorCode" - 通道1命令执行失败，错误码为ErrorCode
+ * - "Ch,1,STATUS,Ready" - 通道1状态为就绪
+ * 
+ * @param lpBuffer 接收到的数据缓冲区
+ * @param dwCount 数据长度（字节数）
+ */
 void CPgManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 {
 	if (theApp.m_bExitFlag == FALSE)
 		return;
 
 	CString strData;
+	// 将接收到的字节数据转换为Unicode字符串
 	MultiByteToWideChar(CP_ACP, 0, reinterpret_cast<LPCSTR>(lpBuffer), dwCount, strData.GetBuffer(dwCount + 1), dwCount + 1);
 	strData.ReleaseBuffer(dwCount);
 
 	CStringArray responseTokens;
 	CString m_strContents, m_strHeader, strParsing;
+	// 按ETX (0x03) 分割数据包，可能包含多个数据包
 	CStringSupport::GetTokenArray(strData, _ETX, responseTokens);
 
+	// 记录接收日志：[PG -> MC] 表示从图案发生器发送到机器控制器
 	theApp.m_PgSendReceiverLog->LOG_INFO(CStringSupport::FormatString(_T("[%s] [PG -> MC] %s"), GetNowSystemTimeMilliseconds(), strData));
 
+	// 如果没有ETX分隔符，说明数据包格式错误
 	if (responseTokens.GetSize() == 1)
 	{
 		PgLogMessage(_T("ETX Message No !!!!"));
 		return;
 	}
 
+	// 遍历每个数据包（最后一个token是空字符串，所以减1）
 	for (int ii = 0; ii < responseTokens.GetSize() - 1; ii++)
 	{
 		strParsing = responseTokens[ii];
+		// 检查STX起始符 (0x02)
 		m_strHeader.Format(_T("%x"), strParsing.GetAt(0));
 		UINT iHeader = (UINT)_ttoi(m_strHeader);
 		if (iHeader != _STX || strParsing.GetAt(0) == ',')
@@ -126,16 +235,21 @@ void CPgManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 			continue;
 		}
 
+		// 提取响应内容（跳过STX、DEST和长度字段）
+		// 格式：STX + DEST + 长度(4位) + 内容
+		// 查找第一个逗号位置，减去2（STX和DEST各占1字节）
 		int iFind = strParsing.Find(',') - 2;
 		m_strContents = strParsing.Mid(iFind, strParsing.GetLength());
 
 		m_csPgData.Lock();
 #if _SYSTEM_AMTAFT_
+		// AMT系统：根据PG服务器编号分发处理
 		if (m_iPcNum == PgServer_1)
-			AOIDataReceived(m_strContents);
+			AOIDataReceived(m_strContents);  // AOI数据处理
 		else
-			ULDDataReceived(m_strContents);
+			ULDDataReceived(m_strContents);  // ULD数据处理
 #else
+		// Gamma系统：处理Gamma数据
 		GammaDataReceived(m_strContents);
 #endif
 		m_csPgData.Unlock();

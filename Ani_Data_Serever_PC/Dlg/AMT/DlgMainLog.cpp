@@ -118,6 +118,24 @@ BOOL CDlgMainLog::OnInitDialog()
 		case _THREAD_TP:
 			theApp.m_TpThreadOpenFlag = theApp.m_TpSocketManager.SocketServerOpen(TP_PC_PORT_NUM);
 			break;
+		case _THREAD_LIGHTING:
+			if (!theApp.m_strLightingIP.IsEmpty() && !theApp.m_strLightingPort.IsEmpty())
+			{
+				theApp.m_LightingSocketManager.SetEventHandler(&theApp);
+				theApp.m_LightingThreadOpenFlag = theApp.m_LightingSocketManager.ConnectToLighting(
+					theApp.m_strLightingIP, theApp.m_strLightingPort);
+				if (theApp.m_LightingThreadOpenFlag)
+				{
+					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+						_T("Lighting connected to %s:%s"), theApp.m_strLightingIP, theApp.m_strLightingPort));
+				}
+				else
+				{
+					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+						_T("Lighting connection failed to %s:%s"), theApp.m_strLightingIP, theApp.m_strLightingPort));
+				}
+			}
+			break;
 		}
 	}
 

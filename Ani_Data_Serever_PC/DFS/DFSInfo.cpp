@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "DFSInfo.h"
+#include "Main/Ani_Data_Serever_PC.h"
 
 
 #ifdef _DEBUG
@@ -36,7 +37,7 @@ void CDFSInfo::ClearPanelInfo()
 
 #if _SYSTEM_AMTAFT_
 
-BOOL CDFSInfo::AMTAFTSavePanelDFS_SUM(DfsDataValue DfsInfo, CString strPanelID, CString strFpcID, CString strVisionPath, CString strViewingPath, CString strLumitopPath, CString strOpvPath, CString strSumPath)
+BOOL CDFSInfo::AMTAFTSavePanelDFS_SUM(DfsDataValue& DfsInfo, CString strPanelID, CString strFpcID, CString strVisionPath, CString strViewingPath, CString strLumitopPath, CString strOpvPath, CString strSumPath)
 {
 	CStdioFile sFile;
 	CDFSInfo AoiDfsData, ViewingDfsData, LumitopDfsData, OpvDfsData, PGDfsData;
@@ -47,22 +48,34 @@ BOOL CDFSInfo::AMTAFTSavePanelDFS_SUM(DfsDataValue DfsInfo, CString strPanelID, 
 		theApp.m_pFTPLog->LOG_INFO(_T("Opv File Path Error : %s,"), strOpvPath);
 	}*/
 
-	if (!AoiDfsData.LoadPanelDFSInfo(strVisionPath, AOIdfs))
-	{
-		theApp.m_pFTPLog->LOG_INFO(_T("Vision File Path Error : %s,"), strVisionPath);
-	}
+	//if (!AoiDfsData.LoadPanelDFSInfo(strVisionPath, AOIdfs))
+	//{
+	//	theApp.m_pFTPLog->LOG_INFO(_T("Vision File Path Error : %s,"), strVisionPath);
+	//}
 
 	if (!ViewingDfsData.LoadPanelDFSInfo(strViewingPath, VIEWdfs))
 	{
 		//theApp.m_pFTPLog->LOG_INFO(_T("Viewing Angle File Path Error"), strViewingPath);
 	}
 
+	// 点灯缺陷详情（AOI 缺陷）优先从 MySQL，否则从 CSV 读取
+	if (AoiDfsData.m_DefectDataList.empty())
+	{
+		// MySQL 没有数据，从 CSV 读取 AOI 缺陷
+		if (!AoiDfsData.LoadPanelDFSInfo(strVisionPath, AOIdfs))
+		{
+			theApp.m_pFTPLog->LOG_INFO(_T("Vision File Path Error : %s,"), strVisionPath);
+		}
+	}
+	else
+	{
+		// MySQL 有数据，完全使用 MySQL
+		theApp.m_pFTPLog->LOG_INFO(_T("AOI defects (lighting) loaded from MySQL, not reading CSV"));
+	}
+
 	if (theApp.m_iMachineType == SetAFT)
 	{
-		if (!AoiDfsData.LoadPanelDFSInfo(strLumitopPath, LUMITOPdfs))
-		{
-			theApp.m_pFTPLog->LOG_INFO(_T("Lumitop File Path Error : %s,"), strLumitopPath);
-		}
+		// LUMITOP 色度数据从 CSV 读取
 		if (!LumitopDfsData.LoadPanelDFSInfo(strLumitopPath, LUMITOPdfs))
 		{
 			theApp.m_pFTPLog->LOG_INFO(_T("Lumitop File Path Error : %s,"), strLumitopPath);
