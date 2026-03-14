@@ -35,9 +35,20 @@ CAni_Data_Serever_PCApp::CAni_Data_Serever_PCApp() :m_pEqIf(NULL), m_pComView(NU
 {
 	m_dwRestartManagerSupportFlags = AFX_RESTART_MANAGER_SUPPORT_ALL_ASPECTS;
 
+	// 你的初始化代码
+	for (int i = 0; i < sizeof(m_bLightingActiveSlot) / sizeof(m_bLightingActiveSlot[0]); ++i) {
+		m_bLightingActiveSlot[i] = FALSE;
+	}
+
+	// 初始化数组（每个元素调用自定义构造函数）
+	for (int i = 0; i < sizeof(m_LightingInspResult) / sizeof(m_LightingInspResult[0]); ++i) {
+		// 调用默认构造函数，m_bValid会被初始化为FALSE，CString成员会被默认初始化为空字符串
+		m_LightingInspResult[i] = LightingInspectionResult();
+	}
+
 	// Initialize arrays
-	memset(m_bLightingActiveSlot, 0, sizeof(m_bLightingActiveSlot));
-	memset(m_LightingInspResult, 0, sizeof(m_LightingInspResult));
+	//memset(m_bLightingActiveSlot, 0, sizeof(m_bLightingActiveSlot));
+	//memset(m_LightingInspResult, 0, sizeof(m_LightingInspResult));
 	m_pLightingConn = NULL;
 #ifdef _MANAGED
 	System::Windows::Forms::Application::SetUnhandledExceptionMode(System::Windows::Forms::UnhandledExceptionMode::ThrowException);
