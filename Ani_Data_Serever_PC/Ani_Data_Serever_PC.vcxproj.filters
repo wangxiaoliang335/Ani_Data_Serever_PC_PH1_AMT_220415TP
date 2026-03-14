@@ -371,6 +371,7 @@
     <ClInclude Include="Communication\MachineManager.h">
       <Filter>Communication</Filter>
     </ClInclude>
+    <ClInclude Include="Communication\LightingManager.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Comm\ImageViewNG.cpp">
@@ -658,5 +659,6 @@
     <ClCompile Include="Communication\MachineManager.cpp">
       <Filter>Communication</Filter>
     </ClCompile>
+    <ClCompile Include="Communication\LightingManager.cpp" />
   </ItemGroup>
 </Project>

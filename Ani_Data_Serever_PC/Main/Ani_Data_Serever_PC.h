@@ -9,6 +9,7 @@
 
 #include "resource.h"       //
 #include "stdafx.h"
+#include <jdbc/mysql_connection.h>
 #include <mysql/jdbc.h>
 #include "Logger.h"
 #include "MsgBox.h"
@@ -45,13 +46,32 @@
 //
 
 class CManualThread;
+
+// Lighting 检测结果缓存（从 MySQL 查询后存储）
+struct LightingInspectionResult {
+	CString m_strGUID;
+	CString m_strScreenID;
+	CString m_strUniqueID;
+	CString m_strAOIResult;      // OK/NG/BrightDot/BlackDot/Line/Mura/Block/BM
+	CString m_strCodeAOI;        // 缺陷代码
+	CString m_strGradeAOI;       // 缺陷等级
+	CString m_strStartTime;
+	CString m_strStopTime;
+	BOOL m_bValid;
+	LightingInspectionResult() : m_bValid(FALSE) {}
+};
+
 class CAni_Data_Serever_PCApp : public CWinApp, public ILightingEventHandler
 {
 public:
 	CAni_Data_Serever_PCApp();
 
+	LightingInspectionResult QueryInspectionResult(CString uniqueID);
+
 	CMultiDocTemplate* m_pDocOperator;
 	HANDLE m_hApp;
+	CCriticalSection m_csLightingFlow;
+	sql::Connection* m_pLightingConn;
 
 	CLogger* m_PlcLog;
 	CLogger* m_PlcHeartBitLog;
@@ -184,7 +204,7 @@ public:
 	CAllPassModeThread* m_AllPassModeThread;
 	CSerialCom* m_FFUSerialCom;
 	CSerialRS485* m_ARSSerialRS485;
-#if _SYSTEM_AMTAFT_
+
 	CPgIndex* m_PgInexThread[MaxZone];
 	CViewingAngleThread* m_ViewingAngleThread;
 	CVisionThread* m_VisionThread;
@@ -198,27 +218,17 @@ public:
 	CPgManager m_PgSocketManager[PgServerMaxCount];
 	CTpManager m_TpSocketManager;
 	COpvManager m_OpvSocketManager[ChMaxCount];
-#if _SYSTEM_AMTAFT_
 	CLightingManager m_LightingSocketManager;
 	CComView* m_pComView;
-
-	// 点灯检（Lighting 新协议）流程状态（由 PLC Start 触发，Lighting 回包推进）
-	// - Running@    : 表示点灯检已开始
-	// - SnapFN@     : 表示采图完成（可移动）
-	// - FN$xxxxxxxx@: 表示检测完成（结果已入库；此处先补齐 PLC 握手位，结果查询后续可接 DB）
-	CCriticalSection m_csLightingFlow;
 	BOOL m_bLightingCycleInProgress;
 	BOOL m_bLightingRunning;
 	BOOL m_bLightingSnapDone;
 	BOOL m_bLightingActiveSlot[4]; // slot 1..4 -> index 0..3
 	DWORD m_dwLightingStartTick;
-	DWORD m_dwLightingTimeoutMs; // 默认 60s，避免一直卡住（可后续改成 INI 配置）
-
-	// PLC -> Lighting : Start$xxxxxxxx$xxxxxxxx@ 触发入口（由 LumitopThread 调用）
+	DWORD m_dwLightingTimeoutMs;
 	BOOL TryStartLightingFromPlc(const BOOL startFlags[4]);
 	void LightingFlowTimeoutCheck();
-
-	// Lighting 事件回调函数 (实现 ILightingEventHandler 接口)
+	
 	virtual void OnLightingRunning() override;
 	virtual void OnLightingSnapFN() override;
 	virtual void OnLightingResult(const int resultCode[4]) override;
@@ -228,39 +238,19 @@ public:
 	BOOL LoadLightingInspectionResult(CString uniqueID);
 	BOOL UpdateLightingInspectionResult(CString uniqueID);
 
-	// Lighting 检测结果缓存（从 MySQL 查询后存储）
-	struct LightingInspectionResult {
-		CString m_strGUID;
-		CString m_strScreenID;
-		CString m_strUniqueID;
-		CString m_strAOIResult;      // OK/NG/BrightDot/BlackDot/Line/Mura/Block/BM
-		CString m_strCodeAOI;        // 缺陷代码
-		CString m_strGradeAOI;       // 缺陷等级
-		CString m_strStartTime;
-		CString m_strStopTime;
-		BOOL m_bValid;
-		LightingInspectionResult() : m_bValid(FALSE) {}
-	};
-	LightingInspectionResult m_LightingInspResult[4]; // 4个治具的检测结果
-
-	// MySQL Connector/C++ 数据库连接
-	sql::Connection* m_pLightingConn;
+	LightingInspectionResult m_LightingInspResult[4];
 	BOOL m_bLightingDBConnected;
 	CString m_strLightingDBServer;
 	CString m_strLightingDBName;
 	CString m_strLightingDBUser;
 	CString m_strLightingDBPassword;
 
-	// MySQL 数据库连接和操作
 	BOOL InitLightingDatabase();
 	BOOL ConnectLightingDatabase();
 	void CloseLightingDatabase();
-	LightingInspectionResult QueryInspectionResult(CString uniqueID);
+	
 	BOOL QueryIdMapByFixtureNo(int fixtureNo, CString& uniqueID, CString& screenID, CString& markID);
-
-	// DFS 模块调用：直接从 MySQL 查询点灯检测结果
 	LightingInspectionResult GetLightingResultByUniqueID(CString uniqueID);
-	// 根据 Barcode/PanelID 查询点灯结果，返回各个字段
 	void GetLightingResultByBarcode(CString strBarcode, CString& strAOIResult, CString& strCodeAOI, CString& strGradeAOI, BOOL& bValid);
 	// 根据 UniqueID 查询点灯缺陷详情列表
 	BOOL QueryLightingDefectList(CString strUniqueID, std::vector<LUMITOP_SDFSDefectDataBegin>& vecDefects);
@@ -268,11 +258,6 @@ public:
 	BOOL QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects);
 	// 根据 Barcode 查询 UniqueID
 	CString GetLightingUniqueIDByBarcode(CString strBarcode);
-#else
-	CGammaThread* m_GammaThread[MaxGammaStage];
-	CPgManager m_PgSocketManager[PgServerMaxCount];
-#endif
-#endif
 
 #if _SYSTEM_AMTAFT_
 	AOIProductionData m_UiShiftProduction[MaxZone];

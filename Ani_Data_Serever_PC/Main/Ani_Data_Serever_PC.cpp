@@ -1,4 +1,4 @@
-
+﻿
 // Ani_Data_Serever_PCApp.cpp
 //
 
@@ -506,7 +506,61 @@ int CAni_Data_Serever_PCApp::ExitInstance()
 	if (m_pMsgBoxAlarm != NULL)
 		delete m_pMsgBoxAlarm;
 
+	// 关闭 Lighting 数据库连接
+	CloseLightingDatabase();
+
 	return CWinApp::ExitInstance();
+}
+
+LightingInspectionResult CAni_Data_Serever_PCApp::QueryInspectionResult(CString uniqueID)
+{
+	LightingInspectionResult result;
+	result.m_bValid = FALSE;
+
+	if (!m_bLightingDBConnected)
+	{
+		if (!ConnectLightingDatabase())
+		{
+			theApp.m_pLightingLog->LOG_INFO(_T("QueryInspectionResult: Database not connected"));
+			return result;
+		}
+	}
+
+	try {
+		CString strSQL;
+		strSQL.Format(_T("SELECT GUID, ScreenID, AOIResult, Code_AOI, Grade_AOI, StartTime, StopTime FROM IVS_LCD_InspectionResult WHERE UniqueID = '%s'"), uniqueID);
+
+		std::auto_ptr<sql::Statement> stmt(m_pLightingConn->createStatement());
+		std::auto_ptr<sql::ResultSet> res(stmt->executeQuery((std::string)CT2A(strSQL)));
+
+		if (res->next())
+		{
+			result.m_strGUID = res->getString("GUID").c_str();
+			result.m_strScreenID = res->getString("ScreenID").c_str();
+			result.m_strUniqueID = uniqueID;
+			result.m_strAOIResult = res->getString("AOIResult").c_str();
+			result.m_strCodeAOI = res->getString("Code_AOI").c_str();
+			result.m_strGradeAOI = res->getString("Grade_AOI").c_str();
+			result.m_strStartTime = res->getString("StartTime").c_str();
+			result.m_strStopTime = res->getString("StopTime").c_str();
+			result.m_bValid = TRUE;
+
+			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+				_T("QueryInspectionResult: Found result for UniqueID=%s, AOIResult=%s, Code=%s, Grade=%s"),
+				uniqueID, result.m_strAOIResult, result.m_strCodeAOI, result.m_strGradeAOI));
+		}
+		else
+		{
+			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+				_T("QueryInspectionResult: No result found for UniqueID=%s"), uniqueID));
+		}
+	}
+	catch (sql::SQLException& e) {
+		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+			_T("QueryInspectionResult: SQL error: %s"), CString(e.what())));
+	}
+
+	return result;
 }
 
 void CAni_Data_Serever_PCApp::MakeDefaultDir()
@@ -4264,7 +4318,6 @@ void CAni_Data_Serever_PCApp::OnLightingSnapFN()
 
 void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4])
 {
-	//点灯检测完成，resultCode[0..3] 对应4个治具的结果码
 	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
 		_T("Lighting inspection completed, results: [%02d][%02d][%02d][%02d]"),
 		resultCode[0], resultCode[1], resultCode[2], resultCode[3]));
@@ -4296,14 +4349,10 @@ void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4])
 				_T("Lighting result fixtureNo=%d but slot not active (ignored)"), fixtureNo));
 			continue;
 		}
-
-	// 根据治具号查询 UniqueID 和 ScreenID
 		CString uniqueID, screenID, markID;
 		if (QueryIdMapByFixtureNo(fixtureNo, uniqueID, screenID, markID))
 		{
-			// 根据 UniqueID 查询检测结果
-			CAni_Data_Serever_PCApp::LightingInspectionResult inspResult = QueryInspectionResult(uniqueID);
-
+			LightingInspectionResult inspResult = QueryInspectionResult(uniqueID);
 			if (inspResult.m_bValid)
 			{
 				// 保存检测结果到缓存
@@ -4343,20 +4392,15 @@ void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4])
 					dfsData.m_Lumitop = _T("OK");
 				else
 					dfsData.m_Lumitop = _T("NG");
-
-				dfsData.m_TypeNum = Machine_Lumitop;  // 点灯机台类型
+				dfsData.m_TypeNum = Machine_Lumitop;
 				dfsData.m_StageNum = slotIdx + 1;
-
-				// 添加到 DFS 上传队列
 				theApp.m_pFTP->DfsAddTransferFile(dfsData);
-
 				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
 					_T("Writing to PLC: Slot=%d, FixtureNo=%d, UniqueID=%s, Result=%s (Code=%s, Grade=%s), DFS uploaded"),
 					slotIdx, fixtureNo, uniqueID, inspResult.m_strAOIResult, inspResult.m_strCodeAOI, inspResult.m_strGradeAOI));
 			}
 			else
 			{
-				// 查询失败，写入默认值
 				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
 					_T("Failed to query inspection result for UniqueID=%s, writing default result"), uniqueID));
 
@@ -4646,11 +4690,30 @@ BOOL CAni_Data_Serever_PCApp::InitLightingDatabase()
 
 	theApp.m_pLightingLog->LOG_INFO(_T("Lighting database environment initialized"));
 
-	// 尝试连接数据库
-	return ConnectLightingDatabase();
+	// 尝试连接数据库，失败时不阻止程序启动
+	try {
+		return ConnectLightingDatabase();
+	}
+	catch (sql::SQLException& e) {
+		CString errorMsg = CStringSupport::FormatString(
+			_T("Lighting database connection failed: %s"), CString(e.what()));
+		theApp.m_pLightingLog->LOG_INFO(errorMsg);
+		OutputDebugString(errorMsg + _T("\n"));
+		return FALSE;
+	}
+	catch (std::exception& e) {
+		CString errorMsg = CStringSupport::FormatString(
+			_T("Lighting database connection failed: %s"), CString(e.what()));
+		theApp.m_pLightingLog->LOG_INFO(errorMsg);
+		OutputDebugString(errorMsg + _T("\n"));
+		return FALSE;
+	}
+	catch (...) {
+		theApp.m_pLightingLog->LOG_INFO(_T("Lighting database connection failed: unknown error"));
+		return FALSE;
+	}
 }
 
-// 连接 MySQL 数据库
 BOOL CAni_Data_Serever_PCApp::ConnectLightingDatabase()
 {
 	if (m_bLightingDBConnected && m_pLightingConn != NULL)
@@ -4668,9 +4731,12 @@ BOOL CAni_Data_Serever_PCApp::ConnectLightingDatabase()
 		CString strUrl;
 		strUrl.Format(_T("tcp://%s:3306"), m_strLightingDBServer);
 
+		sql::SQLString sql_str1("tcp://114.67.86.96:3306");
+		sql::SQLString user("root");
+		sql::SQLString password("Root@123456");
 		// 连接数据库
-		m_pLightingConn = driver->connect((std::string)CT2A(strUrl), (std::string)CT2A(m_strLightingDBUser), (std::string)CT2A(m_strLightingDBPassword));
-
+		//m_pLightingConn = driver->connect((std::string)CT2A(strUrl), (std::string)CT2A(m_strLightingDBUser), (std::string)CT2A(m_strLightingDBPassword));
+		m_pLightingConn = driver->connect(sql_str1, user, password);
 		if (!m_pLightingConn) {
 			theApp.m_pLightingLog->LOG_INFO(_T("Failed to connect to MySQL database"));
 			return FALSE;
@@ -4685,8 +4751,10 @@ BOOL CAni_Data_Serever_PCApp::ConnectLightingDatabase()
 		return TRUE;
 	}
 	catch (sql::SQLException& e) {
-		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-			_T("Failed to connect to database: %s"), CString(e.what())));
+		CString strMsg = CStringSupport::FormatString(
+			_T("Failed to connect to database: %s"), CString(e.what()));
+		theApp.m_pLightingLog->LOG_INFO(strMsg);
+		OutputDebugString(strMsg + _T("\n"));
 		return FALSE;
 	}
 }
@@ -4704,68 +4772,11 @@ void CAni_Data_Serever_PCApp::CloseLightingDatabase()
 	theApp.m_pLightingLog->LOG_INFO(_T("Lighting database connection closed"));
 }
 
-// 查询检测结果
-CAni_Data_Serever_PCApp::LightingInspectionResult CAni_Data_Serever_PCApp::QueryInspectionResult(CString uniqueID)
+LightingInspectionResult CAni_Data_Serever_PCApp::GetLightingResultByUniqueID(CString uniqueID)
 {
-	LightingInspectionResult result;
-	result.m_bValid = FALSE;
-
-	if (!m_bLightingDBConnected)
-	{
-		if (!ConnectLightingDatabase())
-		{
-			theApp.m_pLightingLog->LOG_INFO(_T("QueryInspectionResult: Database not connected"));
-			return result;
-		}
-	}
-
-	try {
-		// 查询 IVS_LCD_InspectionResult 表
-		CString strSQL;
-		strSQL.Format(_T("SELECT GUID, ScreenID, AOIResult, Code_AOI, Grade_AOI, StartTime, StopTime FROM IVS_LCD_InspectionResult WHERE UniqueID = '%s'"), uniqueID);
-
-		std::auto_ptr<sql::Statement> stmt(m_pLightingConn->createStatement());
-		std::auto_ptr<sql::ResultSet> res(stmt->executeQuery((std::string)CT2A(strSQL)));
-
-		if (res->next())
-		{
-			result.m_strGUID = res->getString("GUID").c_str();
-			result.m_strScreenID = res->getString("ScreenID").c_str();
-			result.m_strUniqueID = uniqueID;
-			result.m_strAOIResult = res->getString("AOIResult").c_str();
-			result.m_strCodeAOI = res->getString("Code_AOI").c_str();
-			result.m_strGradeAOI = res->getString("Grade_AOI").c_str();
-			result.m_strStartTime = res->getString("StartTime").c_str();
-			result.m_strStopTime = res->getString("StopTime").c_str();
-			result.m_bValid = TRUE;
-
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-				_T("QueryInspectionResult: Found result for UniqueID=%s, AOIResult=%s, Code=%s, Grade=%s"),
-				uniqueID, result.m_strAOIResult, result.m_strCodeAOI, result.m_strGradeAOI));
-		}
-		else
-		{
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-				_T("QueryInspectionResult: No result found for UniqueID=%s"), uniqueID));
-		}
-	}
-	catch (sql::SQLException& e) {
-		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-			_T("QueryInspectionResult: SQL error: %s"), CString(e.what())));
-	}
-
-	return result;
-}
-
-// DFS 模块调用：直接从 MySQL 查询点灯检测结果
-#if _SYSTEM_AMTAFT_
-CAni_Data_Serever_PCApp::LightingInspectionResult CAni_Data_Serever_PCApp::GetLightingResultByUniqueID(CString uniqueID)
-{
-	// 直接调用内部的 QueryInspectionResult 方法
 	return QueryInspectionResult(uniqueID);
 }
 
-// DFS 模块调用 根据 Barcode/PanelID 查询点灯检测结果
 void CAni_Data_Serever_PCApp::GetLightingResultByBarcode(CString strBarcode, CString& strAOIResult, CString& strCodeAOI, CString& strGradeAOI, BOOL& bValid)
 {
 	strAOIResult = _T("");
@@ -4812,7 +4823,7 @@ void CAni_Data_Serever_PCApp::GetLightingResultByBarcode(CString strBarcode, CSt
 	}
 
 	// 再根据 UniqueID 查询 IVS_LCD_InspectionResult 表
-	CAni_Data_Serever_PCApp::LightingInspectionResult result = QueryInspectionResult(strUniqueID);
+	LightingInspectionResult result = QueryInspectionResult(strUniqueID);
 	if (result.m_bValid)
 	{
 		strAOIResult = result.m_strAOIResult;
@@ -4821,7 +4832,6 @@ void CAni_Data_Serever_PCApp::GetLightingResultByBarcode(CString strBarcode, CSt
 		bValid = TRUE;
 	}
 }
-#endif
 
 // DFS 模块调用：根据 UniqueID 查询点灯缺陷详情列表（AOI 缺陷详情）
 BOOL CAni_Data_Serever_PCApp::QueryLightingDefectList(CString strUniqueID, std::vector<LUMITOP_SDFSDefectDataBegin>& vecDefects)
@@ -4840,7 +4850,7 @@ BOOL CAni_Data_Serever_PCApp::QueryLightingDefectList(CString strUniqueID, std::
 	try {
 		// 查询 IVS_LCD_AOIDefect 表
 		CString strSQL;
-		strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, "
+		strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, ")
 			_T("TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI ")
 			_T("FROM IVS_LCD_AOIDefect WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
 			strUniqueID);
@@ -4913,7 +4923,7 @@ BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vecto
 	try {
 		// 查询 IVS_LCD_AOIDefect 表
 		CString strSQL;
-		strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, "
+		strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, ")
 			_T("TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI ")
 			_T("FROM IVS_LCD_AOIDefect WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
 			strUniqueID);
