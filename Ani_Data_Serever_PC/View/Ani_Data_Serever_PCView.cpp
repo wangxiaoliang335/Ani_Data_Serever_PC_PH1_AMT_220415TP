@@ -1,4 +1,4 @@
-﻿
+
 // Operrator_view_YoungView.cpp : CAni_Data_Serever_PCView Å¬·¡½ºÀÇ ±¸Çö
 //
 
@@ -499,7 +499,12 @@ void CAni_Data_Serever_PCView::SendPlcDefectCode(int iNum, DfsDataValue PanelDat
 			strCodeGrade = CStringSupport::FormatString(_T("%s^%s"), _T("XIMXPG"), _T("R1"));
 		else
 		{
-			theApp.SetLoadResultCode(strPanelID, strFpcID);
+			// 优先从数据库读取，失败则回退到 INI 文件
+			theApp.SetLoadResultCodeFromDB(strPanelID, strFpcID);
+			if (theApp.m_Send_Result_Code_Map.empty())
+			{
+				theApp.SetLoadResultCode(strPanelID, strFpcID);
+			}
 
 			if (theApp.m_Send_Result_Code_Map.size() > 0)
 			{

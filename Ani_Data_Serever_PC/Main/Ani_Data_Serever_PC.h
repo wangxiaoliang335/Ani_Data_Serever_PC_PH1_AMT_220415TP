@@ -487,6 +487,7 @@ public:
 	void GetAlarmCount();
 	CString SetTotalLoadResultCode(CString strPanelID, CString strFpcID, int iTypeNum);
 	void SetLoadResultCode(CString strPanelID, CString strFpcID);
+	void SetLoadResultCodeFromDB(CString strPanelID, CString strFpcID);
 	void SetSaveResultCode(CString strPanelID, CString strFpcID, CString strTypeName, PLCSendDefect Code, int iType);
 	CString GetProcessID(CString strPanel);
 	CString GetProjectID(CString strPanelID);

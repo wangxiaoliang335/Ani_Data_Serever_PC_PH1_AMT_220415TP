@@ -705,6 +705,16 @@ bool CSocketComm::ConnectTo(LPCTSTR strDestination, LPCTSTR strServiceName, int 
 	if (IsOpen())
 		return false;
 
+	OutputDebugString(_T("[SocketComm] ConnectTo: Dest="));
+	OutputDebugString(strDestination);
+	OutputDebugString(_T(", Service="));
+	OutputDebugString(strServiceName);
+	{
+		TCHAR szTemp[32];
+		_sntprintf_s(szTemp, _TRUNCATE, _T(", Family=%d, Type=%d, Simulation=%d\n"), nFamily, nType, m_bMelsecSimulaion);
+		OutputDebugString(szTemp);
+	}
+
 	// Create a Socket that is bound to a specific service provide
 	// nFamily: (AF_INET)
 	// nType: (SOCK_STREAM, SOCK_DGRAM)
@@ -714,29 +724,32 @@ bool CSocketComm::ConnectTo(LPCTSTR strDestination, LPCTSTR strServiceName, int 
 		// Associate a local address with the socket
 		SockAddrIn sockAddr;
 		if (SOCK_DGRAM == nType){
+			// UDP 模式：先 bind 本地端口，再 connect 到目标
 			if (false == sockAddr.CreateFrom(NULL, TEXT("0"), nFamily))
 			{
+				OutputDebugString(_T("[SocketComm] CreateFrom NULL failed\n"));
 				closesocket(sock);
 				return false;
 			}
 
 			if (SOCKET_ERROR == ::bind(sock, sockAddr, (int)sockAddr.Size()))
 			{
+				OutputDebugString(_T("[SocketComm] bind failed\n"));
 				closesocket(sock);
 				return false;
 			}
-			// Now get destina tion address & port
+			// Now get destination address & port
 			sockAddr.CreateFrom(strDestination, strServiceName);
 			// try to connect - if fail, server not ready
 			if (SOCKET_ERROR == connect(sock, sockAddr, sockAddr.Size()))
 			{
+				OutputDebugString(_T("[SocketComm] UDP connect failed\n"));
 				closesocket(sock);
 				return false;
 			}
-
 		}
-		if (m_bMelsecSimulaion){
-			//>> 160925 jwan - TCP Connection ???????? ??? ?????.
+		else {
+			// TCP 模式：直接 connect 到目标
 			memset(&sockAddr, 0, sizeof(SockAddrIn));
 			sockAddr.sin_family = AF_INET;
 			char *lpDest = StringToChar(strDestination);
@@ -746,13 +759,25 @@ bool CSocketComm::ConnectTo(LPCTSTR strDestination, LPCTSTR strServiceName, int 
 			sockAddr.sin_port = htons(_ttoi(strServiceName));
 			if (SOCKET_ERROR == connect(sock, sockAddr, sockAddr.Size()))
 			{
+				int err = WSAGetLastError();
+				TCHAR szErr[64];
+				_sntprintf_s(szErr, _TRUNCATE, _T("[SocketComm] TCP connect failed, error=%d\n"), err);
+				OutputDebugString(szErr);
 				closesocket(sock);
 				return false;
+			}
+			else
+			{
+				OutputDebugString(_T("[SocketComm] TCP connect success!\n"));
 			}
 		}
 
 		// Success, now we may save this socket
 		m_hComm = (HANDLE)sock;
+	}
+	else
+	{
+		OutputDebugString(_T("[SocketComm] socket() failed\n"));
 	}
 	return (INVALID_SOCKET != sock);
 }

@@ -1093,6 +1093,83 @@ void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strF
 	}
 }
 
+// 从数据库读取缺陷代码（AOI/Viewing）
+void CAni_Data_Serever_PCApp::SetLoadResultCodeFromDB(CString strPanelID, CString strFpcID)
+{
+	m_Send_Result_Code_Map.clear();
+
+	if (!m_bLightingDBConnected)
+	{
+		if (!ConnectLightingDatabase())
+		{
+			theApp.m_pTraceLog->LOG_INFO(CStringSupport::FormatString(
+				_T("SetLoadResultCodeFromDB: Database connection failed")));
+			return;
+		}
+	}
+
+	// 1. 根据 PanelID/Barcode 获取 UniqueID
+	CString strUniqueID;
+
+	try {
+		CString strSQL;
+		strSQL.Format(_T("SELECT UniqueID FROM ivs_lcd_idmap WHERE Barcode = '%s' OR MarkID = '%s'"), 
+			strPanelID, strPanelID);
+
+		std::auto_ptr<sql::Statement> stmt(m_pLightingConn->createStatement());
+		std::auto_ptr<sql::ResultSet> res(stmt->executeQuery((std::string)CT2A(strSQL)));
+
+		if (res->next())
+		{
+			strUniqueID = res->getString("UniqueID").c_str();
+		}
+		else
+		{
+			theApp.m_pTraceLog->LOG_INFO(CStringSupport::FormatString(
+				_T("SetLoadResultCodeFromDB: UniqueID not found for PanelID=%s"), strPanelID));
+			return;
+		}
+	}
+	catch (sql::SQLException& e)
+	{
+		theApp.m_pTraceLog->LOG_INFO(CStringSupport::FormatString(
+			_T("SetLoadResultCodeFromDB: SQL error (idmap): %s"), CString(e.what())));
+		return;
+	}
+
+	// 2. 查询 IVS_LCD_AOIDefect 表获取缺陷列表
+	try {
+		CString strSQL;
+		strSQL.Format(_T("SELECT Code_AOI, Grade_AOI FROM IVS_LCD_AOIDefect ")
+			_T("WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"), strUniqueID);
+
+		std::auto_ptr<sql::Statement> stmt(m_pLightingConn->createStatement());
+		std::auto_ptr<sql::ResultSet> res(stmt->executeQuery((std::string)CT2A(strSQL)));
+
+		int iCount = 0;
+		CString strCode, strGrade;
+		while (res->next() && iCount < m_iNumberSendToPlc)
+		{
+			strCode = res->getString("Code_AOI").c_str();
+			strGrade = res->getString("Grade_AOI").c_str();
+
+			if (!strCode.IsEmpty())
+			{
+				m_Send_Result_Code_Map.insert(make_pair(strCode, strGrade));
+				iCount++;
+			}
+		}
+
+		theApp.m_pTraceLog->LOG_INFO(CStringSupport::FormatString(
+			_T("SetLoadResultCodeFromDB: Loaded %d defects for PanelID=%s"), iCount, strPanelID));
+	}
+	catch (sql::SQLException& e)
+	{
+		theApp.m_pTraceLog->LOG_INFO(CStringSupport::FormatString(
+			_T("SetLoadResultCodeFromDB: SQL error (defect): %s"), CString(e.what())));
+	}
+}
+
 CString CAni_Data_Serever_PCApp::SetTotalLoadResultCode(CString strPanelID, CString strFpcID, int iTypeNum)
 {
 	CString strFilePath, strShift, strCodeGrade;

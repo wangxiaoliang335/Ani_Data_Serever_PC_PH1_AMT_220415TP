@@ -1,4 +1,4 @@
-﻿// MainLogDlg.cpp : 구현 파일입니다.
+// MainLogDlg.cpp : 구현 파일입니다.
 //
 
 #include "stdafx.h"
@@ -8,6 +8,17 @@
 #include "Ani_Data_Serever_PC.h"
 #include "DlgMainLog.h"
 #include "afxdialogex.h"
+
+// 使用 OutputDebugString 输出日志
+static void LightingDbgPrint(LPCTSTR pszFmt, ...)
+{
+	TCHAR szBuf[512];
+	va_list args;
+	va_start(args, pszFmt);
+	_vsntprintf_s(szBuf, _TRUNCATE, pszFmt, args);
+	va_end(args);
+	OutputDebugString(szBuf);
+}
 
 
 // CDlgMainLog 대화 상자입니다.
@@ -119,6 +130,8 @@ BOOL CDlgMainLog::OnInitDialog()
 			theApp.m_TpThreadOpenFlag = theApp.m_TpSocketManager.SocketServerOpen(TP_PC_PORT_NUM);
 			break;
 		case _THREAD_LIGHTING:
+	LightingDbgPrint(_T("[MainLog] _THREAD_LIGHTING: IP=%s, Port=%s\n"),
+				theApp.m_strLightingIP, theApp.m_strLightingPort);
 			if (!theApp.m_strLightingIP.IsEmpty() && !theApp.m_strLightingPort.IsEmpty())
 			{
 				theApp.m_LightingSocketManager.SetEventHandler(&theApp);

@@ -6,6 +6,17 @@
 #include "DlgMainLog.h"
 #include "LightingManager.h"
 
+// 使用 OutputDebugString 输出日志
+static void LightingDbgPrint(LPCTSTR pszFmt, ...)
+{
+	TCHAR szBuf[512];
+	va_list args;
+	va_start(args, pszFmt);
+	_vsntprintf_s(szBuf, _TRUNCATE, pszFmt, args);
+	va_end(args);
+	OutputDebugString(szBuf);
+}
+
 CLightingManager::CLightingManager()
 	: m_bConnected(FALSE)
 	, m_pHandler(nullptr)
@@ -20,11 +31,16 @@ CLightingManager::~CLightingManager()
 bool CLightingManager::ConnectToLighting(const CString& ip, const CString& port)
 {
 	// 作为 TCP Client 连接到点灯检软件
-	if (!ConnectTo(ip, port, IPPROTO_TCP, SOCK_STREAM))
+	LightingDbgPrint(_T("[Lighting] Connecting to %s:%s...\n"), ip, port);
+
+	if (!ConnectTo(ip, port, AF_INET /*IPPROTO_TCP*/, SOCK_STREAM))
 	{
+		LightingDbgPrint(_T("[Lighting] Connection failed!\n"));
 		m_bConnected = FALSE;
 		return false;
 	}
+
+	LightingDbgPrint(_T("[Lighting] Connected successfully!\n"));
 
 	// 启动 Socket 线程，开始接收数据
 	if (!WatchComm())
@@ -68,7 +84,7 @@ void CLightingManager::SendStart(const int usedSlots[4], const int maxSlots[4])
 {
 	if (!m_bConnected)
 	{
-		// 连接未建立时直接返回，可根据需要在此处追加日志
+		// 连接未建立时直接返回
 		return;
 	}
 
@@ -127,12 +143,14 @@ void CLightingManager::OnEvent(UINT uEvent, LPVOID /*lpvData*/)
 	case EVT_CONSUCCESS:
 		m_bConnected = TRUE;
 		theApp.m_LightingConectStatus = TRUE;
+		LightingDbgPrint(_T("[Lighting] Connection established!\n"));
 		theApp.m_pLightingLog->LOG_INFO(_T("Lighting connection established"));
 		break;
 	case EVT_CONDROP:
 	case EVT_CONFAILURE:
 		m_bConnected = FALSE;
 		theApp.m_LightingConectStatus = FALSE;
+		LightingDbgPrint(_T("[Lighting] Connection lost!\n"));
 		theApp.m_pLightingLog->LOG_INFO(_T("Lighting connection lost"));
 		break;
 	default:
