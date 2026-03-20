@@ -1,4 +1,4 @@
-
+﻿
 // Ani_Data_Serever_PCApp.h : CAni_Data_Serever_PCApp
 //
 #pragma once
@@ -68,10 +68,16 @@ public:
 
 	LightingInspectionResult QueryInspectionResult(CString uniqueID);
 
+	// Lighting 线程专用的数据库操作（使用线程局部连接）
+	LightingInspectionResult QueryInspectionResultThreadSafe(CString uniqueID, sql::Connection* pConn);
+	BOOL QueryIdMapByFixtureNoThreadSafe(int fixtureNo, CString& uniqueID, CString& screenID, CString& markID, sql::Connection* pConn);
+
 	CMultiDocTemplate* m_pDocOperator;
 	HANDLE m_hApp;
 	CCriticalSection m_csLightingFlow;
 	sql::Connection* m_pLightingConn;
+	sql::Connection* m_pDfsLightingConn;  // DFS 模块专用的数据库连接（避免多线程共享连接问题）
+	BOOL m_bDfsLightingDBConnected;
 
 	CLogger* m_PlcLog;
 	CLogger* m_PlcHeartBitLog;
@@ -231,7 +237,7 @@ public:
 	
 	virtual void OnLightingRunning() override;
 	virtual void OnLightingSnapFN() override;
-	virtual void OnLightingResult(const int resultCode[4]) override;
+	virtual void OnLightingResult(const int resultCode[4], sql::Connection* pLightingConn = NULL) override;
 
 	// Lighting ID 映射和结果更新(MySQL 待实现)
 	BOOL UpdateLightingIdMap(int fixtureNo, CString uniqueID, CString screenID, CString markID);
@@ -240,6 +246,9 @@ public:
 
 	LightingInspectionResult m_LightingInspResult[4];
 	BOOL m_bLightingDBConnected;
+	DWORD m_dwLightingConnectTick;      // 连接成功时的时间戳
+	BOOL m_bLightingAutoStartPending;  // 是否等待自动发送 Start
+	static const DWORD LIGHTING_AUTO_START_DELAY_MS = 10000; // 10秒后自动发送
 	CString m_strLightingDBServer;
 	CString m_strLightingDBName;
 	CString m_strLightingDBUser;
@@ -248,14 +257,19 @@ public:
 	BOOL InitLightingDatabase();
 	BOOL ConnectLightingDatabase();
 	void CloseLightingDatabase();
-	
+
+	// DFS 模块专用的数据库连接
+	BOOL ConnectDfsLightingDatabase();
+	void CloseDfsLightingDatabase();
+	sql::Connection* GetDfsLightingConnection();
+
 	BOOL QueryIdMapByFixtureNo(int fixtureNo, CString& uniqueID, CString& screenID, CString& markID);
 	LightingInspectionResult GetLightingResultByUniqueID(CString uniqueID);
 	void GetLightingResultByBarcode(CString strBarcode, CString& strAOIResult, CString& strCodeAOI, CString& strGradeAOI, BOOL& bValid);
 	// 根据 UniqueID 查询点灯缺陷详情列表
 	BOOL QueryLightingDefectList(CString strUniqueID, std::vector<LUMITOP_SDFSDefectDataBegin>& vecDefects);
 	// 根据 UniqueID 查询 AOI 缺陷详情列表（点灯缺陷）
-	BOOL QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects);
+	BOOL QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, sql::Connection* pConn = NULL);
 	// 根据 Barcode 查询 UniqueID
 	CString GetLightingUniqueIDByBarcode(CString strBarcode);
 

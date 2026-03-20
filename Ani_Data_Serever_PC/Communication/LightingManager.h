@@ -38,7 +38,11 @@ public:
 
 	// Lighting -> MC : FN$xxxxxxxx@
 	// payload 已经被解析成 4 个治具结果码（resultCode[0..3]），空位为 0
-	virtual void OnLightingResult(const int resultCode[4]) {}
+	// pLightingConn : 线程局部的数据库连接（Lighting 线程专用，避免多线程共享连接问题）
+	virtual void OnLightingResult(const int resultCode[4], sql::Connection* pLightingConn = NULL) {}
+
+	// 连接成功后定时发送测试信号
+	virtual void OnLightingAutoTest() {}
 };
 
 class CLightingManager : public CSocketComm
@@ -71,6 +75,9 @@ public:
 	// 注册点灯检事件回调对象（非线程安全，需在连接前或初始化阶段调用）
 	void SetEventHandler(ILightingEventHandler* pHandler);
 
+	// 获取 Lighting 线程专用的数据库连接
+	sql::Connection* GetLightingConnection() { return m_pLightingConn; }
+
 protected:
 	// 处理单条去掉结尾 '@' 的消息
 	void HandleSingleMessage(const CString& msg);
@@ -95,4 +102,21 @@ private:
 	// TCP 可能出现半包/粘包：用 '@' 作为消息结束符
 	// 将每次 OnDataReceived 的数据追加到缓存，按 '@' 拆分后逐条处理，剩余半包留到下次
 	CString           m_recvCache;
+
+	// 定时器：连接成功后自动发送测试信号
+	HANDLE            m_hAutoTestTimer;
+	HANDLE            m_hAutoTestStopEvent;
+	static DWORD WINAPI AutoTestTimerThread(LPVOID lpParam);
+	void StopAutoTestTimer();
+	void StartAutoTestTimer(DWORD dwDelayMs);
+
+	// Lighting 线程专用的数据库连接（避免多线程共享连接问题）
+	sql::Connection*  m_pLightingConn;
+	BOOL              m_bLightingDBConnected;
+
+	// 初始化数据库连接
+	BOOL InitLightingDatabase();
+
+	// 关闭数据库连接
+	void CloseLightingDatabase();
 };

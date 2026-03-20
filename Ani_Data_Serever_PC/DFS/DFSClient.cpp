@@ -1,4 +1,4 @@
-﻿// FTPClient.cpp: implementation of the CDFSClient class.
+// FTPClient.cpp: implementation of the CDFSClient class.
 //
 //////////////////////////////////////////////////////////////////////
 
@@ -655,7 +655,8 @@ void CDFSClient::RunDfsUploadThread()
 						if (!strUniqueID.IsEmpty())
 						{
 							std::vector<SDFSDefectDataBegin> vecAOIDefects;
-							if (theApp.QueryAOIDefectList(strUniqueID, vecAOIDefects))
+							sql::Connection* pDfsConn = theApp.GetDfsLightingConnection();
+							if (theApp.QueryAOIDefectList(strUniqueID, vecAOIDefects, pDfsConn))
 							{
 								// 将缺陷详情添加到 DfsInfo（点灯缺陷填充到 m_DefectDataList）
 								for (size_t i = 0; i < vecAOIDefects.size(); i++)
