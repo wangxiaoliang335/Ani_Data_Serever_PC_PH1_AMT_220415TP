@@ -1,4 +1,4 @@
-﻿
+
 // Ani_Data_Serever_PCApp.cpp
 //
 
@@ -4172,6 +4172,9 @@ void CAni_Data_Serever_PCApp::GetSystemData()
 	theApp.m_strLightingPort = ini[_T("LIGHTING")][_T("PORT")];
 	if (theApp.m_strLightingPort.IsEmpty())
 		theApp.m_strLightingPort = _T("6501");  // 默认端口
+	theApp.m_strLightingAutoTest = ini[_T("LIGHTING")][_T("AUTO_TEST")];
+	if (theApp.m_strLightingAutoTest.IsEmpty())
+		theApp.m_strLightingAutoTest = _T("1");  // 默认启用自动测试
 
 	//>>210422 
 	theApp.m_bPGCodeUsable = ini[_T("PG")][_T("PGCODE_USABLE")];
@@ -4919,31 +4922,74 @@ void CAni_Data_Serever_PCApp::LightingFlowTimeoutCheck()
 // 点灯检数据库操作函数 - 使用 MySQL Connector/C++
 BOOL CAni_Data_Serever_PCApp::UpdateLightingIdMap(int fixtureNo, CString uniqueID, CString screenID, CString markID)
 {
+	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[DBG] UpdateLightingIdMap ENTER: fixtureNo=%d, uniqueID=%s, screenID=%s, markID=%s"),
+		fixtureNo, uniqueID, screenID, markID));
+
 	if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == NULL)
 	{
+		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: DB not connected, trying to connect..."));
 		if (!ConnectLightingDatabase())
 		{
 			theApp.m_pLightingLog->LOG_INFO(_T("UpdateLightingIdMap: Database not connected"));
 			return FALSE;
 		}
+		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Database connected successfully"));
 	}
 
-	// ivs_lcd_idmap 表结构：MainAoiFixID=治具号(1,2,3,4), UniqueID=唯一ID, ScreenID=产品码
+	// 确保 Barcode 列存在（兼容旧数据库 - 不支持 ADD COLUMN IF NOT EXISTS）
+	theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Checking/adding Barcode column..."));
+	try {
+		// 先查询列是否存在
+		CString strCheckSQL;
+		strCheckSQL.Format(_T("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ivs_lcd_idmap' AND COLUMN_NAME = 'Barcode'"));
+		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("[DBG] UpdateLightingIdMap: Checking if Barcode column exists: %s"), strCheckSQL));
+		
+		std::auto_ptr<sql::Statement> stmtCheck(theApp.m_pLightingConn->createStatement());
+		std::unique_ptr<sql::ResultSet> resCheck(stmtCheck->executeQuery((std::string)CT2A(strCheckSQL)));
+		if (resCheck->next() && resCheck->getInt(1) > 0)
+		{
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Barcode column already exists, skipping ALTER TABLE"));
+		}
+		else
+		{
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Barcode column does not exist, adding..."));
+			std::auto_ptr<sql::Statement> stmtAlter(theApp.m_pLightingConn->createStatement());
+			stmtAlter->execute("ALTER TABLE ivs_lcd_idmap ADD COLUMN Barcode VARCHAR(100)");
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: ALTER TABLE executed successfully"));
+		}
+	}
+	catch (sql::SQLException& e) {
+		CString strErr;
+		strErr.Format(_T("[DBG] UpdateLightingIdMap ALTER TABLE EXCEPTION: code=%d, what=%s, state=%s"),
+			e.getErrorCode(), CString(e.what()), CString(e.getSQLState().c_str()));
+		theApp.m_pLightingLog->LOG_INFO(strErr);
+		OutputDebugString(strErr + _T("\n"));
+		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Ignoring ALTER TABLE exception, continuing..."));
+	}
+
+	// ivs_lcd_idmap 表结构：MainAoiFixID=治具号(1,2,3,4), UniqueID=唯一ID, ScreenID=产品码, Barcode=产品码
 	// 转义 SQL 字符串中的单引号（避免注入与语法错误）
 	CString strUniqueID = uniqueID;
 	strUniqueID.Replace(_T("'"), _T("''"));
 	CString strBarcode = screenID;
 	strBarcode.Replace(_T("'"), _T("''"));
 
+	CString strSQL;
+	strSQL.Format(_T("UPDATE ivs_lcd_idmap SET UniqueID='%s', ScreenID='%s', Barcode='%s', MainAoiFixID=%d WHERE MainAoiFixID=%d"),
+		strUniqueID, strBarcode, strBarcode, fixtureNo, fixtureNo);
+	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[DBG] UpdateLightingIdMap: SQL=%s"), strSQL));
+
 	BOOL bRetry = FALSE;
+	theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Creating statement for UPDATE..."));
 	try {
 		// 按 MainAoiFixID 更新对应治具号记录，供检测软件使用
-		CString strSQL;
-		strSQL.Format(_T("UPDATE ivs_lcd_idmap SET UniqueID='%s', ScreenID='%s', MainAoiFixID=%d WHERE MainAoiFixID=%d"),
-			strUniqueID, strBarcode, fixtureNo, fixtureNo);
-
 		std::auto_ptr<sql::Statement> stmt(theApp.m_pLightingConn->createStatement());
+		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Executing UPDATE statement..."));
 		int affected = stmt->execute((std::string)CT2A(strSQL));
+		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+			_T("[DBG] UpdateLightingIdMap: execute returned affected=%d"), affected));
 
 		if (affected >= 0)
 		{
@@ -4961,27 +5007,54 @@ BOOL CAni_Data_Serever_PCApp::UpdateLightingIdMap(int fixtureNo, CString uniqueI
 	}
 	catch (sql::SQLException& e) {
 		CString strErr;
-		strErr.Format(_T("[DBG] UpdateLightingIdMap SQL error (MainAoiFixID=%d): what=%s, reconnecting..."),
-			fixtureNo, CString(e.what()));
+		strErr.Format(_T("[DBG] UpdateLightingIdMap SQL error (MainAoiFixID=%d): code=%d, what=%s, state=%s"),
+			fixtureNo, e.getErrorCode(), CString(e.what()), CString(e.getSQLState().c_str()));
 		theApp.m_pLightingLog->LOG_INFO(strErr);
 		OutputDebugString(strErr + _T("\n"));
 		bRetry = TRUE;
 	}
 
 	if (bRetry) {
+		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Starting retry logic..."));
 		theApp.m_bLightingDBConnected = FALSE;
 		if (!ConnectLightingDatabase())
 		{
 			theApp.m_pLightingLog->LOG_INFO(_T("UpdateLightingIdMap: Reconnect failed"));
 			return FALSE;
 		}
+		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Reconnected successfully, retrying UPDATE..."));
 		try {
-			CString strSQL;
-			strSQL.Format(_T("UPDATE ivs_lcd_idmap SET UniqueID='%s', ScreenID='%s', MainAoiFixID=%d WHERE MainAoiFixID=%d"),
-				strUniqueID, strBarcode, fixtureNo, fixtureNo);
+			// 重新连接后，确保 Barcode 列存在（兼容旧数据库）
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap Retry: Checking if Barcode column exists..."));
+			CString strCheckSQL;
+			strCheckSQL.Format(_T("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ivs_lcd_idmap' AND COLUMN_NAME = 'Barcode'"));
+			
+			std::auto_ptr<sql::Statement> stmtCheck(theApp.m_pLightingConn->createStatement());
+			std::unique_ptr<sql::ResultSet> resCheck(stmtCheck->executeQuery((std::string)CT2A(strCheckSQL)));
+			if (resCheck->next() && resCheck->getInt(1) > 0)
+			{
+				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap Retry: Barcode column already exists"));
+			}
+			else
+			{
+				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap Retry: Adding Barcode column..."));
+				std::auto_ptr<sql::Statement> stmtAlter(theApp.m_pLightingConn->createStatement());
+				stmtAlter->execute("ALTER TABLE ivs_lcd_idmap ADD COLUMN Barcode VARCHAR(100)");
+				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap Retry: ALTER TABLE executed"));
+			}
 
+			CString strSQL;
+			strSQL.Format(_T("UPDATE ivs_lcd_idmap SET UniqueID='%s', ScreenID='%s', Barcode='%s', MainAoiFixID=%d WHERE MainAoiFixID=%d"),
+				strUniqueID, strBarcode, strBarcode, fixtureNo, fixtureNo);
+
+			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+				_T("[DBG] UpdateLightingIdMap Retry: SQL=%s"), strSQL));
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap Retry: Creating statement for UPDATE..."));
 			std::auto_ptr<sql::Statement> stmt(theApp.m_pLightingConn->createStatement());
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap Retry: Executing UPDATE..."));
 			int affected = stmt->execute((std::string)CT2A(strSQL));
+			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+				_T("[DBG] UpdateLightingIdMap Retry: execute returned affected=%d"), affected));
 
 			if (affected >= 0)
 			{
@@ -4993,13 +5066,14 @@ BOOL CAni_Data_Serever_PCApp::UpdateLightingIdMap(int fixtureNo, CString uniqueI
 		}
 		catch (sql::SQLException& e2) {
 			CString strErr;
-			strErr.Format(_T("[DBG] UpdateLightingIdMap Retry SQL error (MainAoiFixID=%d): what=%s"),
-				fixtureNo, CString(e2.what()));
+			strErr.Format(_T("[DBG] UpdateLightingIdMap Retry SQL error (MainAoiFixID=%d): code=%d, what=%s, state=%s"),
+				fixtureNo, e2.getErrorCode(), CString(e2.what()), CString(e2.getSQLState().c_str()));
 			theApp.m_pLightingLog->LOG_INFO(strErr);
 			OutputDebugString(strErr + _T("\n"));
 		}
 	}
 
+	theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap EXIT: returning FALSE"));
 	return FALSE;
 }
 

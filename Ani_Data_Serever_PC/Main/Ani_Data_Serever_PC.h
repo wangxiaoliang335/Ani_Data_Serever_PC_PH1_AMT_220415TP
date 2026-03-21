@@ -1,4 +1,4 @@
-﻿
+
 // Ani_Data_Serever_PCApp.h : CAni_Data_Serever_PCApp
 //
 #pragma once
@@ -375,6 +375,7 @@ public:
 	CString m_strPGName;
 	CString m_strLightingIP;
 	CString m_strLightingPort;
+	CString m_strLightingAutoTest;
 
 	CString m_strDefectTitleName[DefectTitleMaxCount];
 	BOOL m_bContact[PG_MAX_CH];

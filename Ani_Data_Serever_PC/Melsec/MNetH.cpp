@@ -30,13 +30,15 @@ static char THIS_FILE[]=__FILE__;
 
 MNetH::MNetH(CString sIniFile)
 {
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] Constructor Start, IniFile=%s"), sIniFile);
+
 	//	Create Mutex
 	//m_hMutex = ::CreateMutex(NULL, FALSE, NULL); //130629 JSPark
 	//	Initial Variable for XNet
 	m_nChannel = DEFAULT_CHANNEL;
 	m_nStation = DEFAULT_STATION;
 	//<<130717 kmh
-	m_lNetwork = 0; 
+	m_lNetwork = 0;
 	m_lStation = DEFAULT_STATION;
 	//<<
 
@@ -50,17 +52,19 @@ MNetH::MNetH(CString sIniFile)
 	m_nNextLocal = m_nCurLocal+1;
 	m_nToUpperEqQty = 1;
 	m_nToLowerEqQty = 1;
-	
+
 	m_bSetGlassDataFlag = false;
 
 	m_dwTransferStart = 0;
 	//	Common Variable for XSECNetDlg
-	m_pDlg = NULL;		
-	m_pMainWnd = NULL;	
+	m_pDlg = NULL;
+	m_pMainWnd = NULL;
 	m_bShow = false;
 	m_bUseInterface = false; //151213 JSLee
 	//	Reading configuration file
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] Calling ReadConfig()"));
 	ReadConfig();
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] ReadConfig() Completed, m_nChannel=%d, m_nCurLocal=%d, m_lNetwork=%d"), m_nChannel, m_nCurLocal, m_lNetwork);
 	//Prev Dialog Delete
 	//if ( m_pDlg ){ m_pDlg->DestroyWindow(); delete m_pDlg; m_pDlg=NULL; }
 
@@ -76,7 +80,9 @@ MNetH::MNetH(CString sIniFile)
 	//	else { m_pDlg->ShowWindow(SW_HIDE); }
 	//}
 
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] Calling Start()"));
 	Start();
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] Constructor End"));
 }
 
 MNetH::~MNetH()
@@ -836,12 +842,21 @@ long MNetH::WriteZREx(long lAddr, long m_lNetwork, long m_lStation, long lPoints
 unsigned short MNetH::MelsecClose() 
 {
 	unsigned short nRet = 0;
-	
-	if (m_fActive == FALSE) { return RV_SUCCESS; }
+
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecClose] Start, m_fActive=%s, m_lPath=%d"), m_fActive ? _T("TRUE") : _T("FALSE"), m_lPath);
+
+	if (m_fActive == FALSE) { 
+		theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecClose] Already inactive, return SUCCESS"));
+		return RV_SUCCESS; 
+	}
 #ifdef _USE_MELSEC_
 	nRet = mdClose(m_lPath);
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecClose] mdClose result=%d"), nRet);
 #endif
-	if (nRet == RV_SUCCESS) { m_fActive = FALSE; }
+	if (nRet == RV_SUCCESS) { 
+		m_fActive = FALSE;
+		theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecClose] SUCCESS, m_fActive=FALSE"));
+	}
 	return nRet;
 }
 
@@ -858,16 +873,26 @@ unsigned short MNetH::MelsecClose()
 unsigned short MNetH::MelsecOpen() 
 {
 	unsigned short nRet = 0;
-	
+
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecOpen] Start, Channel=%d, Station=%d"), m_nChannel, m_nStation);
+
 	if (m_fActive != TRUE) 
 	{
+		theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecOpen] Not active, calling MelsecClose()"));
 		MelsecClose(); 
 	}
 
 #ifdef _USE_MELSEC_
 	nRet = mdOpen(m_nChannel, -1, &m_lPath);
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecOpen] mdOpen result=%d, Path=%d"), nRet, m_lPath);
 #endif
-	if (nRet == RV_SUCCESS) { m_fActive = TRUE; }
+	if (nRet == RV_SUCCESS) { 
+		m_fActive = TRUE;
+		theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecOpen] Connection SUCCESS, m_fActive=TRUE"));
+	}
+	else {
+		theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecOpen] Connection FAILED, m_fActive=FALSE"));
+	}
 	return nRet;
 }
 
@@ -884,42 +909,53 @@ int MNetH::ReadConfig() //151208 JSLee
 
 	CString strNode(_T("")), strKey(_T(""));
 
-	
+	// ????????????????
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH ReadConfig] ConfigFile=%s"), m_sIniFile);
+
 	// Basic information
 	strNode.Format(_T("BASIC"));
 	// Chanel
 	m_nChannel = cDataIf.GetInt(strNode, _T("Chanel"), 151);
-	
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] Chanel=%d"), m_nChannel);
+
 	// Local
 	m_nCurLocal = cDataIf.GetInt(strNode, _T("Local"), 3);
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] Local=%d"), m_nCurLocal);
 
 	// Network
 	m_lNetwork = cDataIf.GetInt(strNode, _T("Network"), 0);
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] Network=%d"), m_lNetwork);
 
 	// Unit
 	m_nCurUnit = cDataIf.GetInt(strNode, _T("Unit"), 1);
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] Unit=%d"), m_nCurUnit);
 
 	// Previous Local
 	m_nPrevLocal = cDataIf.GetInt(strNode, _T("PrevLocal"), 0);
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] PrevLocal=%d"), m_nPrevLocal);
 
 	// Next Local
 	m_nNextLocal = cDataIf.GetInt(strNode, _T("NextLocal"), 0);
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] NextLocal=%d"), m_nNextLocal);
 
 	// UseDialog
 	bflag = cDataIf.GetInt(strNode, _T("UseDialog"), TRUE);
 	if (bflag){ m_bUseDialog = true; }
 	else { m_bUseDialog = false; }
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] UseDialog=%s"), bflag ? _T("TRUE") : _T("FALSE"));
 
 	// ShowDialog
 	bflag = cDataIf.GetInt(strNode, _T("ShowDialog"), TRUE);
 	if (bflag){ m_bShow = true; }
 	else { m_bShow = false; }
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] ShowDialog=%s"), bflag ? _T("TRUE") : _T("FALSE"));
 
 	//>> 151213 JSLee
 	// UseInterface
 	bflag = cDataIf.GetInt(strNode, _T("UseInterface"), FALSE);
 	if (bflag){ m_bUseInterface = true; }
 	else { m_bUseInterface = false; }
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] UseInterface=%s"), bflag ? _T("TRUE") : _T("FALSE"));
 	//<<
 
 	//////////////////////////////////////////////////////////////////////////////////////////
@@ -928,11 +964,14 @@ int MNetH::ReadConfig() //151208 JSLee
 
 	// Name Count.
 	nListQty = cDataIf.GetInt(strNode, _T("Local_Qty"), 1);
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [LOCAL_TITLE] Local_Qty=%d"), nListQty);
+
 	for (int i = 0; i < nListQty; i++)
 	{
 		// Protocol
 		str.Format(_T("Local_%02d"), i + 1);
 		m_asLocalName.Add(cDataIf.GetString(strNode, str, _T("")));
+		theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [LOCAL_TITLE] %s=%s"), str, m_asLocalName[i]);
 	}
 
 	//////////////////////////////////////////////////////////////////////////////////////////
@@ -941,13 +980,17 @@ int MNetH::ReadConfig() //151208 JSLee
 
 	// Name Count.
 	nListQty = cDataIf.GetInt(strNode, _T("Unit_Qty"), 1);
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [UNIT_TITLE] Unit_Qty=%d"), nListQty);
+
 	for (int i = 0; i < nListQty; i++)
 	{
 		// Protocol
-		str.Format(_T("Unit_%02d"), i + 1);	
+		str.Format(_T("Unit_%02d"), i + 1);
 		m_asUnitName.Add(cDataIf.GetString(strNode, str, _T("")));
+		theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [UNIT_TITLE] %s=%s"), str, m_asUnitName[i]);
 	}
 
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH ReadConfig] Completed"));
 	return 0;
 }
 
@@ -955,7 +998,7 @@ int MNetH::ReadConfig() //151208 JSLee
 // Add Function by cha 2006/02/07 
 /*========================================================================================
 	FUNCTION : MNetH::AscToString()
-	DESCRIPT : Ascii를 String로 변환하는 함수.
+	DESCRIPT : Ascii?? String?? ?????? ???.
 	RETURN	 : None
 	ARGUMENT : 
 	UPDATE	 : 2005/07/07, Hubri; First work!
@@ -984,7 +1027,7 @@ void MNetH::AscToString(char *pszOut, unsigned short *pnaBuf, unsigned short nPo
 // Add Function by cha 2006/02/07 
 /*========================================================================================
 	FUNCTION: StringToAsc()
-	DESCRIPT: String을 Ascii로 변환하는 함수.
+	DESCRIPT: String?? Ascii?? ?????? ???.
 	RETURN	: void
 	ARGUMENT: 
 	UPDATE	: 2005/6/22, KyeongWhan; First work!

@@ -12,6 +12,7 @@
 #include <sstream>
 #include <memory>
 #include <mutex>
+#include <map>
 #include <algorithm>
 #include <random>
 #include <csignal>
@@ -214,6 +215,9 @@ struct TestState {
 
 TestState g_testState;
 
+// Store UniqueID for each fixture (indexed by fixture number 1-4)
+std::map<int, std::string> g_fixtureUniqueID;
+
 // MySQL connection
 std::unique_ptr<sql::Connection> g_dbConnection;
 std::mutex g_dbMutex;
@@ -338,11 +342,27 @@ void CreateTablesIfNotExist() {
             "  MainAoiFixID INT PRIMARY KEY,"
             "  UniqueID VARCHAR(100),"
             "  ScreenID VARCHAR(100),"
+            "  Barcode VARCHAR(100),"
             "  MarkID VARCHAR(50),"
             "  UpdateTime DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
             ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
         stmt->execute(createIdmap);
         Log("[DB] Table ivs_lcd_idmap ensured");
+        
+        // Add Barcode column if not exists (compatible with older MySQL versions)
+        try {
+            // First check if column exists
+            std::unique_ptr<sql::ResultSet> res(stmt->executeQuery(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ivs_lcd_idmap' AND COLUMN_NAME = 'Barcode'"));
+            if (res->next() && res->getInt(1) == 0) {
+                stmt->execute("ALTER TABLE ivs_lcd_idmap ADD COLUMN Barcode VARCHAR(100)");
+                Log("[DB] Column Barcode added to ivs_lcd_idmap");
+            } else {
+                Log("[DB] Column Barcode already exists");
+            }
+        } catch (sql::SQLException& e) {
+            Log("[DB] Barcode column check failed: %s", e.what());
+        }
         
         // Create IVS_LCD_InspectionResult if not exists (屏表 - 完整版)
         std::string createResult = 
@@ -583,7 +603,7 @@ void CloseDatabase() {
 }
 
 // Insert inspection result to database
-bool InsertInspectionResult(const std::string& barcode, int fixtureNo, DefectType defect) {
+bool InsertInspectionResult(const std::string& barcode, int fixtureNo, DefectType defect, const std::string& uniqueID) {
     if (!g_dbConnection) {
         Log("Database not connected, skipping insert");
         return false;
@@ -594,7 +614,10 @@ bool InsertInspectionResult(const std::string& barcode, int fixtureNo, DefectTyp
     try {
         std::unique_ptr<Statement> stmt(g_dbConnection->createStatement());
         
-        std::string uniqueID = GenerateUniqueID();
+        // 使用传入的 uniqueID，而不是自己生成
+        // 如果传入的 uniqueID 为空，则生成一个新的（兼容旧逻辑）
+        std::string finalUniqueID = uniqueID.empty() ? GenerateUniqueID() : uniqueID;
+        
         std::string screenID = barcode.empty() ? ("BARCODE_" + std::to_string(fixtureNo)) : barcode;
         std::string markID = std::to_string(fixtureNo);
         
@@ -626,7 +649,7 @@ bool InsertInspectionResult(const std::string& barcode, int fixtureNo, DefectTyp
                   << "Code_AOI, Grade_AOI, Level_AOI, "
                   << "DefClass_AOI, DefName_AOI"
                   << ") VALUES ("
-                  << "'" << uniqueID << "', "  // Use UniqueID as GUID for defect lookup compatibility
+                  << "'" << finalUniqueID << "', "  // Use UniqueID as GUID for defect lookup compatibility
                   << "'" << screenID << "', "
                   << "'" << deviceID << "', "
                   << (fixtureNo - 1) << ", "
@@ -635,9 +658,9 @@ bool InsertInspectionResult(const std::string& barcode, int fixtureNo, DefectTyp
                   << "'" << stopTime << "', "
                   << "'" << status << "', "
                   << "'" << aoiResult << "', "
-                  << "'" << std::setw(2) << std::setfill('0') << fixtureNo << "', "
-                  << "'" << uniqueID << "', "
-                  << fixtureNo << ", "
+        << "'" << std::setw(2) << std::setfill('0') << fixtureNo << "', "
+        << "'" << finalUniqueID << "', "
+        << fixtureNo << ", "
                   << "'SIM_OPERATOR', "
                   << "255, "
                   << "0, "
@@ -659,7 +682,7 @@ bool InsertInspectionResult(const std::string& barcode, int fixtureNo, DefectTyp
                         << "GrayScale, GrayScale_BK, GrayScaleDiff, "
                         << "Code_AOI, Grade_AOI, DefClass_AOI, DefName_AOI"
                         << ") VALUES ("
-                        << "'" << uniqueID << "', "
+                        << "'" << finalUniqueID << "', "
                         << "1, "
                         << "'" << aoiResult << "', "
                         << "1, "
@@ -678,10 +701,10 @@ bool InsertInspectionResult(const std::string& barcode, int fixtureNo, DefectTyp
                         << "'Default_" << aoiResult << "'"
                         << ")";
             stmt->execute(insertDefect.str());
-            Log("[DB] Inserted defect for UniqueID=%s, Type=%s", uniqueID.c_str(), aoiResult);
+            Log("[DB] Inserted defect for UniqueID=%s, Type=%s", finalUniqueID.c_str(), aoiResult);
         }
         
-        Log("Inserted result: Fixture=%02d, Result=%s, GUID=%s", fixtureNo, aoiResult, uniqueID.c_str());
+        Log("Inserted result: Fixture=%02d, Result=%s, GUID=%s", fixtureNo, aoiResult, finalUniqueID.c_str());
         return true;
     }
     catch (sql::SQLException& e) {
@@ -720,6 +743,33 @@ std::vector<int> ParseFixtures(const std::string& currentFixtures) {
 // Random delay helper
 int RandomDelay(int minMs, int maxMs) {
     return minMs + rand() % (maxMs - minMs + 1);
+}
+
+// Query UniqueID for a fixture from ivs_lcd_idmap table
+std::string QueryUniqueIDFromDatabase(int fixtureNo) {
+    if (!g_dbConnection) {
+        Log("[DB] Database not connected, cannot query UniqueID");
+        return "";
+    }
+    
+    std::lock_guard<std::mutex> lock(g_dbMutex);
+    
+    try {
+        std::unique_ptr<Statement> stmt(g_dbConnection->createStatement());
+        std::unique_ptr<ResultSet> res(stmt->executeQuery(
+            "SELECT UniqueID FROM ivs_lcd_idmap WHERE MainAoiFixID = " + std::to_string(fixtureNo) + " LIMIT 1"));
+        if (res->next()) {
+            std::string uniqueID = res->getString("UniqueID");
+            Log("[DB] Query UniqueID for Fixture %02d: %s", fixtureNo, uniqueID.c_str());
+            return uniqueID;
+        } else {
+            Log("[DB] WARNING: No UniqueID found for Fixture %02d in ivs_lcd_idmap", fixtureNo);
+            return "";
+        }
+    } catch (sql::SQLException& e) {
+        Log("[DB] ERROR: Query UniqueID failed: %s", e.what());
+        return "";
+    }
 }
 
 // Handle client request
@@ -814,6 +864,18 @@ void HandleClient(std::shared_ptr<ClientInfo> client) {
                         g_testState.currentFixtures = currentFixtures;
                         g_testState.maxFixtures = maxFixtures;
                         g_testState.isTesting = true;
+                        
+                        // 清空之前的 UniqueID 映射
+                        g_fixtureUniqueID.clear();
+                        
+                        // 查询数据库获取每个治具的 UniqueID
+                        std::vector<int> fixtures = ParseFixtures(currentFixtures);
+                        for (int fixture : fixtures) {
+                            std::string uniqueID = QueryUniqueIDFromDatabase(fixture);
+                            if (!uniqueID.empty()) {
+                                g_fixtureUniqueID[fixture] = uniqueID;
+                            }
+                        }
 
                         Log("[TEST] Test STARTED - CurrentFixtures: %s, MaxFixtures: %s",
                             currentFixtures.c_str(), maxFixtures.c_str());
@@ -844,14 +906,15 @@ void HandleClient(std::shared_ptr<ClientInfo> client) {
 
                         // ===== STEP 5: Generate results and write to DB =====
                         Log("[STEP5] Generating test results...");
-                        std::vector<int> fixtures = ParseFixtures(g_testState.currentFixtures);
                         Log("[STEP5] Number of fixtures: %zu", fixtures.size());
 
                         for (size_t i = 0; i < fixtures.size(); i++) {
                             int fixture = fixtures[i];
                             DefectType defect = GenerateRandomDefect();
                             Log("[STEP5] Fixture %02d result: %s", fixture, DefectTypeToString(defect));
-                            InsertInspectionResult("", fixture, defect);
+                            // 使用从数据库查询到的 UniqueID
+                            std::string uniqueID = g_fixtureUniqueID.count(fixture) ? g_fixtureUniqueID[fixture] : "";
+                            InsertInspectionResult("", fixture, defect, uniqueID);
                         }
 
                         // ===== STEP 6: Send FN result =====
@@ -885,6 +948,18 @@ void HandleClient(std::shared_ptr<ClientInfo> client) {
                         g_testState.currentFixtures = currentFixtures;
                         g_testState.maxFixtures = maxFixtures;
                         g_testState.isTesting = true;
+                        
+                        // 清空之前的 UniqueID 映射
+                        g_fixtureUniqueID.clear();
+                        
+                        // 查询数据库获取每个治具的 UniqueID
+                        std::vector<int> fixtures = ParseFixtures(currentFixtures);
+                        for (int fixture : fixtures) {
+                            std::string uniqueID = QueryUniqueIDFromDatabase(fixture);
+                            if (!uniqueID.empty()) {
+                                g_fixtureUniqueID[fixture] = uniqueID;
+                            }
+                        }
 
                         Log("[TEST] Test STARTED - CurrentFixtures: %s, MaxFixtures: %s",
                             currentFixtures.c_str(), maxFixtures.c_str());
@@ -915,14 +990,15 @@ void HandleClient(std::shared_ptr<ClientInfo> client) {
 
                         // ===== STEP 5: Generate results and write to DB =====
                         Log("[STEP5] Generating test results...");
-                        std::vector<int> fixtures = ParseFixtures(g_testState.currentFixtures);
                         Log("[STEP5] Number of fixtures: %zu", fixtures.size());
 
                         for (size_t i = 0; i < fixtures.size(); i++) {
                             int fixture = fixtures[i];
                             DefectType defect = GenerateRandomDefect();
                             Log("[STEP5] Fixture %02d result: %s", fixture, DefectTypeToString(defect));
-                            InsertInspectionResult("", fixture, defect);
+                            // 使用从数据库查询到的 UniqueID
+                            std::string uniqueID = g_fixtureUniqueID.count(fixture) ? g_fixtureUniqueID[fixture] : "";
+                            InsertInspectionResult("", fixture, defect, uniqueID);
                         }
 
                         // ===== STEP 6: Send FN result =====

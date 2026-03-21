@@ -9,6 +9,7 @@
 #include "DFSInfo.h"
 #include "DataInfo.h"
 #include "Ani_Data_Serever_PC.h"
+#include "Main\Migration.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -34,12 +35,26 @@ CDFSClient::CDFSClient()
 	m_strCurrentDirectory = "/";
 	m_strRootDirectory = "/";
 
-	//Default Param Setting
-	m_strAddress = IP_ADDRESS_MCC;
+	// 从配置文件读取 FTP 设置，如果读取失败则使用默认值
+	EZIni ini(DATA_SYSTEM_DATA_PATH);
+	CString strFtpIP = ini[_T("FTP")][_T("DFS_IP")];
+	CString strFtpPort = ini[_T("FTP")][_T("DFS_PORT")];
+
+	m_strAddress = strFtpIP.IsEmpty() ? DFS_FTP_DEFAULT_IP : strFtpIP;
+	m_nPort = strFtpPort.IsEmpty() ? DFS_FTP_DEFAULT_PORT : _ttoi(strFtpPort);
+
+	// 日志记录 FTP 配置信息
+	CString strLogMsg;
+	strLogMsg.Format(_T("[DFS FTP Config] ConfigFile=%s, [FTP]DFS_IP=%s (default=%s), [FTP]DFS_PORT=%s (default=%d)"),
+		DATA_SYSTEM_DATA_PATH,
+		strFtpIP.IsEmpty() ? _T("(empty)") : strFtpIP,
+		DFS_FTP_DEFAULT_IP,
+		strFtpPort.IsEmpty() ? _T("(empty)") : strFtpPort,
+		DFS_FTP_DEFAULT_PORT);
+	theApp.m_pFTPLog->LOG_INFO(strLogMsg);
+
 	m_bUsePASVMode = FALSE;
 	m_nRetries = 1;//3;	//0828Y13.JJH.ModifyFTP
-
-	m_nPort = 21;
 
 	m_strDescription = "";
 	m_strLocalPath = "";

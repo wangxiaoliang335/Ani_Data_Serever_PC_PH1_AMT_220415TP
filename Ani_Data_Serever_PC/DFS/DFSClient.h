@@ -14,8 +14,10 @@ using namespace std;
 
 //#define BUF_SIZE 4096
 #define BUF_SIZE 20480
-const CString IP_ADDRESS_MCC = _T("172.18.3.110");
-//const CString IP_ADDRESS_MCC = _T("127.0.0.1");
+
+// 默认值，可被 sysData.ini 配置覆盖
+const CString DFS_FTP_DEFAULT_IP = _T("172.18.3.110");
+const int DFS_FTP_DEFAULT_PORT = 21;
 
 
 class CDFSClient
