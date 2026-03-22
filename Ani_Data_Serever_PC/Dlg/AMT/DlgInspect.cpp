@@ -1,4 +1,4 @@
-﻿// DlgInspect.cpp : ±¸Çö ÆÄÀÏÀÔ´Ï´Ù.
+// DlgInspect.cpp : ±¸Çö ÆÄÀÏÀÔ´Ï´Ù.
 //
 
 #include "stdafx.h"
@@ -10,7 +10,39 @@
 #include "DlgAlignStatus.h"
 #include "DlgReslutCode.h"
 #include "DlgOkGrade.h"
+#include "BtnEnhReadability.h"
 
+namespace {
+
+// Header / row labels on DLG_INSPECT_AMT_AFT not bound in DoDataExchange (data cells use members).
+static const UINT s_kInspectExtraBtnEnhIds[] = {
+	IDC_LBL_DY_TOTAL, IDC_LBL_DY_GOOD, IDC_LBL_DY_BAD, IDC_LBL_DY_ALIGN_FAILED, IDC_LBL_DY,
+	IDC_DY_DATA_RESET, IDC_LBL_DY_CONTACT_NG, IDC_LBL_DY_AOI_NG2, IDC_LBL_DY_VIEWING_NG,
+	IDC_LBL_DY_TP_NG, IDC_LBL_DY_ALIGN,
+	IDC_LBL_DY_STAGE1, IDC_LBL_DY_STAGE2, IDC_LBL_DY_STAGE3, IDC_LBL_DY_STAGE4,
+	IDC_LBL_NT, IDC_NT_DATA_RESET,
+	IDC_LBL_NT_TOTAL, IDC_LBL_NT_GOOD, IDC_LBL_NT_BAD, IDC_LBL_NT_CONTACT_NG,
+	IDC_LBL_NT_ALIGN_FAILED, IDC_LBL_NT_ALIGN, IDC_LBL_NT_AOI_NG2, IDC_LBL_NT_VIEWING_NG,
+	IDC_LBL_NT_TP_NG,
+	IDC_LBL_NT_STAGE1, IDC_LBL_NT_STAGE2, IDC_LBL_NT_STAGE3, IDC_LBL_NT_STAGE4,
+};
+
+static void ApplyInspectDlgExtraBtnStyles(CDlgInspect* pDlg)
+{
+	for (UINT id : s_kInspectExtraBtnEnhIds)
+	{
+		HWND h = ::GetDlgItem(pDlg->GetSafeHwnd(), static_cast<int>(id));
+		if (!h)
+			continue;
+		CBtnEnh tmp;
+		if (!tmp.Attach(h))
+			continue;
+		ApplyBtnEnhReadabilityStyle(tmp);
+		tmp.Detach();
+	}
+}
+
+} // namespace
 
 // CDlgInspect ´ëÈ­ »óÀÚÀÔ´Ï´Ù.
 
@@ -165,6 +197,10 @@ BOOL CDlgInspect::OnInitDialog()
 		else if (theApp.m_iMachineType == SetAFT)
 			m_btnLabelName[ii].SetCaption(_T("LUMITOP NG"));
 	}
+
+	// After captions — DDX BtnEnh subtree + extra labels without DDX
+	ApplyBtnEnhReadabilitySubtree(this);
+	ApplyInspectDlgExtraBtnStyles(this);
 	
 	// TODO:  ¿©±â¿¡ Ãß°¡ ÃÊ±âÈ­ ÀÛ¾÷À» Ãß°¡ÇÕ´Ï´Ù.
 	SetTimer(TMR_MAIN_INSPECT_INFO, 1000, NULL);

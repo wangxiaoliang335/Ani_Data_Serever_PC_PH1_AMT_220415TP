@@ -8,6 +8,7 @@
 #include "MainFrm.h"
 #include <assert.h>
 #include "TopCtrl.h"
+#include "BtnEnhReadability.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -75,7 +76,7 @@ END_MESSAGE_MAP()
 // CTopCtrl message handlers
 BOOL CTopCtrl::OnInitDialogBar()
 {
-	//MainFrame Pointer 잡아 놓는다. 
+	//MainFrame Pointer ??? ??????. 
 	pMainFrame = STATIC_DOWNCAST(CMainFrame, AfxGetMainWnd());
 
 	CInitDialogBar::OnInitDialogBar();
@@ -107,6 +108,29 @@ BOOL CTopCtrl::OnInitDialogBar()
 #endif
 
 	m_strLoginName.SetCaption(_T("LogIn :\nOperator"));
+
+	ApplyBtnEnhReadabilityStyle(m_TitleName);
+	ApplyBtnEnhReadabilityStyle(m_CurrentTime);
+	ApplyBtnEnhReadabilityStyle(m_ctrlModelName);
+	ApplyBtnEnhReadabilityStyle(m_ctrlVersion);
+	ApplyBtnEnhReadabilityStyle(m_strLoginName);
+#if _SYSTEM_AMTAFT_
+	for (int ii = 0; ii < NUM_NETWORK_ICON; ++ii)
+	{
+		if (m_netWorkIf[ii].GetSafeHwnd())
+			ApplyBtnEnhReadabilityStyle(m_netWorkIf[ii]);
+	}
+	ApplyBtnEnhReadabilityById(this, IDC_BTNENHCTRL2);
+#else
+	static const int s_gammaNetIdx[] = {
+		NUM_NETWORK_ALIGN, NUM_NETWORK_PLC, NUM_NETWORK_PG1, NUM_NETWORK_PG2,
+	};
+	for (int idx : s_gammaNetIdx)
+	{
+		if (m_netWorkIf[idx].GetSafeHwnd())
+			ApplyBtnEnhReadabilityStyle(m_netWorkIf[idx]);
+	}
+#endif
 
 	m_LoginDlg = new CDlgLogin;
 	m_LoginDlg->Create(IDD_DLG_LOG_IN, this);

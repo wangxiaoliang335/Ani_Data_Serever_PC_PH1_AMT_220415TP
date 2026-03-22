@@ -12,6 +12,8 @@
 #include "Ani_Data_Serever_PCDoc.h"
 #include "Ani_Data_Serever_PCView.h"
 #include "MainFrm.h"
+#include "BtnEnhReadability.h"
+#include "resource.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -150,6 +152,28 @@ void CAni_Data_Serever_PCView::OnInitialUpdate()
 	case ENG:m_btnEng.SetValue(TRUE); break;
 	case CHI:m_btnChi.SetValue(TRUE); break;
 	}
+
+	ReapplyMainViewTopStripReadability();
+}
+
+void CAni_Data_Serever_PCView::ReapplyMainViewTopStripReadability()
+{
+	static const UINT s_mainViewModeRowIds[] = {
+		IDB_BTN_INSPECT, IDB_BTN_TIME_INSPECT, IDB_BTN_ALARM, IDB_BTN_TACT_TIME,
+		IDB_BTN_CARD_READER, IDB_BTN_START, IDB_BTN_DEFECT_COUNT,
+	};
+	for (UINT id : s_mainViewModeRowIds)
+		ApplyBtnEnhReadabilityById(this, id);
+
+	ApplyBtnEnhReadabilityStyle(m_btnKor);
+	ApplyBtnEnhReadabilityStyle(m_btnEng);
+	ApplyBtnEnhReadabilityStyle(m_btnChi);
+	static const UINT s_mainViewSmallBtnIds[] = {
+		IDB_BTN_SETTIMER, IDB_BTN_SETNGRANK, IDB_BTN_SETSYSTEM,
+		IDB_BTN_SETNGRANK2, IDB_BTN_SETNGRANK3, IDB_BTN_SETVISION,
+	};
+	for (UINT id : s_mainViewSmallBtnIds)
+		ApplyBtnEnhReadabilityById(this, id);
 }
 
 
@@ -233,6 +257,7 @@ void CAni_Data_Serever_PCView::OnClickIdbBtnStart()
 	m_pTimeInspet->ShowWindow(SW_HIDE);
 	m_pIdCardHistory->ShowWindow(SW_HIDE);
 #endif
+	ReapplyMainViewTopStripReadability();
 }
 
 
@@ -255,6 +280,7 @@ void CAni_Data_Serever_PCView::OnClickIdbBtnDefectCount()
 	m_pTimeInspet->ShowWindow(SW_HIDE);
 	m_pIdCardHistory->ShowWindow(SW_HIDE);
 #endif
+	ReapplyMainViewTopStripReadability();
 }
 
 void CAni_Data_Serever_PCView::OnClickIdbBtnInspect()
@@ -275,6 +301,7 @@ void CAni_Data_Serever_PCView::OnClickIdbBtnInspect()
 	m_pTimeInspet->ShowWindow(SW_HIDE);
 	m_pIdCardHistory->ShowWindow(SW_HIDE);
 #endif
+	ReapplyMainViewTopStripReadability();
 }
 
 void CAni_Data_Serever_PCView::OnClickIdbBtnAlarm()
@@ -295,6 +322,7 @@ void CAni_Data_Serever_PCView::OnClickIdbBtnAlarm()
 	m_pTimeInspet->ShowWindow(SW_HIDE);
 	m_pIdCardHistory->ShowWindow(SW_HIDE);
 #endif
+	ReapplyMainViewTopStripReadability();
 }
 
 void CAni_Data_Serever_PCView::ClickBtnTactTime()
@@ -315,6 +343,7 @@ void CAni_Data_Serever_PCView::ClickBtnTactTime()
 	m_pTimeInspet->ShowWindow(SW_HIDE);
 	m_pIdCardHistory->ShowWindow(SW_HIDE);
 #endif
+	ReapplyMainViewTopStripReadability();
 }
 
 void CAni_Data_Serever_PCView::ClickBtnTimeInspect()
@@ -335,6 +364,7 @@ void CAni_Data_Serever_PCView::ClickBtnTimeInspect()
 	m_pTimeInspet->ShowWindow(SW_SHOW);
 	m_pIdCardHistory->ShowWindow(SW_HIDE);
 #endif
+	ReapplyMainViewTopStripReadability();
 }
 
 
@@ -356,6 +386,7 @@ void CAni_Data_Serever_PCView::ClickBtnCardReader()
 	m_pTimeInspet->ShowWindow(SW_HIDE);
 	m_pIdCardHistory->ShowWindow(SW_SHOW);
 #endif
+	ReapplyMainViewTopStripReadability();
 }
 
 

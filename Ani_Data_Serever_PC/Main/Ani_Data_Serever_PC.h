@@ -270,6 +270,8 @@ public:
 	BOOL QueryLightingDefectList(CString strUniqueID, std::vector<LUMITOP_SDFSDefectDataBegin>& vecDefects);
 	// 根据 UniqueID 查询 AOI 缺陷详情列表（点灯缺陷）
 	BOOL QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, sql::Connection* pConn = NULL);
+	// 线程安全的 AOI 缺陷列表查询
+	BOOL QueryAOIDefectListThreadSafe(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, sql::Connection* pConn);
 	// 根据 Barcode 查询 UniqueID
 	CString GetLightingUniqueIDByBarcode(CString strBarcode);
 

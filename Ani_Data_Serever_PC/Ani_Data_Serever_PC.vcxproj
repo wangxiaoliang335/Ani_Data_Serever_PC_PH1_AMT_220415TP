@@ -431,6 +431,7 @@
     <ClInclude Include="Thread\TpThread.h" />
     <ClInclude Include="Util\AniUtil.h" />
     <ClInclude Include="Util\btnenh.h" />
+    <ClInclude Include="Util\BtnEnhReadability.h" />
     <ClInclude Include="Util\cellsmanager.h" />
     <ClInclude Include="Util\ClrListBox.h" />
     <ClInclude Include="Util\EZIni.h" />
@@ -533,6 +534,7 @@
     <ClCompile Include="Thread\TpThread.cpp" />
     <ClCompile Include="Util\AniUtil.cpp" />
     <ClCompile Include="Util\btnenh.cpp" />
+    <ClCompile Include="Util\BtnEnhReadability.cpp" />
     <ClCompile Include="Util\cellsmanager.cpp" />
     <ClCompile Include="Util\ClrListBox.cpp" />
     <ClCompile Include="Util\EZIni.cpp" />

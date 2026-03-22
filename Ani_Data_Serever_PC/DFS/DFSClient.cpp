@@ -766,12 +766,21 @@ void CDFSClient::RunDfsUploadThread()
 					{
 						CString strUploadEQPID = CStringSupport::FormatString(_T("%s%s"), theApp.m_strEqpId, theApp.m_strEqpNum);
 
+						theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: PanelID length=%d, CheckSize=%d, Source CSV=%s"), 
+							strPanelID, strPanelID.GetLength(), DFS_CHECK_PANEL_SIZE, strSumPath);
+
 						if (strPanelID.GetLength() >= DFS_CHECK_PANEL_SIZE)
 						{
 							if (theApp.m_bDFSTestMode == TRUE)
+							{
 								strCsvFilePath = _T("D:\\TEST");
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS Test Mode: Target path = D:\\TEST"), strPanelID);
+							}
 							else
+							{
 								strCsvFilePath = _T("\\\\172.18.3.110\\module");
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS Mode: Target path = \\\\172.18.3.110\\module"), strPanelID);
+							}
 
 							SetFilePath(&strCsvFilePath, theApp.m_strEqpId);
 							SetFilePath(&strCsvFilePath, GetDateString2());
@@ -782,9 +791,11 @@ void CDFSClient::RunDfsUploadThread()
 							strImageFilePath = strCsvFilePath;
 							SetFilePath(&strImageFilePath, _T("Image"));
 							CreateFolders(strImageFilePath);
+							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Created Image folder: %s"), strPanelID, strImageFilePath);
 
 							SetFilePath(&strCsvFilePath, _T("Data"));
 							CreateFolders(strCsvFilePath);
+							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Created Data folder: %s"), strPanelID, strCsvFilePath);
 
 							if (theApp.m_bDFSTestMode == TRUE)
 								strLinkFilePath = strIndexFilePath = _T("D:\\TEST");
@@ -795,6 +806,7 @@ void CDFSClient::RunDfsUploadThread()
 							SetFilePath(&strIndexFilePath, _T("INDEX"));
 							SetFilePath(&strIndexFilePath, theApp.m_strEqpId);
 							CreateFolders(strIndexFilePath);
+							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Created INDEX folder: %s"), strPanelID, strIndexFilePath);
 
 							// Link 파일 생성
 							SetFilePath(&strLinkFilePath, _T("LINK"));
@@ -803,6 +815,7 @@ void CDFSClient::RunDfsUploadThread()
 							SetFilePath(&strLinkFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID.Left(8));
 							SetFilePath(&strLinkFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID);
 							CreateFolders(strLinkFilePath);
+							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Created LINK folder: %s"), strPanelID, strLinkFilePath);
 
 							// ProcessID는 설비별로 따로 있고 GOOD,NG 일때 또 따로 있는데 
 							// 담당자가 DFS파일 이름은 설비 ProcessID로 하라고 해서 이렇게 했음
@@ -816,8 +829,19 @@ void CDFSClient::RunDfsUploadThread()
 							strLinkFilePath = strLinkFilePath + _T("\\") + strProcessID + _T("_") + DfsInfo.m_PanelDataBegin.strPanel_ID + _T("_") + GetNowSystemTimeMillisecondsSirius() + _T(".csv");
 							strCsvFilePath = strCsvFilePath + _T("\\") + strProcessID + _T("_") + DfsInfo.m_PanelDataBegin.strPanel_ID + _T("_") + GetNowSystemTimeMillisecondsSirius() + _T(".csv");
 
-							::CopyFile(strSumPath, strLinkFilePath, FALSE);		//Link 파일 업로드
-							::MoveFile(strSumPath, strCsvFilePath);		//csv 파일 업로드
+							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Copying Link file from [%s] to [%s]"), strPanelID, strSumPath, strLinkFilePath);
+							BOOL bCopyResult = ::CopyFile(strSumPath, strLinkFilePath, FALSE);
+							if (bCopyResult)
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Link file copied successfully"), strPanelID);
+							else
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Link file copy FAILED, Error=%d"), strPanelID, GetLastError());
+
+							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Moving CSV file from [%s] to [%s]"), strPanelID, strSumPath, strCsvFilePath);
+							BOOL bMoveResult = ::MoveFile(strSumPath, strCsvFilePath);
+							if (bMoveResult)
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: CSV file moved successfully"), strPanelID);
+							else
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: CSV file move FAILED, Error=%d"), strPanelID, GetLastError());
 
 							if (theApp.m_bDFSTestMode == TRUE)
 								strCsvFilePath.Replace(_T("D:\\TEST\\"), _T("/MODULE/"));
@@ -836,19 +860,25 @@ void CDFSClient::RunDfsUploadThread()
 								strSrc = strSumImagePath + _T("\\") + DfsInfo.m_OpvDataList[Machine_ULD].at(i).strImage;
 								strDest = strImageFilePath + _T("\\") + DfsInfo.m_OpvDataList[Machine_ULD].at(i).strImage;
 
-								if (FileExists(strSrc))
-								{
-									::MoveFile(strSrc, strDest);		// 화면검사 image 업로드
-									if (theApp.m_bDFSTestMode == TRUE)
-										strDest.Replace(_T("D:\\TEST\\"), _T("/MODULE/"));
-									else
-										strDest.Replace(_T("\\\\172.18.3.110\\module"), _T("/MODULE"));
+							if (FileExists(strSrc))
+							{
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Moving Vision image from [%s] to [%s]"), strPanelID, strSrc, strDest);
+								BOOL bMoveImgResult = ::MoveFile(strSrc, strDest);		// 화면검사 image 업로드
+								if (bMoveImgResult)
+									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Vision image moved successfully"), strPanelID);
+								else
+									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Vision image move FAILED, Error=%d"), strPanelID, GetLastError());
 
-									//strDest.Replace(theApp.m_strEqpId, strUploadEQPID);
+								if (theApp.m_bDFSTestMode == TRUE)
+									strDest.Replace(_T("D:\\TEST\\"), _T("/MODULE/"));
+								else
+									strDest.Replace(_T("\\\\172.18.3.110\\module"), _T("/MODULE"));
 
-									strDest.Replace(_T("\\"), _T("/"));
-									m_vecIndexValue.push_back(strDest);
-								}
+								//strDest.Replace(theApp.m_strEqpId, strUploadEQPID);
+
+								strDest.Replace(_T("\\"), _T("/"));
+								m_vecIndexValue.push_back(strDest);
+							}
 								else
 									theApp.m_pFTPLog->LOG_INFO2(_T("Vision Not exist image file"));
 							}
@@ -865,8 +895,12 @@ void CDFSClient::RunDfsUploadThread()
 							if (FileExists(strSrc))
 							{
 								//::CopyFile(strSrc, strDest, FALSE);		// 전체 image 업로드
-								::MoveFile(strSrc, strDest2);		// 전체 image 업로드
-								
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Moving Layout image from [%s] to [%s]"), strPanelID, strSrc, strDest2);
+								BOOL bLayoutMoveResult = ::MoveFile(strSrc, strDest2);		// 전체 image 업로드
+								if (bLayoutMoveResult)
+									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Layout image moved successfully"), strPanelID);
+								else
+									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Layout image move FAILED, Error=%d"), strPanelID, GetLastError());
 
 								strSrc = strSumImagePath;
 								//strDest = strImageFilePath;
@@ -883,12 +917,20 @@ void CDFSClient::RunDfsUploadThread()
 								m_vecIndexValue.push_back(strDest2);
 							}
 							else
-								theApp.m_pFTPLog->LOG_INFO2(_T("Not exist image file"));
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Layout source image not found [%s]"), strPanelID, strSrc);
 
+							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Creating Index file"), strPanelID);
 							DfsIDXFileCreate(strUploadEQPID, &strIndexFile);
 							strDest = strIndexFilePath + _T("\\") + GetDateString2() + _T("_") + strUploadEQPID + _T(".csv");
 
-							::CopyFile(strIndexFile, strDest, FALSE);			//index 파일 업로드
+							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Copying Index file from [%s] to [%s]"), strPanelID, strIndexFile, strDest);
+							BOOL bIndexCopyResult = ::CopyFile(strIndexFile, strDest, FALSE);			//index 파일 업로드
+							if (bIndexCopyResult)
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Index file copied successfully"), strPanelID);
+							else
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Index file copy FAILED, Error=%d"), strPanelID, GetLastError());
+
+							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: All files processed successfully"), strPanelID);
 						}
 						else
 						{

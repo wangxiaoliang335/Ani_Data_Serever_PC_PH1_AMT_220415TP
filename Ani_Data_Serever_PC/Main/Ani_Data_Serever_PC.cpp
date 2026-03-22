@@ -4469,6 +4469,11 @@ void CAni_Data_Serever_PCApp::LoadRank()
 	}
 
 	theApp.m_iNumberSendToPlc = ini[_T("SYSTEM")][_T("PlcSendNumber")];
+	if (theApp.m_pLightingLog != NULL)
+	{
+		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+			_T("[CFG] PlcSendNumber=%d (from SetRank.ini)"), theApp.m_iNumberSendToPlc));
+	}
 }
 
 void CAni_Data_Serever_PCApp::PGDfsInfoSave(PGDfsList PgList)
@@ -4735,6 +4740,79 @@ void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4], sql::Con
 
 				// 写入检测结果到 PLC
 				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_PreGammaResult1 + slotIdx, &plcResult);
+
+				// ========== 查询缺陷详情并写入 PLC 缺陷代码/等级 ==========
+				// 参考老代码 AOI 流程：在 DFSDataStart 中调用 SendPlcDefectCode 写入缺陷代码
+				// Lighting 也需要同样处理：查询 IVS_LCD_AOIDefect 表，提取 Code 和 Grade 写入 PLC
+				std::vector<SDFSDefectDataBegin> vecAOIDefects;
+				if (QueryAOIDefectListThreadSafe(uniqueID, vecAOIDefects, pLightingConn))
+				{
+					// DBG: 检查查询结果
+					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[DBG] QueryAOIDefectList returned TRUE, vecAOIDefects.size()=%d"), vecAOIDefects.size()));
+
+					// 从缺陷列表中提取第一个缺陷的 Code 和 Grade
+					// 参考老代码 SendPlcDefectCode：strCode 最多取 m_iNumberSendToPlc 个
+					CString strCode = _T("");
+					CString strGrade = _T("");
+					int iCount = 0;
+
+					for (size_t i = 0; i < vecAOIDefects.size(); i++)
+					{
+						// PlcSendNumber>0 时最多拼接 m_iNumberSendToPlc 条；为 0 或未配置时
+						// 不按「0>=0 立刻 break」漏写 PLC（与老 AOI while 在 PlcSendNumber=0 时
+						// 不读库不同，点灯检此处已查到 vecAOIDefects，应写入实际 Code/Grade）
+						if (theApp.m_iNumberSendToPlc > 0 && iCount >= theApp.m_iNumberSendToPlc)
+							break;
+
+						if (!vecAOIDefects[i].strDEFECT_CODE.IsEmpty())
+						{
+							if (iCount == 0)
+								strGrade = vecAOIDefects[i].strDEFECT_GRADE;
+
+							strCode.Append(vecAOIDefects[i].strDEFECT_CODE);
+							iCount++;
+
+							theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+								_T("[DBG] DefectCode append: i=%d, strDEFECT_CODE=%s, strDEFECT_GRADE=%s, strCode=%s, strGrade=%s"),
+								i, vecAOIDefects[i].strDEFECT_CODE, vecAOIDefects[i].strDEFECT_GRADE, strCode, strGrade));
+						}
+					}
+
+					// 写入 PLC 缺陷代码和等级
+					DefectCodeRank pDefectCodeRank;
+					DefectGradeRank pDefectGradeRank;
+
+					memset(pDefectCodeRank.m_DefectCode, 0x20, sizeof(pDefectCodeRank.m_DefectCode));
+					CStringSupport::ToAString(strCode, pDefectCodeRank.m_DefectCode, sizeof(pDefectCodeRank.m_DefectCode));
+					CStringSupport::ToAString(strGrade, pDefectGradeRank.m_DefectGrade, sizeof(pDefectGradeRank.m_DefectGrade));
+
+					theApp.m_pEqIf->m_pMNetH->SetDefectRankData(eWordType_DefectCodeResult1 + slotIdx, &pDefectCodeRank);
+					theApp.m_pEqIf->m_pMNetH->SetDefectGradeRankData(eWordType_DefectGradeResult1 + slotIdx, &pDefectGradeRank);
+					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_DefectCodeEnd1 + slotIdx, OffSet_0, TRUE);
+
+					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[Lighting] Write PLC DefectCode OK: Slot=%d, FixtureNo=%d, DefectCount=%d, Code=%s, Grade=%s"),
+						slotIdx, fixtureNo, vecAOIDefects.size(), strCode, strGrade));
+				}
+				else
+				{
+					// 没有缺陷（良品），也写入空的缺陷代码，Grade 写 OK（G）
+					DefectCodeRank pDefectCodeRank;
+					DefectGradeRank pDefectGradeRank;
+
+					memset(pDefectCodeRank.m_DefectCode, 0x20, sizeof(pDefectCodeRank.m_DefectCode));
+					// 参考老代码 SendPlcDefectCode：良品时用 m_strOkGrade（如 "G"）
+					CStringSupport::ToAString(theApp.m_strOkGrade, pDefectGradeRank.m_DefectGrade, sizeof(pDefectGradeRank.m_DefectGrade));
+
+					theApp.m_pEqIf->m_pMNetH->SetDefectRankData(eWordType_DefectCodeResult1 + slotIdx, &pDefectCodeRank);
+					theApp.m_pEqIf->m_pMNetH->SetDefectGradeRankData(eWordType_DefectGradeResult1 + slotIdx, &pDefectGradeRank);
+					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_DefectCodeEnd1 + slotIdx, OffSet_0, TRUE);
+
+					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[Lighting] Write PLC DefectCode OK (No defects): Slot=%d, FixtureNo=%d, Grade=%s"),
+						slotIdx, fixtureNo, theApp.m_strOkGrade));
+				}
 
 				// ========== DFS 数据整合与上传 ==========
 				DfsDataValue dfsData;
@@ -5765,6 +5843,12 @@ BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vecto
 	}
 
 	return FALSE;
+}
+
+// 线程安全的 AOI 缺陷列表查询（包装 QueryAOIDefectList）
+BOOL CAni_Data_Serever_PCApp::QueryAOIDefectListThreadSafe(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, sql::Connection* pConn)
+{
+	return QueryAOIDefectList(strUniqueID, vecDefects, pConn);
 }
 
 // DFS 模块调用：根据 Barcode 查询 UniqueID

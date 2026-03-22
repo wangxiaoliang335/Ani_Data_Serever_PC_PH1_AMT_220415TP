@@ -370,10 +370,11 @@ long MNetH::ReadLB(unsigned short nAddr, unsigned short nPoints, unsigned short 
 
 #ifdef _USE_MELSEC_
 	nRet = mdRandR(m_lPath, m_nStation, nDev, pnBuf, nBufSize);
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::ReadLB] Dev=B addr=0x%03X pts=%d ret=%d"), nAddr, nPoints, nRet);
 #endif
 	MLS_CS_MELSEC_UNLOCK;
 
-	for(i=0; i<nCount; i++) 
+	for(i=0; i<nCount; i++)
 	{
 		pnRBuf[i] = (pnBuf[nIndex] & nDigit) ? 1 : 0;
 
@@ -465,6 +466,7 @@ long MNetH::ReadLW(unsigned short nAddr, unsigned short nPoints, unsigned short 
 	
 #ifdef _USE_MELSEC_
 	nRet = mdRandR(m_lPath, m_nStation, nDev, pnRBuf, nBufSize);
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::ReadLW] Dev=W addr=0x%03X pts=%d ret=%d"), nAddr, nPoints, nRet);
 #endif
 	MLS_CS_MELSEC_UNLOCK;
 	return nRet;
@@ -510,6 +512,8 @@ long MNetH::ReadLWEx(long lAddr, long m_lNetwork, long m_lStation, long lPoints,
 		lRet = mdRandREx(m_lPath, 0, 255, lDev, pnRBuf, nBufSize);
 	else
 		lRet = mdRandREx(m_lPath, m_lNetwork, m_lStation, lDev, pnRBuf, nBufSize);
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::ReadLWEx] Dev=W addr=0x%05X net=%d stn=%d pts=%d ret=%d"),
+		lAddr, m_lNetwork, m_lStation, lPoints, lRet);
 #endif
 
 	//>>151207 JSLee
@@ -554,6 +558,8 @@ long MNetH::ReadZREx(long lAddr, long m_lNetwork, long m_lStation, long lPoints,
 
 #ifdef _USE_MELSEC_
 	lRet = mdRandREx(m_lPath, m_lNetwork, m_lStation, lDev, pnRBuf, nBufSize);
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::ReadZREx] Dev=ZR addr=0x%06X net=%d stn=%d pts=%d ret=%d"),
+		lAddr, m_lNetwork, m_lStation, lPoints, lRet);
 #endif
 
 	return lRet;
@@ -703,6 +709,7 @@ long MNetH::WriteLB(unsigned short nAddr, unsigned short nPoints, unsigned short
 
 #ifdef _USE_MELSEC_
 	nRet = mdRandW(m_lPath, m_nStation, nDev, pnBuf, nBufSize);
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::WriteLB] Dev=B addr=0x%03X pts=%d ret=%d"), nAddr, nPoints, nRet);
 #endif
 	MLS_CS_MELSEC_UNLOCK;
 
@@ -738,6 +745,7 @@ long MNetH::WriteLW(unsigned short nAddr, unsigned short nPoints, unsigned short
 
 #ifdef _USE_MELSEC_
 	nRet = mdRandW(m_lPath, m_nStation, nDev, pnWBuf, nBufSize);
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::WriteLW] Dev=W addr=0x%03X pts=%d ret=%d"), nAddr, nPoints, nRet);
 #endif
 	MLS_CS_MELSEC_UNLOCK;
 
@@ -763,6 +771,7 @@ long MNetH::TrayWriteLW(unsigned short nAddr,unsigned short nPoints,unsigned sho
 	MLS_CS_MELSEC_LOCK;
 #ifdef _USE_MELSEC_
 	nRet = mdRandW(m_lPath, m_nStation, nDev, pnWBuf, nBufSize);
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::TrayWriteLW] Dev=W addr=0x%03X pts=%d ret=%d"), nAddr, nPoints, nRet);
 #endif
 	MLS_CS_MELSEC_UNLOCK;
 	
@@ -794,6 +803,8 @@ long MNetH::WriteLWEx(long lAddr, long m_lNetwork, long m_lStation, long lPoints
 		lRet = mdRandWEx(m_lPath, 0, 255, lDev, nRBuf, NULL);
 	else
 		lRet = mdRandWEx(m_lPath, m_lNetwork, m_lStation, lDev, nRBuf, NULL);
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::WriteLWEx] Dev=W addr=0x%05X net=%d stn=%d pts=%d ret=%d"),
+		lAddr, m_lNetwork, m_lStation, lPoints, lRet);
 #endif
 //	lRet = mdRandREx(m_lPath,m_lNetwork,m_lStation,lDev,pnRBuf,nBufSize);
 //	lRet = mdRandWEx(m_lPath,m_lNetwork, m_nStation, lDev, nRBuf, nBufSize);
@@ -825,6 +836,8 @@ long MNetH::WriteZREx(long lAddr, long m_lNetwork, long m_lStation, long lPoints
 
 #ifdef _USE_MELSEC_
 	lRet = mdRandWEx(m_lPath, m_lNetwork, m_nStation, lDev, nRBuf, NULL);     //>>130830.kty
+	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::WriteZREx] Dev=ZR addr=0x%06X net=%d stn=%d pts=%d ret=%d"),
+		lAddr, m_lNetwork, m_nStation, lPoints, lRet);
 #endif
 	MLS_CS_MELSEC_UNLOCK;
 

@@ -5,13 +5,33 @@
 #include "Ani_Data_Serever_PC.h"
 #include "ViewCtrl.h"
 #include "MainFrm.h"
-
+#include "BtnEnhReadability.h"
+#include "resource.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
 #endif
+
+namespace {
+
+static const UINT s_bottomBarBtnEnhIds[] = {
+	IDC_LABEL_TITLE,
+	IDC_MAINVIEW_BTN, IDC_ADDRVIEW_BTN, IDC_COMVIEW_BTN, IDC_UNLOADERVIEW_BTN,
+	IDC_END_BTN, IDC_PG_PASS, IDC_ANGLE_PASS, IDC_TP_PASS, IDC_AOI_PASS,
+	IDC_OP_PASS, IDC_PANEL_TEST, IDC_BC_PASS, IDC_DFS_PASS, IDC_LUMITOP_PASS,
+};
+
+static void ApplyMainBottomBarReadability(CWnd* pBar)
+{
+	if (!pBar)
+		return;
+	for (UINT id : s_bottomBarBtnEnhIds)
+		ApplyBtnEnhReadabilityById(pBar, id);
+}
+
+} // namespace
 
 /////////////////////////////////////////////////////////////////////////////
 // CViewCtrl dialog
@@ -86,6 +106,10 @@ BOOL CViewCtrl::OnInitDialogBar()
 	GetDlgItem(IDC_BC_PASS)->ShowWindow(SW_HIDE);
 	GetDlgItem(IDC_DFS_PASS)->ShowWindow(SW_HIDE);
 	GetDlgItem(IDC_LUMITOP_PASS)->ShowWindow(SW_HIDE);
+
+	// After SetValue / ShowWindow — OCX may reset theme; re-apply readable flat style
+	ApplyMainBottomBarReadability(this);
+
 	return TRUE;  // return TRUE unless you set the focus to a control
 	// EXCEPTION: OCX Property Pages should return FALSE
 }
@@ -174,6 +198,9 @@ void CViewCtrl::ClickBottomBtn()
 	pMainFrame->SwitchingView(nViewID);
 	m_iOldViewCtrl = nBtnID;
 	m_bClickBtn = false;
+
+	// SetValue on bottom bar toggles can restore default black gradient
+	ApplyMainBottomBarReadability(this);
 }
 
 void CViewCtrl::ClickTestOn()

@@ -1,6 +1,6 @@
 //{{NO_DEPENDENCIES}}
-// Microsoft Visual C++俊辑 积己茄 器窃 颇老涝聪促.
-// Ani_Data_Serever_PC.rc俊辑 荤侩登绊 乐嚼聪促.
+// Microsoft Visual C++ 生成的包含文件。
+// 供 Ani_Data_Serever_PC.rc 使用
 //
 #define IDOK                            1
 #define IDC_BUTTON_APPLY                6

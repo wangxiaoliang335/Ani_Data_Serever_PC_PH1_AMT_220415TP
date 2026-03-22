@@ -1,4 +1,4 @@
-// DlgTimeInspect.cpp : 구현 파일입니다.
+// DlgTimeInspect.cpp : ???? ????????.
 //
 
 #include "stdafx.h"
@@ -7,9 +7,10 @@
 #include "Ani_Data_Serever_PC.h"
 #include "DlgTimeInspect.h"
 #include "afxdialogex.h"
+#include "BtnEnhReadability.h"
 
 
-// CDlgTimeInspect 대화 상자입니다.
+// CDlgTimeInspect ??? ????????.
 
 IMPLEMENT_DYNAMIC(CDlgTimeInspect, CDialog)
 
@@ -187,7 +188,7 @@ BEGIN_MESSAGE_MAP(CDlgTimeInspect, CDialog)
 END_MESSAGE_MAP()
 
 
-// CDlgTimeInspect 메시지 처리기입니다.
+// CDlgTimeInspect ????? ?????????.
 
 BOOL CDlgTimeInspect::OnInitDialog()
 {
@@ -197,10 +198,12 @@ BOOL CDlgTimeInspect::OnInitDialog()
 	CBtnEnh *pBtnEnh = (CBtnEnh*)GetDlgItem(IDB_BTN_DY);
 	pBtnEnh->SetValue(TRUE);
 
-	// TODO:  여기에 추가 초기화 작업을 추가합니다.
+	ApplyBtnEnhReadabilitySubtree(this);
+
+	// TODO:  ???? ??? ???? ????? ???????.
 	SetTimer(TMR_MAIN_INSPECT_INFO, 1000, NULL);
 	return TRUE;  // return TRUE unless you set the focus to a control
-	// 예외: OCX 속성 페이지는 FALSE를 반환해야 합니다.
+	// ????: OCX ??? ???????? FALSE?? ?????? ????.
 }
 
 BOOL CDlgTimeInspect::PreTranslateMessage(MSG* pMsg)
@@ -218,7 +221,7 @@ void CDlgTimeInspect::OnTimer(UINT_PTR nIDEvent)
 	if (this->IsWindowVisible() == FALSE)
 		return;
 
-	// TODO: 여기에 메시지 처리기 코드를 추가 및/또는 기본값을 호출합니다.
+	// TODO: ???? ????? ????? ??? ??? ??/??? ?????? ???????.
 	if (nIDEvent == TMR_MAIN_INSPECT_INFO)
 	{
 		UpdateDisplay(m_iSelectShift);
@@ -356,24 +359,24 @@ END_EVENTSINK_MAP()
 
 void CDlgTimeInspect::ClickBtnDy()
 {
-	// TODO: 여기에 메시지 처리기 코드를 추가합니다.
+	// TODO: ???? ????? ????? ??? ???????.
 	m_iSelectShift = Shift_DY;
 	UpdateDisplay(m_iSelectShift);
 }
 
 void CDlgTimeInspect::ClickBtnNt()
 {
-	// TODO: 여기에 메시지 처리기 코드를 추가합니다.
+	// TODO: ???? ????? ????? ??? ???????.
 	m_iSelectShift = Shift_NT;
 	UpdateDisplay(m_iSelectShift);
 }
 
 void CDlgTimeInspect::ClickDyDataReset()
 {
-	// TODO: 여기에 메시지 처리기 코드를 추가합니다.
+	// TODO: ???? ????? ????? ??? ???????.
 	if (theApp.m_iUserClass != USER_MAKER)
 	{
-		theApp.getMsgBox(MS_OK, _T("관리자만 이용 가능합니다."), _T("Maker is USE"), _T("Maker is USE"));
+		theApp.getMsgBox(MS_OK, _T("??????? ??? ????????."), _T("Maker is USE"), _T("Maker is USE"));
 		return;
 	}
 	else

@@ -180,20 +180,21 @@ void CPlcThread::ThreadRun()
 				theApp.m_mapOpvDefectList[theApp.m_lastShiftIndex].clear();
 				theApp.m_VecDefectHistory[theApp.m_lastShiftIndex].clear();
 #endif
-				if (m_bFirstCheck == TRUE)
-				{
-					m_bFirstCheck = FALSE;
-					theApp.GetAlarmCount();
-					theApp.TotalTactTimeLoad();
-					theApp.IDCardReaderLoad();
-					theApp.PmModeIDCardReaderLoad();
+			if (m_bFirstCheck == TRUE)
+			{
+				m_bFirstCheck = FALSE;
+				theApp.GetAlarmCount();
+				theApp.TotalTactTimeLoad();
+				theApp.IDCardReaderLoad();
+				theApp.PmModeIDCardReaderLoad();
 #if _SYSTEM_AMTAFT_
-					theApp.LoadRank();
-					theApp.OpvLoadTitleName();
-					theApp.DefectCodeListLoad();
+				theApp.LoadRank();
+				theApp.OpvLoadTitleName();
+				theApp.DefectCodeListLoad();
 #endif
-
-					for (int jj = 0; jj < eNumShift; jj++)
+				for (int jj = 0; jj < eNumShift; jj++)
+				{
+					if (theApp.m_PlcConectStatus)
 					{
 #if _SYSTEM_AMTAFT_
 						for (int ii = 0; ii < MaxZone; ii++)
@@ -234,30 +235,31 @@ void CPlcThread::ThreadRun()
 						theApp.ULDAlignDataLoad(jj);
 						theApp.ContactDataLoad(jj);
 						theApp.TpDataLoad(jj);
-						theApp.PreGammaDataLoad(jj);
-						theApp.SetLoadHistoryCode(jj);
-						theApp.SetLoadRankCode(jj);
-
-						theApp.m_SumDefectCountData[jj].Reset();
-						//theApp.OpvDefectHistoryLosd();
-						theApp.OpvDefectPanelHistoryLosd();
-						theApp.OpvDefectSumCount();
-#else
-						theApp.InspectionDataLoad(jj);
-						theApp.InspectionTimeDataLoad(jj);
-
-						theApp.ContactDataLoad(jj);
-						theApp.AlignDataLoad(jj);
-						theApp.MtpDataLoad(jj);
-#endif
+					theApp.PreGammaDataLoad(jj);
 					}
-#if _SYSTEM_AMTAFT_
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionSameDefectAlarmStart, OffSet_0, FALSE);
+					theApp.SetLoadHistoryCode(jj);
+					theApp.SetLoadRankCode(jj);
+
+					theApp.m_SumDefectCountData[jj].Reset();
+					//theApp.OpvDefectHistoryLosd();
+					theApp.OpvDefectPanelHistoryLosd();
+					theApp.OpvDefectSumCount();
+#else
+					theApp.InspectionDataLoad(jj);
+					theApp.InspectionTimeDataLoad(jj);
+
+					theApp.ContactDataLoad(jj);
+					theApp.AlignDataLoad(jj);
+					theApp.MtpDataLoad(jj);
 #endif
 				}
-				else
+				if (!theApp.m_PlcConectStatus)
 					DefectRankClear();
 			}
+#if _SYSTEM_AMTAFT_
+			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionSameDefectAlarmStart, OffSet_0, FALSE);
+#endif
+		}
 
 			m_bStartFlag = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_ModelStart, OffSet_0);
 
