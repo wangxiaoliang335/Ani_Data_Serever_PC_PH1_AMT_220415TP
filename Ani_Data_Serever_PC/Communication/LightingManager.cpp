@@ -26,17 +26,14 @@ CLightingManager::CLightingManager()
 	, m_pHandler(nullptr)
 	, m_hAutoTestTimer(NULL)
 	, m_hAutoTestStopEvent(NULL)
-	, m_pLightingConn(NULL)
-	, m_bLightingDBConnected(FALSE)
 {
-	// 不在构造函数中初始化数据库连接，延迟到第一次使用时初始化
+	// 数据库连接已改为 TLS 方式，每个线程自动拥有独立连接
 }
 
 CLightingManager::~CLightingManager()
 {
 	Close();
-	// 关闭 Lighting 线程专用的数据库连接
-	CloseLightingDatabase();
+	// 数据库连接已改为 TLS 方式，线程结束时自动释放
 }
 
 bool CLightingManager::ConnectToLighting(const CString& ip, const CString& port)
@@ -60,13 +57,17 @@ bool CLightingManager::ConnectToLighting(const CString& ip, const CString& port)
 	if (!WatchComm())
 	{
 		m_bConnected = FALSE;
+		theApp.m_LightingConectStatus = FALSE;
 		CloseComm();
 		return false;
 	}
 
+	// TCP Client 模式不会触发 OnEvent，连接成功后手动设置状态
+	m_bConnected = TRUE;
+	theApp.m_LightingConectStatus = TRUE;
+
 	if (_ttoi(theApp.m_strLightingAutoTest) != 0)
 	{
-		m_bConnected = TRUE;
 		// 启动自动测试定时器
 		StartAutoTestTimer(10000);
 	}
@@ -84,8 +85,8 @@ void CLightingManager::Close()
 	StopComm();
 	CloseComm();
 	m_bConnected = FALSE;
-	// 关闭数据库连接
-	CloseLightingDatabase();
+	theApp.m_LightingConectStatus = FALSE;
+	// 数据库连接已改为 TLS 方式
 }
 
 BOOL CLightingManager::getConectCheck()
@@ -203,8 +204,12 @@ void CLightingManager::OnEvent(UINT uEvent, LPVOID /*lpvData*/)
 		theApp.m_LightingConectStatus = FALSE;
 		LightingDbgPrint(_T("[Lighting] Connection lost!\n"));
 		theApp.m_pLightingLog->LOG_INFO(_T("Connection lost"));
-		// 连接断开时停止定时器
-		StopAutoTestTimer();
+		// 连接断开时停止定时器并关闭连接，防止重复触发
+		if (_ttoi(theApp.m_strLightingAutoTest) != 0)
+		{
+			StopAutoTestTimer();
+		}
+		StopComm();
 		break;
 	default:
 		break;
@@ -308,113 +313,10 @@ void CLightingManager::HandleFNResult(const CString& payload)
 		return;
 	}
 
-	// 延迟初始化数据库连接（确保主程序已完成初始化）
-	InitLightingDatabase();
-
-	// 将 Lighting 线程专用的数据库连接传递给回调
-	m_pHandler->OnLightingResult(resultCode, m_pLightingConn);
+	// 通过 TLS 获取数据库连接（每个线程自动拥有独立连接）
+	// 回调中使用 GetTlsLightingConnPtr() 获取
+	m_pHandler->OnLightingResult(resultCode);
 }
-
-BOOL CLightingManager::InitLightingDatabase()
-{
-	if (m_bLightingDBConnected && m_pLightingConn != NULL)
-		return TRUE;
-
-	// 先关闭旧连接（如果有）
-	if (m_pLightingConn != NULL)
-	{
-		try {
-			delete m_pLightingConn;
-		}
-		catch (...) {
-		}
-		m_pLightingConn = NULL;
-		m_bLightingDBConnected = FALSE;
-	}
-
-	// 从配置文件读取数据库连接信息（如果主程序还未读取）
-	if (theApp.m_strLightingDBServer.IsEmpty())
-	{
-		EZIni ini(_T("D:\\ANI\\DataServer\\Data\\System\\sysData.ini"));
-		CString sTemp;
-		theApp.m_strLightingDBServer = ini[_T("DATABASE")][_T("HOST")]; sTemp = _T("127.0.0.1"); theApp.m_strLightingDBServer = (theApp.m_strLightingDBServer.IsEmpty()) ? sTemp : theApp.m_strLightingDBServer;
-		theApp.m_strLightingDBName = ini[_T("DATABASE")][_T("NAME")]; sTemp = _T("IVS_LCD"); theApp.m_strLightingDBName = (theApp.m_strLightingDBName.IsEmpty()) ? sTemp : theApp.m_strLightingDBName;
-		theApp.m_strLightingDBUser = ini[_T("DATABASE")][_T("USER")]; sTemp = _T("root"); theApp.m_strLightingDBUser = (theApp.m_strLightingDBUser.IsEmpty()) ? sTemp : theApp.m_strLightingDBUser;
-		theApp.m_strLightingDBPassword = ini[_T("DATABASE")][_T("PASSWORD")]; sTemp = _T("password"); theApp.m_strLightingDBPassword = (theApp.m_strLightingDBPassword.IsEmpty()) ? sTemp : theApp.m_strLightingDBPassword;
-	}
-
-	try {
-		sql::Driver* driver = get_driver_instance();
-		if (!driver) {
-			LightingDbgPrint(_T("[Lighting] Failed to get MySQL driver\n"));
-			theApp.m_pLightingLog->LOG_INFO(_T("Failed to get MySQL driver"));
-			return FALSE;
-		}
-
-		CString strUrl;
-		strUrl.Format(_T("tcp://%s:3306"), theApp.m_strLightingDBServer);
-
-		sql::SQLString sql_str1((std::string)CT2A(strUrl));
-		sql::SQLString sql_user((std::string)CT2A(theApp.m_strLightingDBUser));
-		sql::SQLString sql_password((std::string)CT2A(theApp.m_strLightingDBPassword));
-
-		CString dbgMsg;
-		dbgMsg.Format(_T("[Lighting] Connecting to database: %s, User: %s"), strUrl, theApp.m_strLightingDBUser);
-		LightingDbgPrint(dbgMsg + _T("\n"));
-		theApp.m_pLightingLog->LOG_INFO(dbgMsg);
-
-		m_pLightingConn = driver->connect(sql_str1, sql_user, sql_password);
-		if (!m_pLightingConn) {
-			LightingDbgPrint(_T("[Lighting] Failed to connect to MySQL database\n"));
-			theApp.m_pLightingLog->LOG_INFO(_T("Failed to connect to MySQL database"));
-			return FALSE;
-		}
-
-		// 设置连接选项
-		m_pLightingConn->setClientOption("optReadTimeout", "30");
-		m_pLightingConn->setClientOption("optWriteTimeout", "30");
-		m_pLightingConn->setClientOption("optConnectTimeout", "10");
-		m_pLightingConn->setClientOption("characterSetResults", "utf8mb4");
-
-		m_pLightingConn->setSchema((std::string)CT2A(theApp.m_strLightingDBName));
-
-		m_bLightingDBConnected = TRUE;
-		LightingDbgPrint(_T("[Lighting] Database connected successfully\n"));
-		theApp.m_pLightingLog->LOG_INFO(_T("Database connected successfully"));
-		return TRUE;
-	}
-	catch (sql::SQLException& e) {
-		CString strMsg;
-		strMsg.Format(_T("[Lighting] Database connection failed: %s, errCode=%d"),
-			CString(e.what()), e.getErrorCode());
-		LightingDbgPrint(strMsg + _T("\n"));
-		theApp.m_pLightingLog->LOG_INFO(strMsg);
-		return FALSE;
-	}
-}
-
-void CLightingManager::CloseLightingDatabase()
-{
-	if (m_pLightingConn != NULL)
-	{
-		try {
-			m_pLightingConn->close();
-		}
-		catch (...) {
-		}
-		try {
-			delete m_pLightingConn;
-		}
-		catch (...) {
-		}
-		m_pLightingConn = NULL;
-		m_bLightingDBConnected = FALSE;
-		LightingDbgPrint(_T("[Lighting] Database connection closed\n"));
-		theApp.m_pLightingLog->LOG_INFO(_T("Database connection closed"));
-	}
-}
-
-#endif // _SYSTEM_AMTAFT_
 
 //==============================================================================
 // 自动发送 Start 命令的定时器实现
@@ -525,3 +427,5 @@ DWORD WINAPI CLightingManager::AutoTestTimerThread(LPVOID lpParam)
 
 	return 0;
 }
+
+#endif // _SYSTEM_AMTAFT_

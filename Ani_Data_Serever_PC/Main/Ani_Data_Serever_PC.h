@@ -25,6 +25,7 @@
 #include "DFS/DFSInfo.h"  // 包含完整的 DFSInfo 定义，包括 SDFSDefectDataBegin 和 LUMITOP_SDFSDefectDataBegin
 #include "DFSClient.h"
 #include "FTPClient.h"
+#include "TLSConnection.h"
 #include "AllPassModeThread.h"
 #include "TpThread.h"
 #include "SerialCom.h"
@@ -237,7 +238,7 @@ public:
 	
 	virtual void OnLightingRunning() override;
 	virtual void OnLightingSnapFN() override;
-	virtual void OnLightingResult(const int resultCode[4], sql::Connection* pLightingConn = NULL) override;
+	virtual void OnLightingResult(const int resultCode[4]) override;
 
 	// Lighting ID 映射和结果更新(MySQL 待实现)
 	BOOL UpdateLightingIdMap(int fixtureNo, CString uniqueID, CString screenID, CString markID);

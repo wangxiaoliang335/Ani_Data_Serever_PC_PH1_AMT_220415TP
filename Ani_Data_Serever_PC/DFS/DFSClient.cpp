@@ -4,6 +4,9 @@
 
 #include "stdafx.h"
 
+#include <Shlwapi.h>
+#pragma comment(lib, "Shlwapi.lib")
+
 #include "DFSClient.h"
 #include "DfsInfo.h"
 #include "DFSInfo.h"
@@ -606,7 +609,7 @@ void CDFSClient::RunDfsUploadThread()
 				OpvInfo.Clear();
 				m_vecIndexValue.clear();
 				DfsInfo.m_OpvDataList[Machine_ULD].clear();
-			
+
 				dfsData = m_DfsUploadtransferFileList.front();
 				strPanelID = dfsData.m_PanelID;
 				strFpcID = dfsData.m_FpcID;
@@ -673,278 +676,333 @@ void CDFSClient::RunDfsUploadThread()
 							sql::Connection* pDfsConn = theApp.GetDfsLightingConnection();
 							if (theApp.QueryAOIDefectList(strUniqueID, vecAOIDefects, pDfsConn))
 							{
+								theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+									_T("DFS: QueryAOIDefectList found %d defects for UniqueID=%s, PanelID=%s"),
+									vecAOIDefects.size(), strUniqueID, strPanelID));
+
 								// 将缺陷详情添加到 DfsInfo（点灯缺陷填充到 m_DefectDataList）
 								for (size_t i = 0; i < vecAOIDefects.size(); i++)
 								{
 									DfsInfo.m_DefectDataList.push_back(vecAOIDefects[i]);
+
+									// 拷贝缺陷图像（从 ivs_lcd_aoiresult.ImagePath 绝对路径到 DFS AOI\Image 目录）
+									CString strImgPath = vecAOIDefects[i].strIMAGE_DATA;
+									theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+										_T("DFS: [Defect %d] ImagePath=[%s], Code=%s, Grade=%s"),
+										i, strImgPath, vecAOIDefects[i].strDEFECT_CODE, vecAOIDefects[i].strDEFECT_GRADE));
+
+									if (!strImgPath.IsEmpty())
+									{
+										// 检查源文件是否存在
+										if (PathFileExists(strImgPath))
+										{
+											// 构造目标路径：PanelID_DefectIndex.扩展名
+											CString strExt = PathFindExtension(strImgPath);
+											if (strExt.IsEmpty())
+												strExt = _T(".jpg");
+											CString strDestFile = strAoiImagePath + _T("\\") + strPanelID + _T("_") + vecAOIDefects[i].strDEFECT_DATA_NUM + strExt;
+
+											if (CopyFile(strImgPath, strDestFile, FALSE))
+											{
+												theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+													_T("DFS: Copied defect image [%s] -> %s"), strImgPath, strDestFile));
+											}
+											else
+											{
+												theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+													_T("DFS: Failed to copy defect image [%s] -> %s"), strImgPath, strDestFile));
+											}
+										}
+										else
+										{
+											theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+												_T("DFS: Defect image not found [%s]"), strImgPath));
+										}
+									}
+									else
+									{
+										theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+											_T("DFS: [Defect %d] ImagePath is EMPTY, skipping copy"), i));
+									}
+									theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+										_T("DFS: Loaded %d lighting defects from MySQL for PanelID=%s"),
+										vecAOIDefects.size(), strPanelID));
 								}
-								theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
-									_T("DFS: Loaded %d lighting defects from MySQL for PanelID=%s"),
-									vecAOIDefects.size(), strPanelID));
-							}
-						}
-					}
-					else
-					{
-						theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
-							_T("DFS: No lighting result found in MySQL for PanelID=%s"), strPanelID));
-					}
-
-					if (_ttoi(result.m_ChNum) > 2)
-					{
-						if (result.m_ChNum == _T("3"))
-							result.m_ChNum = _T("1");
-						else
-							result.m_ChNum = _T("2");
-					}
-					
-					/*
-					DfsInfo.m_EQPDataInfo.strRecipe_No = dfsData.m_ModelID;
-					DfsInfo.m_EQPDataInfo.strLoad_Stage_No = result.m_ChNum;
-					DfsInfo.m_EQPDataInfo.strUnload_Stage_No = CStringSupport::FormatString(_T("%d"), dfsData.m_StageNum);
-					DfsInfo.m_EQPDataInfo.strStart_Time = dfsData.m_StartTime;
-					DfsInfo.m_EQPDataInfo.strEnd_Time = dfsData.m_EndTime;
-					DfsInfo.m_EQPDataInfo.strPre_Gamma_Time = dfsData.m_PreGammaTime;
-					DfsInfo.m_EQPDataInfo.strTP_Time = dfsData.m_TpTime;
-					DfsInfo.m_EQPDataInfo.strTact_Time = dfsData.m_TactTime;
-					DfsInfo.m_EQPDataInfo.strContact = dfsData.m_Contact;
-					DfsInfo.m_EQPDataInfo.strPreGamma= dfsData.m_PreGamma;
-					DfsInfo.m_EQPDataInfo.strAOIInpsect = dfsData.m_AOIInpsect;
-					DfsInfo.m_EQPDataInfo.strTpResult = dfsData.m_TpResult2;
-					DfsInfo.m_EQPDataInfo.strLumitop =  dfsData.m_Lumitop;
-					DfsInfo.m_EQPDataInfo.strmura =  dfsData.m_mura;
-					*/
-
-					//DfsInfo.m_EQPDataInfo.strAOI_RECIPE_NAME = dfsData.m_ModelID;
-					//DfsInfo.m_EQPDataInfo.strPG_RECIPE_NAME = result.m_ChNum;
-					//DfsInfo.m_EQPDataInfo.strTP_RECIPE_NAME = CStringSupport::FormatString(_T("%d"), dfsData.m_StageNum);
-					theApp.m_pDataStatusLog->LOG_INFO(CStringSupport::FormatString(_T(" GetEQPDataInfo()_DFS Start time dfsData.m_StartTime : %s"), dfsData.m_StartTime));
-					DfsInfo.m_EQPDataInfo.strSTART_TIME = dfsData.m_StartTime;
-					DfsInfo.m_EQPDataInfo.strEND_TIME = dfsData.m_EndTime;
-					DfsInfo.m_EQPDataInfo.strLOAD_STAGE_NO = dfsData.m_LoadeHandlerNUM;
-					//DfsInfo.m_EQPDataInfo.strINSP_STAGE_NO = dfsData.m_TpTime;
-					DfsInfo.m_EQPDataInfo.strUNLOAD_STAGE_NO = dfsData.m_UnLoadeHandlerNUM;	
-					if (DfsInfo.m_EQPDataInfo.strUNLOAD_STAGE_NO == _T("0"))
-						DfsInfo.m_EQPDataInfo.strUNLOAD_STAGE_NO = _T("1");
-					DfsInfo.m_EQPDataInfo.strPROBE_CONTACT_CNT = dfsData.m_ContactCount;
-					//DfsInfo.m_EQPDataInfo.strINDEX_PANEL_GRADE = dfsData.m_PreGamma;
-					//DfsInfo.m_EQPDataInfo.strINDEX_MAIN_CODE = dfsData.m_AOIInpsect;
-					//DfsInfo.m_EQPDataInfo.strFINAL_PANEL_GRADE = dfsData.m_TpResult2;
-					//DfsInfo.m_EQPDataInfo.strFINAL_MAIN_CODE = dfsData.m_Lumitop;
-					DfsInfo.m_EQPDataInfo.strOPERATOR_ID = theApp.m_OpvSocketManager[_ttoi(DfsInfo.m_EQPDataInfo.strUNLOAD_STAGE_NO)-1].m_strOPID;
-
-					DfsInfo.m_PanelSummaryInfo.CONTACT_PAENL_GRADE = dfsData.m_Contact;
-					// 点灯检代替 AOI：若 MySQL 点灯结果有效，则用其填充 AOI 结果
-					if (bValid)
-						DfsInfo.m_PanelSummaryInfo.AOI_PAENL_GRADE = strAOIResult;
-					else
-						DfsInfo.m_PanelSummaryInfo.AOI_PAENL_GRADE = dfsData.m_AOIInpsect;
-					DfsInfo.m_PanelSummaryInfo.PRE_PAENL_GRADE = dfsData.m_PreGamma;
-					DfsInfo.m_PanelSummaryInfo.DOT_PAENL_GRADE = dfsData.m_TpResult2;
-					// 点灯结果：优先用 MySQL 点灯结果，否则用 PLC 值
-					if (bValid)
-						DfsInfo.m_PanelSummaryInfo.LUMITOP_PAENL_GRADE = strAOIResult;
-					else
-						DfsInfo.m_PanelSummaryInfo.LUMITOP_PAENL_GRADE = dfsData.m_Lumitop;
-					DfsInfo.m_PanelSummaryInfo.OPV_PAENL_GRADE = dfsData.m_opViewResult;
-					DfsInfo.m_PanelSummaryInfo.OPERATOR_ID = theApp.m_OpvSocketManager[_ttoi(DfsInfo.m_EQPDataInfo.strUNLOAD_STAGE_NO) - 1].m_strOPID;
-	
-					if (_ttoi(result.m_PreGammaContactStatus) == m_dfsPreGammaNG || _ttoi(result.m_PreGammaContactStatus) == m_dfsContactNG || _ttoi(result.m_TpResult) == m_dfsTpNG)
-						DfsInfo.AddDefectCodeResult(strPanelID, _ttoi(result.m_PreGammaContactStatus), _ttoi(result.m_TpResult), Machine_ULD);
-					//>>PG DFS Load
-					DfsInfo.PGDfsInfoLoad(strPanelID);
-					//<<
-
-					DfsInfo.AMTAFTSavePanelDFS_SUM(result, strPanelID, strFpcID, strAOIPath, strViewingPath, strLumitopPath, strOpvFilPath, strSumPath);
-
-					BOOL bTransfer = TRUE;
-
-					if (!FileExists(strSumPath)){
-						theApp.m_pFTPLog->LOG_INFO2(CStringSupport::FormatString(_T("[%s] Inspect Not exist csv File"), strPanelID));
-					}
-					else
-					{
-						CString strUploadEQPID = CStringSupport::FormatString(_T("%s%s"), theApp.m_strEqpId, theApp.m_strEqpNum);
-
-						theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: PanelID length=%d, CheckSize=%d, Source CSV=%s"), 
-							strPanelID, strPanelID.GetLength(), DFS_CHECK_PANEL_SIZE, strSumPath);
-
-						if (strPanelID.GetLength() >= DFS_CHECK_PANEL_SIZE)
-						{
-							if (theApp.m_bDFSTestMode == TRUE)
-							{
-								strCsvFilePath = _T("D:\\TEST");
-								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS Test Mode: Target path = D:\\TEST"), strPanelID);
 							}
 							else
 							{
-								strCsvFilePath = _T("\\\\172.18.3.110\\module");
-								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS Mode: Target path = \\\\172.18.3.110\\module"), strPanelID);
+								theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+									_T("DFS: QueryAOIDefectList FAILED for UniqueID=%s, PanelID=%s"),
+									strUniqueID, strPanelID));
 							}
-
-							SetFilePath(&strCsvFilePath, theApp.m_strEqpId);
-							SetFilePath(&strCsvFilePath, GetDateString2());
-							SetFilePath(&strCsvFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID.Left(5));
-							SetFilePath(&strCsvFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID.Left(8));
-							SetFilePath(&strCsvFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID);
-
-							strImageFilePath = strCsvFilePath;
-							SetFilePath(&strImageFilePath, _T("Image"));
-							CreateFolders(strImageFilePath);
-							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Created Image folder: %s"), strPanelID, strImageFilePath);
-
-							SetFilePath(&strCsvFilePath, _T("Data"));
-							CreateFolders(strCsvFilePath);
-							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Created Data folder: %s"), strPanelID, strCsvFilePath);
-
-							if (theApp.m_bDFSTestMode == TRUE)
-								strLinkFilePath = strIndexFilePath = _T("D:\\TEST");
+							}
 							else
-								strLinkFilePath = strIndexFilePath = _T("\\\\172.18.3.110\\module");
-
-							// Index 파일 생성
-							SetFilePath(&strIndexFilePath, _T("INDEX"));
-							SetFilePath(&strIndexFilePath, theApp.m_strEqpId);
-							CreateFolders(strIndexFilePath);
-							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Created INDEX folder: %s"), strPanelID, strIndexFilePath);
-
-							// Link 파일 생성
-							SetFilePath(&strLinkFilePath, _T("LINK"));
-							SetFilePath(&strLinkFilePath, theApp.m_strEqpId);
-							SetFilePath(&strLinkFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID.Left(5));
-							SetFilePath(&strLinkFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID.Left(8));
-							SetFilePath(&strLinkFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID);
-							CreateFolders(strLinkFilePath);
-							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Created LINK folder: %s"), strPanelID, strLinkFilePath);
-
-							// ProcessID는 설비별로 따로 있고 GOOD,NG 일때 또 따로 있는데 
-							// 담당자가 DFS파일 이름은 설비 ProcessID로 하라고 해서 이렇게 했음
-							// 만약에 결과값에 따라 바뀐다고 하면 strProcessID -> DfsInfo.m_PanelDataBegin.strProcess_ID 이걸로 하면됩니다.
-							CString strProcessID = _T("");
-							if (!DfsInfo.m_HeaderInfo.strEQP_Type.CompareNoCase(_T("MFBAP")))
-								strProcessID = _T("1700");
-							else if (!DfsInfo.m_HeaderInfo.strEQP_Type.CompareNoCase(_T("MFGAP")))
-								strProcessID = _T("1L00");
-
-							strLinkFilePath = strLinkFilePath + _T("\\") + strProcessID + _T("_") + DfsInfo.m_PanelDataBegin.strPanel_ID + _T("_") + GetNowSystemTimeMillisecondsSirius() + _T(".csv");
-							strCsvFilePath = strCsvFilePath + _T("\\") + strProcessID + _T("_") + DfsInfo.m_PanelDataBegin.strPanel_ID + _T("_") + GetNowSystemTimeMillisecondsSirius() + _T(".csv");
-
-							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Copying Link file from [%s] to [%s]"), strPanelID, strSumPath, strLinkFilePath);
-							BOOL bCopyResult = ::CopyFile(strSumPath, strLinkFilePath, FALSE);
-							if (bCopyResult)
-								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Link file copied successfully"), strPanelID);
-							else
-								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Link file copy FAILED, Error=%d"), strPanelID, GetLastError());
-
-							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Moving CSV file from [%s] to [%s]"), strPanelID, strSumPath, strCsvFilePath);
-							BOOL bMoveResult = ::MoveFile(strSumPath, strCsvFilePath);
-							if (bMoveResult)
-								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: CSV file moved successfully"), strPanelID);
-							else
-								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: CSV file move FAILED, Error=%d"), strPanelID, GetLastError());
-
-							if (theApp.m_bDFSTestMode == TRUE)
-								strCsvFilePath.Replace(_T("D:\\TEST\\"), _T("/MODULE/"));
-							else
-								strCsvFilePath.Replace(_T("\\\\172.18.3.110\\module"), _T("/MODULE"));
-
-							strCsvFilePath.Replace(_T("\\"), _T("/"));
-							m_vecIndexValue.push_back(strCsvFilePath);
-
-							if (!DfsInfo.VisionLoadPanelDFSInfo(strPanelID, Machine_ULD))
-								theApp.m_pFTPLog->LOG_INFO(_T("OPV Vision Dfs File Path Error : %s,"), strPanelID);
-
-							for (int i = 0; i < DfsInfo.m_OpvDataList[Machine_ULD].size() && bTransfer; i++)
 							{
-
-								strSrc = strSumImagePath + _T("\\") + DfsInfo.m_OpvDataList[Machine_ULD].at(i).strImage;
-								strDest = strImageFilePath + _T("\\") + DfsInfo.m_OpvDataList[Machine_ULD].at(i).strImage;
-
-							if (FileExists(strSrc))
-							{
-								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Moving Vision image from [%s] to [%s]"), strPanelID, strSrc, strDest);
-								BOOL bMoveImgResult = ::MoveFile(strSrc, strDest);		// 화면검사 image 업로드
-								if (bMoveImgResult)
-									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Vision image moved successfully"), strPanelID);
-								else
-									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Vision image move FAILED, Error=%d"), strPanelID, GetLastError());
-
-								if (theApp.m_bDFSTestMode == TRUE)
-									strDest.Replace(_T("D:\\TEST\\"), _T("/MODULE/"));
-								else
-									strDest.Replace(_T("\\\\172.18.3.110\\module"), _T("/MODULE"));
-
-								//strDest.Replace(theApp.m_strEqpId, strUploadEQPID);
-
-								strDest.Replace(_T("\\"), _T("/"));
-								m_vecIndexValue.push_back(strDest);
+								theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+									_T("DFS: QueryAOIDefectList SKIPPED: UniqueID is EMPTY for PanelID=%s"), strPanelID));
 							}
-								else
-									theApp.m_pFTPLog->LOG_INFO2(_T("Vision Not exist image file"));
-							}
-
-							//전체Image File Name 항상 통일
-							strSrc = strSumImagePath + _T("\\") + _T("AddsrcImageADD.jpg");
-							strDest = strImageFilePath + _T("\\") + strProcessID + _T("_") + DfsInfo.m_PanelDataBegin.strPanel_ID + GetNowSystemTimeMillisecondsSirius4() + _T(".jpg");
-
-							//CString strDest2 = strSumImagePath + _T("\\") + strProcessID + _T("_") + DfsInfo.m_PanelDataBegin.strPanel_ID + GetNowSystemTimeMillisecondsSirius4() + _T(".jpg");
-							COleDateTime now;
-							now = COleDateTime::GetCurrentTime();
-							CString strDest2;
-							strDest2.Format(_T("%s\\%s_%s_%s_Layout_%s_%02d%02d%02d.jpg"), strImageFilePath, strProcessID, DfsInfo.m_PanelDataBegin.strPanel_ID, theApp.m_strEqpId + theApp.m_strEqpNum, GetDateString2(), now.GetHour(), now.GetMinute(), now.GetSecond());
-							if (FileExists(strSrc))
-							{
-								//::CopyFile(strSrc, strDest, FALSE);		// 전체 image 업로드
-								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Moving Layout image from [%s] to [%s]"), strPanelID, strSrc, strDest2);
-								BOOL bLayoutMoveResult = ::MoveFile(strSrc, strDest2);		// 전체 image 업로드
-								if (bLayoutMoveResult)
-									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Layout image moved successfully"), strPanelID);
-								else
-									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Layout image move FAILED, Error=%d"), strPanelID, GetLastError());
-
-								strSrc = strSumImagePath;
-								//strDest = strImageFilePath;
-
-								DfsInfo.CopyImage2(strSrc, strDest);
-								if (theApp.m_bDFSTestMode == TRUE)
-									strDest2.Replace(_T("D:\\TEST\\"), _T("/MODULE/"));
-								else
-									strDest2.Replace(_T("\\\\172.18.3.110\\module"), _T("/MODULE"));
-
-								//strDest2.Replace(theApp.m_strEqpId, strUploadEQPID);
-
-								strDest2.Replace(_T("\\"), _T("/"));
-								m_vecIndexValue.push_back(strDest2);
-							}
-							else
-								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Layout source image not found [%s]"), strPanelID, strSrc);
-
-							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Creating Index file"), strPanelID);
-							DfsIDXFileCreate(strUploadEQPID, &strIndexFile);
-							strDest = strIndexFilePath + _T("\\") + GetDateString2() + _T("_") + strUploadEQPID + _T(".csv");
-
-							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Copying Index file from [%s] to [%s]"), strPanelID, strIndexFile, strDest);
-							BOOL bIndexCopyResult = ::CopyFile(strIndexFile, strDest, FALSE);			//index 파일 업로드
-							if (bIndexCopyResult)
-								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Index file copied successfully"), strPanelID);
-							else
-								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Index file copy FAILED, Error=%d"), strPanelID, GetLastError());
-
-							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: All files processed successfully"), strPanelID);
 						}
 						else
 						{
-							theApp.m_pFTPLog->LOG_INFO2(_T("Panel ID length is short."));
+							theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+								_T("DFS: No lighting result found in MySQL for PanelID=%s"), strPanelID));
 						}
 
+						if (_ttoi(result.m_ChNum) > 2)
+						{
+							if (result.m_ChNum == _T("3"))
+								result.m_ChNum = _T("1");
+							else
+								result.m_ChNum = _T("2");
+						}
+
+						/*
+						DfsInfo.m_EQPDataInfo.strRecipe_No = dfsData.m_ModelID;
+						DfsInfo.m_EQPDataInfo.strLoad_Stage_No = result.m_ChNum;
+						DfsInfo.m_EQPDataInfo.strUnload_Stage_No = CStringSupport::FormatString(_T("%d"), dfsData.m_StageNum);
+						DfsInfo.m_EQPDataInfo.strStart_Time = dfsData.m_StartTime;
+						DfsInfo.m_EQPDataInfo.strEnd_Time = dfsData.m_EndTime;
+						DfsInfo.m_EQPDataInfo.strPre_Gamma_Time = dfsData.m_PreGammaTime;
+						DfsInfo.m_EQPDataInfo.strTP_Time = dfsData.m_TpTime;
+						DfsInfo.m_EQPDataInfo.strTact_Time = dfsData.m_TactTime;
+						DfsInfo.m_EQPDataInfo.strContact = dfsData.m_Contact;
+						DfsInfo.m_EQPDataInfo.strPreGamma= dfsData.m_PreGamma;
+						DfsInfo.m_EQPDataInfo.strAOIInpsect = dfsData.m_AOIInpsect;
+						DfsInfo.m_EQPDataInfo.strTpResult = dfsData.m_TpResult2;
+						DfsInfo.m_EQPDataInfo.strLumitop =  dfsData.m_Lumitop;
+						DfsInfo.m_EQPDataInfo.strmura =  dfsData.m_mura;
+						*/
+
+						//DfsInfo.m_EQPDataInfo.strAOI_RECIPE_NAME = dfsData.m_ModelID;
+						//DfsInfo.m_EQPDataInfo.strPG_RECIPE_NAME = result.m_ChNum;
+						//DfsInfo.m_EQPDataInfo.strTP_RECIPE_NAME = CStringSupport::FormatString(_T("%d"), dfsData.m_StageNum);
+						theApp.m_pDataStatusLog->LOG_INFO(CStringSupport::FormatString(_T(" GetEQPDataInfo()_DFS Start time dfsData.m_StartTime : %s"), dfsData.m_StartTime));
+						DfsInfo.m_EQPDataInfo.strSTART_TIME = dfsData.m_StartTime;
+						DfsInfo.m_EQPDataInfo.strEND_TIME = dfsData.m_EndTime;
+						DfsInfo.m_EQPDataInfo.strLOAD_STAGE_NO = dfsData.m_LoadeHandlerNUM;
+						//DfsInfo.m_EQPDataInfo.strINSP_STAGE_NO = dfsData.m_TpTime;
+						DfsInfo.m_EQPDataInfo.strUNLOAD_STAGE_NO = dfsData.m_UnLoadeHandlerNUM;
+						if (DfsInfo.m_EQPDataInfo.strUNLOAD_STAGE_NO == _T("0"))
+							DfsInfo.m_EQPDataInfo.strUNLOAD_STAGE_NO = _T("1");
+						DfsInfo.m_EQPDataInfo.strPROBE_CONTACT_CNT = dfsData.m_ContactCount;
+						//DfsInfo.m_EQPDataInfo.strINDEX_PANEL_GRADE = dfsData.m_PreGamma;
+						//DfsInfo.m_EQPDataInfo.strINDEX_MAIN_CODE = dfsData.m_AOIInpsect;
+						//DfsInfo.m_EQPDataInfo.strFINAL_PANEL_GRADE = dfsData.m_TpResult2;
+						//DfsInfo.m_EQPDataInfo.strFINAL_MAIN_CODE = dfsData.m_Lumitop;
+						DfsInfo.m_EQPDataInfo.strOPERATOR_ID = theApp.m_OpvSocketManager[_ttoi(DfsInfo.m_EQPDataInfo.strUNLOAD_STAGE_NO) - 1].m_strOPID;
+
+						DfsInfo.m_PanelSummaryInfo.CONTACT_PAENL_GRADE = dfsData.m_Contact;
+						// 点灯检代替 AOI：若 MySQL 点灯结果有效，则用其填充 AOI 结果
+						if (bValid)
+							DfsInfo.m_PanelSummaryInfo.AOI_PAENL_GRADE = strAOIResult;
+						else
+							DfsInfo.m_PanelSummaryInfo.AOI_PAENL_GRADE = dfsData.m_AOIInpsect;
+						DfsInfo.m_PanelSummaryInfo.PRE_PAENL_GRADE = dfsData.m_PreGamma;
+						DfsInfo.m_PanelSummaryInfo.DOT_PAENL_GRADE = dfsData.m_TpResult2;
+						// 点灯结果：优先用 MySQL 点灯结果，否则用 PLC 值
+						if (bValid)
+							DfsInfo.m_PanelSummaryInfo.LUMITOP_PAENL_GRADE = strAOIResult;
+						else
+							DfsInfo.m_PanelSummaryInfo.LUMITOP_PAENL_GRADE = dfsData.m_Lumitop;
+						DfsInfo.m_PanelSummaryInfo.OPV_PAENL_GRADE = dfsData.m_opViewResult;
+						DfsInfo.m_PanelSummaryInfo.OPERATOR_ID = theApp.m_OpvSocketManager[_ttoi(DfsInfo.m_EQPDataInfo.strUNLOAD_STAGE_NO) - 1].m_strOPID;
+
+						if (_ttoi(result.m_PreGammaContactStatus) == m_dfsPreGammaNG || _ttoi(result.m_PreGammaContactStatus) == m_dfsContactNG || _ttoi(result.m_TpResult) == m_dfsTpNG)
+							DfsInfo.AddDefectCodeResult(strPanelID, _ttoi(result.m_PreGammaContactStatus), _ttoi(result.m_TpResult), Machine_ULD);
+						//>>PG DFS Load
+						DfsInfo.PGDfsInfoLoad(strPanelID);
+						//<<
+
+						DfsInfo.AMTAFTSavePanelDFS_SUM(result, strPanelID, strFpcID, strAOIPath, strViewingPath, strLumitopPath, strOpvFilPath, strSumPath);
+
+						BOOL bTransfer = TRUE;
+
+						if (!FileExists(strSumPath)) {
+							theApp.m_pFTPLog->LOG_INFO2(CStringSupport::FormatString(_T("[%s] Inspect Not exist csv File"), strPanelID));
+						}
+						else
+						{
+							CString strUploadEQPID = CStringSupport::FormatString(_T("%s%s"), theApp.m_strEqpId, theApp.m_strEqpNum);
+
+							theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: PanelID length=%d, CheckSize=%d, Source CSV=%s"),
+								strPanelID, strPanelID.GetLength(), DFS_CHECK_PANEL_SIZE, strSumPath);
+
+							if (strPanelID.GetLength() >= DFS_CHECK_PANEL_SIZE)
+							{
+								if (theApp.m_bDFSTestMode == TRUE)
+								{
+									strCsvFilePath = _T("D:\\TEST");
+									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS Test Mode: Target path = D:\\TEST"), strPanelID);
+								}
+								else
+								{
+									strCsvFilePath = _T("\\\\172.18.3.110\\module");
+									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS Mode: Target path = \\\\172.18.3.110\\module"), strPanelID);
+								}
+
+								SetFilePath(&strCsvFilePath, theApp.m_strEqpId);
+								SetFilePath(&strCsvFilePath, GetDateString2());
+								SetFilePath(&strCsvFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID.Left(5));
+								SetFilePath(&strCsvFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID.Left(8));
+								SetFilePath(&strCsvFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID);
+
+								strImageFilePath = strCsvFilePath;
+								SetFilePath(&strImageFilePath, _T("Image"));
+								CreateFolders(strImageFilePath);
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Created Image folder: %s"), strPanelID, strImageFilePath);
+
+								SetFilePath(&strCsvFilePath, _T("Data"));
+								CreateFolders(strCsvFilePath);
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Created Data folder: %s"), strPanelID, strCsvFilePath);
+
+								if (theApp.m_bDFSTestMode == TRUE)
+									strLinkFilePath = strIndexFilePath = _T("D:\\TEST");
+								else
+									strLinkFilePath = strIndexFilePath = _T("\\\\172.18.3.110\\module");
+
+								// Index 파일 생성
+								SetFilePath(&strIndexFilePath, _T("INDEX"));
+								SetFilePath(&strIndexFilePath, theApp.m_strEqpId);
+								CreateFolders(strIndexFilePath);
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Created INDEX folder: %s"), strPanelID, strIndexFilePath);
+
+								// Link 파일 생성
+								SetFilePath(&strLinkFilePath, _T("LINK"));
+								SetFilePath(&strLinkFilePath, theApp.m_strEqpId);
+								SetFilePath(&strLinkFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID.Left(5));
+								SetFilePath(&strLinkFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID.Left(8));
+								SetFilePath(&strLinkFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID);
+								CreateFolders(strLinkFilePath);
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Created LINK folder: %s"), strPanelID, strLinkFilePath);
+
+								// ProcessID는 설비별로 따로 있고 GOOD,NG 일때 또 따로 있는데 
+								// 담당자가 DFS파일 이름은 설비 ProcessID로 하라고 해서 이렇게 했음
+								// 만약에 결과값에 따라 바뀐다고 하면 strProcessID -> DfsInfo.m_PanelDataBegin.strProcess_ID 이걸로 하면됩니다.
+								CString strProcessID = _T("");
+								if (!DfsInfo.m_HeaderInfo.strEQP_Type.CompareNoCase(_T("MFBAP")))
+									strProcessID = _T("1700");
+								else if (!DfsInfo.m_HeaderInfo.strEQP_Type.CompareNoCase(_T("MFGAP")))
+									strProcessID = _T("1L00");
+
+								strLinkFilePath = strLinkFilePath + _T("\\") + strProcessID + _T("_") + DfsInfo.m_PanelDataBegin.strPanel_ID + _T("_") + GetNowSystemTimeMillisecondsSirius() + _T(".csv");
+								strCsvFilePath = strCsvFilePath + _T("\\") + strProcessID + _T("_") + DfsInfo.m_PanelDataBegin.strPanel_ID + _T("_") + GetNowSystemTimeMillisecondsSirius() + _T(".csv");
+
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Copying Link file from [%s] to [%s]"), strPanelID, strSumPath, strLinkFilePath);
+								BOOL bCopyResult = ::CopyFile(strSumPath, strLinkFilePath, FALSE);
+								if (bCopyResult)
+									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Link file copied successfully"), strPanelID);
+								else
+									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Link file copy FAILED, Error=%d"), strPanelID, GetLastError());
+
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Moving CSV file from [%s] to [%s]"), strPanelID, strSumPath, strCsvFilePath);
+								BOOL bMoveResult = ::MoveFile(strSumPath, strCsvFilePath);
+								if (bMoveResult)
+									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: CSV file moved successfully"), strPanelID);
+								else
+									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: CSV file move FAILED, Error=%d"), strPanelID, GetLastError());
+
+								if (theApp.m_bDFSTestMode == TRUE)
+									strCsvFilePath.Replace(_T("D:\\TEST\\"), _T("/MODULE/"));
+								else
+									strCsvFilePath.Replace(_T("\\\\172.18.3.110\\module"), _T("/MODULE"));
+
+								strCsvFilePath.Replace(_T("\\"), _T("/"));
+								m_vecIndexValue.push_back(strCsvFilePath);
+
+								if (!DfsInfo.VisionLoadPanelDFSInfo(strPanelID, Machine_ULD))
+									theApp.m_pFTPLog->LOG_INFO(_T("OPV Vision Dfs File Path Error : %s,"), strPanelID);
+
+								for (int i = 0; i < DfsInfo.m_OpvDataList[Machine_ULD].size() && bTransfer; i++)
+								{
+
+									strSrc = strSumImagePath + _T("\\") + DfsInfo.m_OpvDataList[Machine_ULD].at(i).strImage;
+									strDest = strImageFilePath + _T("\\") + DfsInfo.m_OpvDataList[Machine_ULD].at(i).strImage;
+
+									if (FileExists(strSrc))
+									{
+										theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Moving Vision image from [%s] to [%s]"), strPanelID, strSrc, strDest);
+										BOOL bMoveImgResult = ::MoveFile(strSrc, strDest);		// 화면검사 image 업로드
+										if (bMoveImgResult)
+											theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Vision image moved successfully"), strPanelID);
+										else
+											theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Vision image move FAILED, Error=%d"), strPanelID, GetLastError());
+
+										if (theApp.m_bDFSTestMode == TRUE)
+											strDest.Replace(_T("D:\\TEST\\"), _T("/MODULE/"));
+										else
+											strDest.Replace(_T("\\\\172.18.3.110\\module"), _T("/MODULE"));
+
+										//strDest.Replace(theApp.m_strEqpId, strUploadEQPID);
+
+										strDest.Replace(_T("\\"), _T("/"));
+										m_vecIndexValue.push_back(strDest);
+									}
+									else
+										theApp.m_pFTPLog->LOG_INFO2(_T("Vision Not exist image file"));
+								}
+
+								//전체Image File Name 항상 통일
+								strSrc = strSumImagePath + _T("\\") + _T("AddsrcImageADD.jpg");
+								strDest = strImageFilePath + _T("\\") + strProcessID + _T("_") + DfsInfo.m_PanelDataBegin.strPanel_ID + GetNowSystemTimeMillisecondsSirius4() + _T(".jpg");
+
+								//CString strDest2 = strSumImagePath + _T("\\") + strProcessID + _T("_") + DfsInfo.m_PanelDataBegin.strPanel_ID + GetNowSystemTimeMillisecondsSirius4() + _T(".jpg");
+								COleDateTime now;
+								now = COleDateTime::GetCurrentTime();
+								CString strDest2;
+								strDest2.Format(_T("%s\\%s_%s_%s_Layout_%s_%02d%02d%02d.jpg"), strImageFilePath, strProcessID, DfsInfo.m_PanelDataBegin.strPanel_ID, theApp.m_strEqpId + theApp.m_strEqpNum, GetDateString2(), now.GetHour(), now.GetMinute(), now.GetSecond());
+								if (FileExists(strSrc))
+								{
+									//::CopyFile(strSrc, strDest, FALSE);		// 전체 image 업로드
+									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Moving Layout image from [%s] to [%s]"), strPanelID, strSrc, strDest2);
+									BOOL bLayoutMoveResult = ::MoveFile(strSrc, strDest2);		// 전체 image 업로드
+									if (bLayoutMoveResult)
+										theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Layout image moved successfully"), strPanelID);
+									else
+										theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Layout image move FAILED, Error=%d"), strPanelID, GetLastError());
+
+									strSrc = strSumImagePath;
+									//strDest = strImageFilePath;
+
+									DfsInfo.CopyImage2(strSrc, strDest);
+									if (theApp.m_bDFSTestMode == TRUE)
+										strDest2.Replace(_T("D:\\TEST\\"), _T("/MODULE/"));
+									else
+										strDest2.Replace(_T("\\\\172.18.3.110\\module"), _T("/MODULE"));
+
+									//strDest2.Replace(theApp.m_strEqpId, strUploadEQPID);
+
+									strDest2.Replace(_T("\\"), _T("/"));
+									m_vecIndexValue.push_back(strDest2);
+								}
+								else
+									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Layout source image not found [%s]"), strPanelID, strSrc);
+
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Creating Index file"), strPanelID);
+								DfsIDXFileCreate(strUploadEQPID, &strIndexFile);
+								strDest = strIndexFilePath + _T("\\") + GetDateString2() + _T("_") + strUploadEQPID + _T(".csv");
+
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Copying Index file from [%s] to [%s]"), strPanelID, strIndexFile, strDest);
+								BOOL bIndexCopyResult = ::CopyFile(strIndexFile, strDest, FALSE);			//index 파일 업로드
+								if (bIndexCopyResult)
+									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Index file copied successfully"), strPanelID);
+								else
+									theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: Index file copy FAILED, Error=%d"), strPanelID, GetLastError());
+
+								theApp.m_pFTPLog->LOG_INFO(_T("[%s] DFS: All files processed successfully"), strPanelID);
+							}
+							else
+							{
+								theApp.m_pFTPLog->LOG_INFO2(_T("Panel ID length is short."));
+							}
+
+						}
 					}
-				}
 
-				Delay(10, TRUE);
+					Delay(10, TRUE);
 
-				m_csDfsUploadLock.Lock();
-				m_DfsUploadtransferFileList.pop();
-				m_csDfsUploadLock.Unlock();
+					m_csDfsUploadLock.Lock();
+					m_DfsUploadtransferFileList.pop();
+					m_csDfsUploadLock.Unlock();
 #else
 				if (strPanelID.IsEmpty() == FALSE)
 				{
@@ -960,15 +1018,15 @@ void CDFSClient::RunDfsUploadThread()
 					DfsInfo.m_EQPDataInfo.strUnit_ID = dfsData.m_IndexNum;
 					DfsInfo.m_EQPDataInfo.strStage_ID = dfsData.m_ChNum; // 20200401 kty
 					DfsInfo.m_EQPDataInfo.strProbe_Contact_Cnt = _T("1");
-				
+
 					strTemp1 = DFS_SHARE_PATH + GetDateString2() + _T("\\") + strPanelID;
 					CreateFolders(strTemp1);
 					strSumPath = strTemp1 + _T("\\") + strPanelID + _T(".csv");
 					DfsInfo.GammaSavePanelDFS_SUM(strPanelID, strFpcID, strSumPath);
-				
+
 					BOOL bTransfer = TRUE;
-				
-					if (!FileExists(strSumPath)){
+
+					if (!FileExists(strSumPath)) {
 						theApp.m_pFTPLog->LOG_INFO2(CStringSupport::FormatString(_T("[%s][%s] Inspect Not exist csv File"), strPanelID, strFpcID));
 					}
 					else
@@ -979,7 +1037,7 @@ void CDFSClient::RunDfsUploadThread()
 								strCsvFilePath = _T("D:\\TEST");
 							else
 								strCsvFilePath = _T("\\\\172.18.3.110\\module");
-				
+
 							SetFilePath(&strCsvFilePath, theApp.m_strEqpId);
 							SetFilePath(&strCsvFilePath, GetDateString2());
 							SetFilePath(&strCsvFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID.Left(5));
@@ -987,41 +1045,41 @@ void CDFSClient::RunDfsUploadThread()
 							SetFilePath(&strCsvFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID);
 							SetFilePath(&strCsvFilePath, _T("Data"));
 							CreateFolders(strCsvFilePath);
-				
+
 							if (theApp.m_bDFSTestMode == TRUE)
 								strLinkFilePath = strIndexFilePath = _T("D:\\TEST");
 							else
 								strLinkFilePath = strIndexFilePath = _T("\\\\172.18.3.110\\module");
-							
+
 							SetFilePath(&strIndexFilePath, _T("INDEX"));
 							SetFilePath(&strIndexFilePath, theApp.m_strEqpId);
-							
+
 							SetFilePath(&strLinkFilePath, _T("LINK"));
 							SetFilePath(&strLinkFilePath, theApp.m_strEqpId);
 							SetFilePath(&strLinkFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID.Left(5));
 							SetFilePath(&strLinkFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID.Left(8));
 							SetFilePath(&strLinkFilePath, DfsInfo.m_PanelDataBegin.strPanel_ID);
-							
+
 							CreateFolders(strLinkFilePath);
 							CreateFolders(strIndexFilePath);
-				
+
 							strLinkFilePath = strLinkFilePath + _T("\\") + DfsInfo.m_PanelDataBegin.strProcess_ID + _T("_") + DfsInfo.m_PanelDataBegin.strPanel_ID + _T("_") + GetNowSystemTimeMillisecondsSirius() + _T(".csv");
 							strCsvFilePath = strCsvFilePath + _T("\\") + DfsInfo.m_PanelDataBegin.strProcess_ID + _T("_") + DfsInfo.m_PanelDataBegin.strPanel_ID + _T("_") + GetNowSystemTimeMillisecondsSirius() + _T(".csv");
-				
+
 							::CopyFile(strSumPath, strLinkFilePath, FALSE);		//Link 파일 업로드
 							::CopyFile(strSumPath, strCsvFilePath, FALSE);		//csv 파일 업로드
-				
+
 							if (theApp.m_bDFSTestMode == TRUE)
 								strDest.Replace(_T("D:\\TEST\\"), _T("/MODULE/"));
 							else
 								strDest.Replace(_T("\\\\172.18.3.110\\module"), _T("/MODULE"));
-							
+
 							strCsvFilePath.Replace(_T("\\"), _T("/"));
 							m_vecIndexValue.push_back(strCsvFilePath);
-							
+
 							DfsIDXFileCreate(DfsInfo.m_HeaderInfo.strEQP_ID, &strIndexFile);
 							strDest = strIndexFilePath + _T("\\") + GetDateString2() + _T("_") + DfsInfo.m_HeaderInfo.strEQP_ID + _T(".csv");
-				
+
 							::CopyFile(strIndexFile, strDest, FALSE);			//index파일 업로드
 						}
 						else
@@ -1029,15 +1087,16 @@ void CDFSClient::RunDfsUploadThread()
 					}
 				}
 				Delay(10, TRUE);
-				
+
 				m_csDfsUploadLock.Lock();
 				m_DfsUploadtransferFileList.pop();
 				m_csDfsUploadLock.Unlock();
 #endif
+				}
 			}
 		}
 	}
-}
+//}
 
 #if _SYSTEM_AMTAFT_
 void CDFSClient::AddTransferFile(DfsDataValue strTransferFile)

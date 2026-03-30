@@ -3,6 +3,7 @@
 #include "Ani_Data_Serever_PC.h"
 #include "SocketComm.h"
 #include "StringSupport.h"
+#include "TLSConnection.h"
 
 // 点灯检（Lighting）软件 TCP 客户端
 // 协议示例：
@@ -17,7 +18,7 @@
 // 本类只负责 Socket 通信与协议解析：
 //   - 发送 Start 指令
 //   - 解析 Running / SnapFN / FN$ 消息
-// 实际的 PLC 写入、数据库 (ivs_lcd_idmap / IVS_LCD_InspectionResult / IVS_LCD_AOIDefect)
+// 实际的 PLC 写入、数据库 (ivs_lcd_idmap / IVS_LCD_InspectionResult / IVS_LCD_AOIResult)
 // 由调用方在回调或事件里完成（在对应的 Handle* 函数中预留钩子）。
 //
 // 点灯检事件回调接口：
@@ -38,8 +39,8 @@ public:
 
 	// Lighting -> MC : FN$xxxxxxxx@
 	// payload 已经被解析成 4 个治具结果码（resultCode[0..3]），空位为 0
-	// pLightingConn : 线程局部的数据库连接（Lighting 线程专用，避免多线程共享连接问题）
-	virtual void OnLightingResult(const int resultCode[4], sql::Connection* pLightingConn = NULL) {}
+	// 连接已改为 TLS 方式，回调中直接调用 GetTlsLightingConnPtr() 获取线程局部连接
+	virtual void OnLightingResult(const int resultCode[4]) {}
 
 	// 连接成功后定时发送测试信号
 	virtual void OnLightingAutoTest() {}
@@ -75,9 +76,6 @@ public:
 	// 注册点灯检事件回调对象（非线程安全，需在连接前或初始化阶段调用）
 	void SetEventHandler(ILightingEventHandler* pHandler);
 
-	// 获取 Lighting 线程专用的数据库连接
-	sql::Connection* GetLightingConnection() { return m_pLightingConn; }
-
 protected:
 	// 处理单条去掉结尾 '@' 的消息
 	void HandleSingleMessage(const CString& msg);
@@ -109,14 +107,4 @@ private:
 	static DWORD WINAPI AutoTestTimerThread(LPVOID lpParam);
 	void StopAutoTestTimer();
 	void StartAutoTestTimer(DWORD dwDelayMs);
-
-	// Lighting 线程专用的数据库连接（避免多线程共享连接问题）
-	sql::Connection*  m_pLightingConn;
-	BOOL              m_bLightingDBConnected;
-
-	// 初始化数据库连接
-	BOOL InitLightingDatabase();
-
-	// 关闭数据库连接
-	void CloseLightingDatabase();
 };

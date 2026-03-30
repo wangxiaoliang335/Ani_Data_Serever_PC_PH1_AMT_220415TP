@@ -1,4 +1,4 @@
-﻿///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 //  File:       SocketComm.cpp
 //  Version:    1.4
 //
@@ -1221,7 +1221,12 @@ void CSocketComm::Run()
 				if (bSmartAddressing)
 					continue;
 				else
+				{
+					// TCP 连接断开时发送事件通知
+					if (IsOpen())
+						OnEvent(EVT_CONDROP, NULL);
 					break;
+				}
 			}
 
 			// Chars received?

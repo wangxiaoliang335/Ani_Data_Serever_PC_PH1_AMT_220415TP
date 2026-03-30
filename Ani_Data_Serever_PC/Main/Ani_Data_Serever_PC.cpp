@@ -1356,10 +1356,10 @@ void CAni_Data_Serever_PCApp::SetLoadResultCodeFromDB(CString strPanelID, CStrin
 		return;
 	}
 
-	// 2. 查询 IVS_LCD_AOIDefect 表获取缺陷列表
+	// 2. 查询 IVS_LCD_AOIResult 表获取缺陷列表
 	try {
 		CString strSQL;
-		strSQL.Format(_T("SELECT Code_AOI, Grade_AOI FROM IVS_LCD_AOIDefect ")
+		strSQL.Format(_T("SELECT Code_AOI, Grade_AOI FROM IVS_LCD_AOIResult ")
 			_T("WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"), strUniqueID);
 
 		std::auto_ptr<sql::Statement> stmt(theApp.m_pLightingConn->createStatement());
@@ -4631,7 +4631,7 @@ void CAni_Data_Serever_PCApp::OnLightingSnapFN()
 	}
 }
 
-void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4], sql::Connection* pLightingConn)
+void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4])
 {
 	// 使用 OutputDebugString 确保输出
 	CString temp;
@@ -4643,14 +4643,34 @@ void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4], sql::Con
 		_T("[Lighting] OnLightingResult called: [%02d][%02d][%02d][%02d]"),
 		resultCode[0], resultCode[1], resultCode[2], resultCode[3]));
 
-	// 如果没有传入线程局部连接，使用主线程的连接
+	// 通过 TLS 获取数据库连接（每个线程自动拥有独立连接）
+	BOOL bDBConnected = GetTlsLightingConnection(
+		theApp.m_strLightingDBServer,
+		theApp.m_strLightingDBName,
+		theApp.m_strLightingDBUser,
+		theApp.m_strLightingDBPassword,
+		theApp.m_pLightingLog
+	);
+
+	sql::Connection* pLightingConn = GetTlsLightingConnPtr();
+
+	// 如果 TLS 连接失败，使用主线程的连接（降级方案）
 	if (pLightingConn == NULL)
 	{
+		OutputDebugString(_T("[Lighting] TLS connection not available, falling back to main connection\n"));
+		theApp.m_pLightingLog->LOG_INFO(_T("[Lighting] TLS connection not available, falling back to main connection"));
 		pLightingConn = theApp.m_pLightingConn;
+
+		// 尝试初始化主连接
+		if (pLightingConn == NULL)
+		{
+			ConnectLightingDatabase();
+			pLightingConn = theApp.m_pLightingConn;
+		}
 	}
 
 	// TODO: 根据resultCode和治具号，从数据库读取检测结果
-	// 并更新 IVS_LCD_InspectionResult 和 IVS_LCD_AOIDefect 表
+	// 并更新 IVS_LCD_InspectionResult 和 IVS_LCD_AOIResult 表
 	// 同时写入PLC和DFS文件
 	// 先补齐 PLC 流程闭环：FN$...@ 到达时，置 End，并写入一个“临时默认结果”
 	// - FN$ 的数字为“完成的治具号”，不是 OK/NG；OK/NG 需要查 DB（后续可接入）
@@ -4743,7 +4763,7 @@ void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4], sql::Con
 
 				// ========== 查询缺陷详情并写入 PLC 缺陷代码/等级 ==========
 				// 参考老代码 AOI 流程：在 DFSDataStart 中调用 SendPlcDefectCode 写入缺陷代码
-				// Lighting 也需要同样处理：查询 IVS_LCD_AOIDefect 表，提取 Code 和 Grade 写入 PLC
+				// Lighting 也需要同样处理：查询 IVS_LCD_AOIResult 表，提取 Code 和 Grade 写入 PLC
 				std::vector<SDFSDefectDataBegin> vecAOIDefects;
 				if (QueryAOIDefectListThreadSafe(uniqueID, vecAOIDefects, pLightingConn))
 				{
@@ -4834,6 +4854,11 @@ void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4], sql::Con
 					dfsData.m_Lumitop = _T("NG");
 				dfsData.m_TypeNum = Machine_Lumitop;
 				dfsData.m_StageNum = slotIdx + 1;
+
+				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+					_T("[Lighting] DfsAddTransferFile: Slot=%d, FixtureNo=%d, PanelID=%s, UniqueID=%s, AOIResult=%s, DefectCount=%d"),
+					slotIdx, fixtureNo, screenID, uniqueID, inspResult.m_strAOIResult, vecAOIDefects.size()));
+
 				theApp.m_pFTP->DfsAddTransferFile(dfsData);
 				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
 					_T("[Lighting] Write PLC OK: Slot=%d, FixtureNo=%d, UniqueID=%s, AOIResult=%s, Code=%s, Grade=%s, DFS uploaded"),
@@ -5318,12 +5343,14 @@ BOOL CAni_Data_Serever_PCApp::ConnectLightingDatabase()
 
 		theApp.m_bLightingDBConnected = TRUE;
 		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-			_T("Connected to Lighting database: %s/%s"), theApp.m_strLightingDBServer, theApp.m_strLightingDBName));
+			_T("[DBG] MySQL connect SUCCESS: Server=%s, DB=%s, User=%s"),
+			theApp.m_strLightingDBServer, theApp.m_strLightingDBName, theApp.m_strLightingDBUser));
 		return TRUE;
 	}
 	catch (sql::SQLException& e) {
 		CString strMsg;
-		strMsg.Format(_T("Failed to connect to database: what=%s, errCode=%d, SQLState=%s"),
+		strMsg.Format(_T("[DBG] MySQL connect FAILED: Server=%s, DB=%s, User=%s, what=%s, errCode=%d, SQLState=%s"),
+			theApp.m_strLightingDBServer, theApp.m_strLightingDBName, theApp.m_strLightingDBUser,
 			CString(e.what()), e.getErrorCode(), CString(e.getSQLState().c_str()));
 		theApp.m_pLightingLog->LOG_INFO(strMsg);
 		OutputDebugString(strMsg + _T("\n"));
@@ -5555,11 +5582,11 @@ BOOL CAni_Data_Serever_PCApp::QueryLightingDefectList(CString strUniqueID, std::
 
 	BOOL bRetry = FALSE;
 	try {
-		// 查询 IVS_LCD_AOIDefect 表
+		// 查询 IVS_LCD_AOIResult 表
 		CString strSQL;
 		strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, ")
 			_T("TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI ")
-			_T("FROM IVS_LCD_AOIDefect WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
+			_T("FROM IVS_LCD_AOIResult WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
 			strUniqueID);
 
 		std::auto_ptr<sql::Statement> stmt(theApp.m_pLightingConn->createStatement());
@@ -5623,7 +5650,7 @@ BOOL CAni_Data_Serever_PCApp::QueryLightingDefectList(CString strUniqueID, std::
 			CString strSQL;
 			strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, ")
 				_T("TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI ")
-				_T("FROM IVS_LCD_AOIDefect WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
+				_T("FROM IVS_LCD_AOIResult WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
 				strUniqueID);
 
 			std::auto_ptr<sql::Statement> stmt(theApp.m_pLightingConn->createStatement());
@@ -5676,6 +5703,7 @@ BOOL CAni_Data_Serever_PCApp::QueryLightingDefectList(CString strUniqueID, std::
 // DFS 模块调用：根据 UniqueID 查询 AOI 缺陷详情列表（点灯缺陷）
 BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, sql::Connection* pConn)
 {
+	CString strFilePath;
 	vecDefects.clear();
 
 	OutputDebugString(_T("[DBG] QueryAOIDefectList: Entered function\n"));
@@ -5705,19 +5733,20 @@ BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vecto
 
 	BOOL bRetry = FALSE;
 	try {
-		// 查询 IVS_LCD_AOIDefect 表
+		// 查询 IVS_LCD_AOIResult 表（包含 ImagePath）
 		CString strSQL;
 		strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, ")
-			_T("TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI ")
-			_T("FROM IVS_LCD_AOIDefect WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
+			_T("TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI, ImagePath ")
+			_T("FROM IVS_LCD_AOIResult WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
 			strUniqueID);
 
 		OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: SQL=%s\n"), strSQL));
 
 		OutputDebugString(_T("[DBG] QueryAOIDefectList: Creating Statement...\n"));
 		std::auto_ptr<sql::Statement> stmt(pUseConn->createStatement());
-		OutputDebugString(_T("[DBG] QueryAOIDefectList: Statement created, calling executeQuery...\n"));
+		OutputDebugString(_T("[DBG] QueryAOIDefectList: Creating Statement completed\n"));
 
+		OutputDebugString(_T("[DBG] QueryAOIDefectList: Calling executeQuery...\n"));
 		std::auto_ptr<sql::ResultSet> res(stmt->executeQuery((std::string)CT2A(strSQL)));
 		OutputDebugString(_T("[DBG] QueryAOIDefectList: executeQuery completed\n"));
 
@@ -5741,8 +5770,14 @@ BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vecto
 			defect.strY = res->getString("Pos_y").c_str();
 			defect.strSIZE = res->getString("TrueSize").c_str();
 
-			// 图像数据相关字段为空
-			defect.strIMAGE_DATA = _T("");
+			// 从 IVS_LCD_AOIResult 表读取缺陷图像路径（绝对路径）
+			defect.strIMAGE_DATA = CA2W(res->getString("ImagePath").c_str());
+
+			// 调试日志：打印每条缺陷的 ImagePath
+			OutputDebugString(CStringSupport::FormatString(
+				_T("[DBG] QueryAOIDefectList: DefectIndex=%s, ImagePath=%s\n"),
+				defect.strDEFECT_DATA_NUM, defect.strIMAGE_DATA));
+
 			defect.strCAM_INSPECT = _T("");
 			defect.strZone = _T("");
 			defect.strInspName = _T("");
@@ -5789,8 +5824,8 @@ BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vecto
 		try {
 			CString strSQL;
 			strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, ")
-				_T("TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI ")
-				_T("FROM IVS_LCD_AOIDefect WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
+				_T("TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI, ImagePath ")
+				_T("FROM IVS_LCD_AOIResult WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
 				strUniqueID);
 
 			OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList Retry: SQL=%s\n"), strSQL));
@@ -5817,7 +5852,9 @@ BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vecto
 				defect.strY = res->getString("Pos_y").c_str();
 				defect.strSIZE = res->getString("TrueSize").c_str();
 
-				defect.strIMAGE_DATA = _T("");
+				// 从 IVS_LCD_AOIResult 表读取缺陷图像路径（绝对路径）
+				defect.strIMAGE_DATA = CA2W(res->getString("ImagePath").c_str());
+
 				defect.strCAM_INSPECT = _T("");
 				defect.strZone = _T("");
 				defect.strInspName = _T("");
