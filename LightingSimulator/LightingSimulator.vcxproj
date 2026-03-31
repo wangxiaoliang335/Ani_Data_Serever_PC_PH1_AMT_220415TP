@@ -1,9 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
     <ProjectConfiguration Include="Debug|x64">
       <Configuration>Debug</Configuration>
       <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
     </ProjectConfiguration>
     <ProjectConfiguration Include="Release|x64">
       <Configuration>Release</Configuration>
@@ -24,7 +32,20 @@
     <PlatformToolset>v142</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v142</PlatformToolset>
@@ -39,35 +60,56 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)obj\$(Configuration)\</IntDir>
-    <IncludePath>$(SolutionDir)..\mysql-connector-c++-9.6.0-winx64-debug\include;$(IncludePath)</IncludePath>
-    <LibraryPath>$(SolutionDir)..\mysql-connector-c++-9.6.0-winx64-debug\lib64\vs14;$(SolutionDir)..\mysql-connector-c++-9.6.0-winx64-debug\lib64\debug\vs14;$(LibraryPath)</LibraryPath>
-    <MySQLConnectorDir>$(SolutionDir)..\mysql-connector-c++-9.6.0-winx64-debug</MySQLConnectorDir>
+    <IncludePath>$(SolutionDir)..\mysql-connector-c++-noinstall-1.0.5-win32\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)..\mysql-connector-c++-noinstall-1.0.5-win32\lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)obj\$(Configuration)\</IntDir>
+    <IncludePath>$(SolutionDir)..\mysql-connector-c++-noinstall-1.0.5-win32\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)..\mysql-connector-c++-noinstall-1.0.5-win32\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)obj\$(Configuration)\</IntDir>
-    <IncludePath>$(SolutionDir)..\mysql-connector-c++-9.6.0-winx64\include;$(IncludePath)</IncludePath>
-    <LibraryPath>$(SolutionDir)..\mysql-connector-c++-9.6.0-winx64\lib64\vs14;$(LibraryPath)</LibraryPath>
-    <MySQLConnectorDir>$(SolutionDir)..\mysql-connector-c++-9.6.0-winx64</MySQLConnectorDir>
+    <IncludePath>$(SolutionDir)..\mysql-connector-c++-noinstall-1.1.13-winx64\include;E:\CSOT_PH1_AFT151_CAMERA\boost_1_67_0\boost_1_67_0;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)..\mysql-connector-c++-noinstall-1.1.13-winx64\lib;E:\CSOT_PH1_AFT151_CAMERA\boost_1_67_0\boost_1_67_0\stage\lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)obj\$(Configuration)\</IntDir>
+    <IncludePath>$(SolutionDir)..\mysql-connector-c++-noinstall-1.1.13-winx64\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)..\mysql-connector-c++-noinstall-1.1.13-winx64\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup>
-    <Link>
-      <AdditionalDependencies>mysqlcppconn.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(MySQLConnectorDir)\lib64\vs14;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-    </Link>
-    <PostBuildEvent>
-      <Command>xcopy /Y "$(MySQLConnectorDir)\lib64\mysqlcppconn-10-vs14.dll" "$(OutDir)" 2&gt;nul
-xcopy /Y "$(MySQLConnectorDir)\lib64\libcrypto-3-x64.dll" "$(OutDir)" 2&gt;nul
-xcopy /Y "$(MySQLConnectorDir)\lib64\libssl-3-x64.dll" "$(OutDir)" 2&gt;nul</Command>
-    </PostBuildEvent>
-  </ItemDefinitionGroup>
+        <Link>
+          <AdditionalDependencies>odbc32.lib;mysqlcppconn.lib;%(AdditionalDependencies)</AdditionalDependencies>
+          <AdditionalLibraryDirectories>$(SolutionDir)..\mysql-connector-c++-noinstall-1.1.13-winx64\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+        </Link>
+        <PostBuildEvent>
+          <Command>
+          </Command>
+        </PostBuildEvent>
+        <ClCompile>
+          <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">USE_ODBC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+          <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">USE_ODBC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+          <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">USE_ODBC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+          <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">USE_ODBC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+        </ClCompile>
+    </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="LightingSimulator.cpp" />
   </ItemGroup>

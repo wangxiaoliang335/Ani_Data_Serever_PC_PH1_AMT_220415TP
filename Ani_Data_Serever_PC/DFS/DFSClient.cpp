@@ -673,7 +673,7 @@ void CDFSClient::RunDfsUploadThread()
 						if (!strUniqueID.IsEmpty())
 						{
 							std::vector<SDFSDefectDataBegin> vecAOIDefects;
-							sql::Connection* pDfsConn = theApp.GetDfsLightingConnection();
+							SQLHDBC pDfsConn = theApp.GetDfsLightingConnection();
 							if (theApp.QueryAOIDefectList(strUniqueID, vecAOIDefects, pDfsConn))
 							{
 								theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(

@@ -19,6 +19,8 @@
 #include <cstdarg>
 #include <fstream>
 
+#define CPP_CONN_STATIC
+
 #ifdef _WIN32
     #include <winsock2.h>
     #include <ws2tcpip.h>
@@ -36,17 +38,33 @@
     #define INVALID_SOCKET (-1)
 #endif
 
-// MySQL include
-#include "jdbc/mysql_driver.h"
-#include "jdbc/cppconn/connection.h"
-#include "jdbc/cppconn/statement.h"
-#include "jdbc/cppconn/resultset.h"
+// Use ODBC for MySQL 5.1 compatibility
+#ifdef USE_ODBC
+#include <windows.h>
+#include <sql.h>
+#include <sqlext.h>
+
+// ODBC handle types
+SQLHENV g_odbcEnv = SQL_NULL_HANDLE;
+SQLHDBC g_odbcConn = SQL_NULL_HANDLE;
+std::mutex g_odbcMutex;
+#else
+// MySQL include (Connector/C++ 9.6.0)
+#include <mysql_connection.h>
+#include <mysql_driver.h>
+#include <cppconn/statement.h>
+#include <cppconn/resultset.h>
+#include <cppconn/exception.h>
 
 using namespace sql;
 using namespace sql::mysql;
+#endif
 
 // Forward declarations
 void Log(const char* fmt, ...);
+#ifdef USE_ODBC
+void PrintOdbcError(SQLHANDLE handle, SQLSMALLINT type);
+#endif
 
 // Global running flag - declared early for console handler
 std::atomic<bool> g_running(false);
@@ -218,9 +236,11 @@ TestState g_testState;
 // Store UniqueID for each fixture (indexed by fixture number 1-4)
 std::map<int, std::string> g_fixtureUniqueID;
 
+#ifndef USE_ODBC
 // MySQL connection
 std::unique_ptr<sql::Connection> g_dbConnection;
 std::mutex g_dbMutex;
+#endif
 
 // Defect types
 enum DefectType {
@@ -331,79 +351,79 @@ std::string GenerateUniqueID() {
 
 // Create tables if they don't exist
 void CreateTablesIfNotExist() {
-    std::lock_guard<std::mutex> lock(g_dbMutex);
+#ifdef USE_ODBC
+    std::lock_guard<std::mutex> lock(g_odbcMutex);
     
     try {
-        std::unique_ptr<Statement> stmt(g_dbConnection->createStatement());
+        SQLHSTMT stmt = SQL_NULL_HANDLE;
+        SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, g_odbcConn, &stmt);
+        if (!SQL_SUCCEEDED(ret)) {
+            PrintOdbcError(g_odbcConn, SQL_HANDLE_DBC);
+            return;
+        }
         
         // Create ivs_lcd_idmap if not exists (ID映射表)
         std::string createIdmap = 
             "CREATE TABLE IF NOT EXISTS ivs_lcd_idmap ("
-            "  MainAoiFixID INT PRIMARY KEY,"
-            "  UniqueID VARCHAR(100),"
-            "  ScreenID VARCHAR(100),"
-            "  Barcode VARCHAR(100),"
-            "  MarkID VARCHAR(50),"
-            "  UpdateTime DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
-            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
-        stmt->execute(createIdmap);
-        Log("[DB] Table ivs_lcd_idmap ensured");
+            "  MarkID VARCHAR(15) NOT NULL,"
+            "  PosID INT NULL,"
+            "  UniqueID VARCHAR(38) NULL,"
+            "  TableSuffix VARCHAR(10) NULL,"
+            "  Barcode VARCHAR(128) NULL,"
+            "  MainAoiFixID VARCHAR(10) NULL,"
+            "  Fix_IDCode VARCHAR(128) NULL,"
+            "  PRIMARY KEY (MarkID)"
+            ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
         
-        // Add Barcode column if not exists (compatible with older MySQL versions)
-        try {
-            // First check if column exists
-            std::unique_ptr<sql::ResultSet> res(stmt->executeQuery(
-                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ivs_lcd_idmap' AND COLUMN_NAME = 'Barcode'"));
-            if (res->next() && res->getInt(1) == 0) {
-                stmt->execute("ALTER TABLE ivs_lcd_idmap ADD COLUMN Barcode VARCHAR(100)");
-                Log("[DB] Column Barcode added to ivs_lcd_idmap");
-            } else {
-                Log("[DB] Column Barcode already exists");
-            }
-        } catch (sql::SQLException& e) {
-            Log("[DB] Barcode column check failed: %s", e.what());
+        // Use ANSI version of SQLExecDirect
+        ret = SQLExecDirectA(stmt, (SQLCHAR*)createIdmap.c_str(), SQL_NTS);
+        if (!SQL_SUCCEEDED(ret)) {
+            PrintOdbcError(stmt, SQL_HANDLE_STMT);
+        } else {
+            Log("[DB] Table ivs_lcd_idmap ensured");
         }
         
         // Create IVS_LCD_InspectionResult if not exists (屏表 - 完整版)
         std::string createResult = 
             "CREATE TABLE IF NOT EXISTS IVS_LCD_InspectionResult ("
             "  SysID INT AUTO_INCREMENT PRIMARY KEY,"
-            "  GUID VARCHAR(100),"
-            "  ScreenID VARCHAR(100),"
-            "  DeviceID VARCHAR(50),"
-            "  PlatformID INT,"
-            "  ShiftID VARCHAR(50),"
+            "  GUID VARCHAR(38),"
+            "  ScreenID VARCHAR(128) NOT NULL,"
+            "  DeviceID VARCHAR(15),"
+            "  PlatformID INT NOT NULL,"
+            "  ShiftID VARCHAR(15),"
             "  LotID VARCHAR(50),"
-            "  ModelName VARCHAR(100),"
-            "  StartTime DATETIME,"
-            "  StopTime DATETIME,"
-            "  Status VARCHAR(50),"
-            "  AOIResult VARCHAR(50),"
-            "  ReviewResult_Worker VARCHAR(50),"
-            "  ReviewResult_Machine VARCHAR(50),"
-            "  AllPerspectiveResult VARCHAR(50),"
-            "  MarkID VARCHAR(50),"
-            "  ProcessType VARCHAR(50),"
-            "  LineID VARCHAR(50),"
-            "  UniqueID VARCHAR(100),"
-            "  MainAoiFixID INT,"
-            "  ReviewFixID_Worker INT,"
-            "  ReviewFixID_Machine INT,"
-            "  AllPerspectiveFixID INT,"
+            "  ModelName VARCHAR(50),"
+            "  StartTime VARCHAR(50),"
+            "  StopTime VARCHAR(50),"
+            "  Status VARCHAR(30) NOT NULL,"
+            "  AOIResult VARCHAR(15) NOT NULL,"
+            "  ReviewResult_Worker VARCHAR(15),"
+            "  ReviewResult_Machine VARCHAR(15),"
+            "  AllPerspectiveResult VARCHAR(15),"
+            "  MarkID VARCHAR(15),"
+            "  ProcessType VARCHAR(15),"
+            "  LineID VARCHAR(15),"
+            "  UniqueID VARCHAR(38),"
+            "  MainAoiFixID VARCHAR(10),"
+            "  ReviewFixID_Worker VARCHAR(10),"
+            "  ReviewFixID_Machine VARCHAR(10),"
+            "  AllPerspectiveFixID VARCHAR(10),"
             "  LocateShiftX FLOAT,"
             "  LocateShiftY FLOAT,"
             "  LocateAngle FLOAT,"
+            "  XMLInfo VARCHAR(5000),"
             "  RawImageXLen INT,"
             "  RawImageYLen INT,"
             "  GridImageXLen INT,"
             "  GridImageYLen INT,"
             "  PanelPhysicalXLen FLOAT,"
             "  PanelPhysicalYLen FLOAT,"
-            "  LocalIP VARCHAR(50),"
-            "  CIMMode VARCHAR(50),"
+            "  LocalIP VARCHAR(100),"
+            "  CIMMode VARCHAR(10),"
             "  RuncardID VARCHAR(50),"
             "  CassetteID VARCHAR(50),"
-            "  SlotID INT,"
+            "  SlotID VARCHAR(50),"
             "  OperatorID VARCHAR(50),"
             "  ProductID VARCHAR(50),"
             "  L255_Grayscale INT,"
@@ -421,17 +441,19 @@ void CreateTablesIfNotExist() {
             "  Code_ManualReview VARCHAR(50),"
             "  Grade_ManualReview VARCHAR(50),"
             "  Level_ManualReview VARCHAR(50),"
+            "  Code_Final VARCHAR(50),"
+            "  Grade_Final VARCHAR(50),"
+            "  Level_Final VARCHAR(50),"
             "  Station_AllView VARCHAR(50),"
             "  Station_AutoReview VARCHAR(50),"
             "  Station_ManualReview VARCHAR(50),"
             "  Operator_ManualReview VARCHAR(50),"
-            "  StartTime_AllView DATETIME,"
-            "  StopTime_AllView DATETIME,"
-            "  StartTime_AutoReview DATETIME,"
-            "  StopTime_AutoReview DATETIME,"
-            "  StartTime_ManualReview DATETIME,"
-            "  StopTime_ManualReview DATETIME,"
-            "  XMLInfo TEXT,"
+            "  StartTime_AllView VARCHAR(50),"
+            "  StopTime_AllView VARCHAR(50),"
+            "  StartTime_AutoReview VARCHAR(50),"
+            "  StopTime_AutoReview VARCHAR(50),"
+            "  StartTime_ManualReview VARCHAR(50),"
+            "  StopTime_ManualReview VARCHAR(50),"
             "  DefClass_AOI VARCHAR(100),"
             "  DefName_AOI VARCHAR(100),"
             "  DefClass_AllView VARCHAR(100),"
@@ -439,95 +461,289 @@ void CreateTablesIfNotExist() {
             "  Pats_AOI VARCHAR(1000),"
             "  DefClass_AutoReview VARCHAR(100),"
             "  DefName_AutoReview VARCHAR(100),"
+            "  ElecRes VARCHAR(30),"
+            "  DustCount INT,"
             "  UNIQUE KEY idx_GUID (GUID),"
             "  KEY idx_ScreenID (ScreenID),"
             "  KEY idx_UniqueID (UniqueID),"
             "  KEY idx_MainAoiFixID (MainAoiFixID)"
-            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
-        stmt->execute(createResult);
-        Log("[DB] Table IVS_LCD_InspectionResult ensured");
+            ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
         
-        // Create IVS_LCD_AOIDefect if not exists (缺陷表 - 完整版)
+        ret = SQLExecDirectA(stmt, (SQLCHAR*)createResult.c_str(), SQL_NTS);
+        if (!SQL_SUCCEEDED(ret)) {
+            PrintOdbcError(stmt, SQL_HANDLE_STMT);
+        } else {
+            Log("[DB] Table IVS_LCD_InspectionResult ensured");
+        }
+        
+        // Create IVS_LCD_AOIResult if not exists (缺陷表 - 完整版)
         std::string createAOIDefect = 
-            "CREATE TABLE IF NOT EXISTS IVS_LCD_AOIDefect ("
+            "CREATE TABLE IF NOT EXISTS ivs_lcd_aoiresult ("
+            "  SysID INT NOT NULL AUTO_INCREMENT,"
+            "  GUID_IVS_LCD_InspectionResult VARCHAR(100) NULL DEFAULT NULL,"
+            "  DefectIndex INT(11) NULL DEFAULT NULL,"
+            "  Type VARCHAR(50) NULL DEFAULT NULL,"
+            "  PatternID INT(11) NULL DEFAULT NULL,"
+            "  PatternName VARCHAR(100) NULL DEFAULT NULL,"
+            "  Pos_x INT(11) NULL DEFAULT NULL,"
+            "  Pos_y INT(11) NULL DEFAULT NULL,"
+            "  Pos_width INT(11) NULL DEFAULT NULL,"
+            "  Pos_height INT(11) NULL DEFAULT NULL,"
+            "  TrueSize FLOAT NULL DEFAULT NULL,"
+            "  TrueDiameter FLOAT NULL DEFAULT NULL,"
+            "  TrueLongSize FLOAT NULL DEFAULT NULL,"
+            "  TrueShortSize FLOAT NULL DEFAULT NULL,"
+            "  GrayScale INT(11) NULL DEFAULT NULL,"
+            "  GrayScale_BK INT(11) NULL DEFAULT NULL,"
+            "  GrayScaleDiff INT(11) NULL DEFAULT NULL,"
+            "  ReviewResult_Worker VARCHAR(50) NULL DEFAULT NULL,"
+            "  ReviewResult_Machine VARCHAR(50) NULL DEFAULT NULL,"
+            "  MachineReviewDefectName VARCHAR(100) NULL DEFAULT NULL,"
+            "  InspType VARCHAR(50) NULL DEFAULT NULL,"
+            "  Layer VARCHAR(50) NULL DEFAULT NULL,"
+            "  Area INT(11) NULL DEFAULT NULL,"
+            "  Roundness FLOAT NULL DEFAULT NULL,"
+            "  GrayscaleMean INT(11) NULL DEFAULT NULL,"
+            "  GrayscaleMin INT(11) NULL DEFAULT NULL,"
+            "  GrayscaleMax INT(11) NULL DEFAULT NULL,"
+            "  JND FLOAT NULL DEFAULT NULL,"
+            "  MajorAxisAngle FLOAT NULL DEFAULT NULL,"
+            "  Code_AOI VARCHAR(50) NULL DEFAULT NULL,"
+            "  Grade_AOI VARCHAR(50) NULL DEFAULT NULL,"
+            "  Level_AOI VARCHAR(50) NULL DEFAULT NULL,"
+            "  Code_AutoReview VARCHAR(50) NULL DEFAULT NULL,"
+            "  Grade_AutoReview VARCHAR(50) NULL DEFAULT NULL,"
+            "  Level_AutoReview VARCHAR(50) NULL DEFAULT NULL,"
+            "  Code_ManualReview VARCHAR(50) NULL DEFAULT NULL,"
+            "  Grade_ManualReview VARCHAR(50) NULL DEFAULT NULL,"
+            "  Level_ManualReview VARCHAR(50) NULL DEFAULT NULL,"
+            "  ImagePath VARCHAR(500) NULL DEFAULT NULL,"
+            "  XMLInfo TEXT NULL,"
+            "  OriArea INT(11) NULL DEFAULT NULL,"
+            "  OriLongSize INT(11) NULL DEFAULT NULL,"
+            "  OriShortSize INT(11) NULL DEFAULT NULL,"
+            "  DefClass_AOI VARCHAR(100) NULL DEFAULT NULL,"
+            "  DefName_AOI VARCHAR(100) NULL DEFAULT NULL,"
+            "  AlgName VARCHAR(100) NULL DEFAULT NULL,"
+            "  AlgID INT(11) NULL DEFAULT NULL,"
+            "  ReasonCode VARCHAR(200) NULL DEFAULT NULL,"
+            "  FeatureName VARCHAR(100) NULL DEFAULT NULL,"
+            "  FeatureMin VARCHAR(100) NULL DEFAULT NULL,"
+            "  FeatureMax VARCHAR(100) NULL DEFAULT NULL,"
+            "  FeatureUnit VARCHAR(100) NULL DEFAULT NULL,"
+            "  FeatureValue VARCHAR(100) NULL DEFAULT NULL,"
+            "  DefColor VARCHAR(50) NULL DEFAULT NULL,"
+            "  DefColorValue FLOAT NULL DEFAULT NULL,"
+            "  DefClass_AutoReview VARCHAR(100) NULL DEFAULT NULL,"
+            "  DefName_AutoReview VARCHAR(100) NULL DEFAULT NULL,"
+            "  PointType VARCHAR(50) NULL DEFAULT NULL,"
+            "  PRIMARY KEY (SysID) USING BTREE,"
+            "  INDEX idx_GUID (GUID_IVS_LCD_InspectionResult) USING BTREE"
+            ") ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8 COLLATE = utf8_general_ci ROW_FORMAT = Compact";
+        
+        ret = SQLExecDirectA(stmt, (SQLCHAR*)createAOIDefect.c_str(), SQL_NTS);
+        if (!SQL_SUCCEEDED(ret)) {
+            PrintOdbcError(stmt, SQL_HANDLE_STMT);
+        } else {
+            Log("[DB] Table IVS_LCD_AOIResult ensured");
+        }
+        
+        SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+        
+    } catch (const std::exception& e) {
+        Log("[DB] Table creation warning: %s", e.what());
+    }
+#else
+    std::lock_guard<std::mutex> lock(g_dbMutex);
+    
+    try {
+        std::unique_ptr<Statement> stmt(g_dbConnection->createStatement());
+        
+        // Create ivs_lcd_idmap if not exists (ID映射表)
+        std::string createIdmap = 
+            "CREATE TABLE IF NOT EXISTS ivs_lcd_idmap ("
+            "  MarkID VARCHAR(15) NOT NULL,"
+            "  PosID INT NULL,"
+            "  UniqueID VARCHAR(38) NULL,"
+            "  TableSuffix VARCHAR(10) NULL,"
+            "  Barcode VARCHAR(128) NULL,"
+            "  MainAoiFixID VARCHAR(10) NULL,"
+            "  Fix_IDCode VARCHAR(128) NULL,"
+            "  PRIMARY KEY (MarkID)"
+            ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+        stmt->execute(createIdmap);
+        Log("[DB] Table ivs_lcd_idmap ensured");
+        
+        // Create IVS_LCD_InspectionResult if not exists (屏表 - 完整版)
+        std::string createResult = 
+            "CREATE TABLE IF NOT EXISTS IVS_LCD_InspectionResult ("
             "  SysID INT AUTO_INCREMENT PRIMARY KEY,"
-            "  GUID_IVS_LCD_InspectionResult VARCHAR(100),"
-            "  DefectIndex INT,"
-            "  Type VARCHAR(50),"
-            "  PatternID INT,"
-            "  PatternName VARCHAR(100),"
-            "  Pos_x INT,"
-            "  Pos_y INT,"
-            "  Pos_width INT,"
-            "  Pos_height INT,"
-            "  TrueSize FLOAT,"
-            "  TrueDiameter FLOAT,"
-            "  TrueLongSize FLOAT,"
-            "  TrueShortSize FLOAT,"
-            "  GrayScale INT,"
-            "  GrayScale_BK INT,"
-            "  GrayScaleDiff INT,"
-            "  ReviewResult_Worker VARCHAR(50),"
-            "  ReviewResult_Machine VARCHAR(50),"
-            "  MachineReviewDefectName VARCHAR(100),"
-            "  InspType VARCHAR(50),"
-            "  Layer VARCHAR(50),"
-            "  Area INT,"
-            "  Roundness FLOAT,"
-            "  GrayscaleMean INT,"
-            "  GrayscaleMin INT,"
-            "  GrayscaleMax INT,"
-            "  JND FLOAT,"
-            "  MajorAxisAngle FLOAT,"
+            "  GUID VARCHAR(38),"
+            "  ScreenID VARCHAR(128) NOT NULL,"
+            "  DeviceID VARCHAR(15),"
+            "  PlatformID INT NOT NULL,"
+            "  ShiftID VARCHAR(15),"
+            "  LotID VARCHAR(50),"
+            "  ModelName VARCHAR(50),"
+            "  StartTime VARCHAR(50),"
+            "  StopTime VARCHAR(50),"
+            "  Status VARCHAR(30) NOT NULL,"
+            "  AOIResult VARCHAR(15) NOT NULL,"
+            "  ReviewResult_Worker VARCHAR(15),"
+            "  ReviewResult_Machine VARCHAR(15),"
+            "  AllPerspectiveResult VARCHAR(15),"
+            "  MarkID VARCHAR(15),"
+            "  ProcessType VARCHAR(15),"
+            "  LineID VARCHAR(15),"
+            "  UniqueID VARCHAR(38),"
+            "  MainAoiFixID VARCHAR(10),"
+            "  ReviewFixID_Worker VARCHAR(10),"
+            "  ReviewFixID_Machine VARCHAR(10),"
+            "  AllPerspectiveFixID VARCHAR(10),"
+            "  LocateShiftX FLOAT,"
+            "  LocateShiftY FLOAT,"
+            "  LocateAngle FLOAT,"
+            "  XMLInfo VARCHAR(5000),"
+            "  RawImageXLen INT,"
+            "  RawImageYLen INT,"
+            "  GridImageXLen INT,"
+            "  GridImageYLen INT,"
+            "  PanelPhysicalXLen FLOAT,"
+            "  PanelPhysicalYLen FLOAT,"
+            "  LocalIP VARCHAR(100),"
+            "  CIMMode VARCHAR(10),"
+            "  RuncardID VARCHAR(50),"
+            "  CassetteID VARCHAR(50),"
+            "  SlotID VARCHAR(50),"
+            "  OperatorID VARCHAR(50),"
+            "  ProductID VARCHAR(50),"
+            "  L255_Grayscale INT,"
+            "  L0_Grayscale INT,"
+            "  DevUnitID VARCHAR(50),"
             "  Code_AOI VARCHAR(50),"
             "  Grade_AOI VARCHAR(50),"
             "  Level_AOI VARCHAR(50),"
+            "  Code_AllView VARCHAR(50),"
+            "  Grade_AllView VARCHAR(50),"
+            "  Level_AllView VARCHAR(50),"
             "  Code_AutoReview VARCHAR(50),"
             "  Grade_AutoReview VARCHAR(50),"
             "  Level_AutoReview VARCHAR(50),"
             "  Code_ManualReview VARCHAR(50),"
             "  Grade_ManualReview VARCHAR(50),"
             "  Level_ManualReview VARCHAR(50),"
-            "  ImagePath VARCHAR(500),"
-            "  XMLInfo TEXT,"
-            "  OriArea INT,"
-            "  OriLongSize INT,"
-            "  OriShortSize INT,"
+            "  Code_Final VARCHAR(50),"
+            "  Grade_Final VARCHAR(50),"
+            "  Level_Final VARCHAR(50),"
+            "  Station_AllView VARCHAR(50),"
+            "  Station_AutoReview VARCHAR(50),"
+            "  Station_ManualReview VARCHAR(50),"
+            "  Operator_ManualReview VARCHAR(50),"
+            "  StartTime_AllView VARCHAR(50),"
+            "  StopTime_AllView VARCHAR(50),"
+            "  StartTime_AutoReview VARCHAR(50),"
+            "  StopTime_AutoReview VARCHAR(50),"
+            "  StartTime_ManualReview VARCHAR(50),"
+            "  StopTime_ManualReview VARCHAR(50),"
             "  DefClass_AOI VARCHAR(100),"
             "  DefName_AOI VARCHAR(100),"
-            "  AlgName VARCHAR(100),"
-            "  AlgID INT,"
-            "  ReasonCode VARCHAR(200),"
-            "  FeatureName VARCHAR(100),"
-            "  FeatureMin VARCHAR(100),"
-            "  FeatureMax VARCHAR(100),"
-            "  FeatureUnit VARCHAR(100),"
-            "  FeatureValue VARCHAR(100),"
-            "  DefColor VARCHAR(50),"
-            "  DefColorValue FLOAT,"
+            "  DefClass_AllView VARCHAR(100),"
+            "  DefName_AllView VARCHAR(100),"
+            "  Pats_AOI VARCHAR(1000),"
             "  DefClass_AutoReview VARCHAR(100),"
             "  DefName_AutoReview VARCHAR(100),"
-            "  PointType VARCHAR(50),"
-            "  KEY idx_GUID (GUID_IVS_LCD_InspectionResult)"
-            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            "  ElecRes VARCHAR(30),"
+            "  DustCount INT,"
+            "  UNIQUE KEY idx_GUID (GUID),"
+            "  KEY idx_ScreenID (ScreenID),"
+            "  KEY idx_UniqueID (UniqueID),"
+            "  KEY idx_MainAoiFixID (MainAoiFixID)"
+            ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+        stmt->execute(createResult);
+        Log("[DB] Table IVS_LCD_InspectionResult ensured");
+        
+        // Create IVS_LCD_AOIResult if not exists (缺陷表 - 完整版)
+        std::string createAOIDefect = 
+            "CREATE TABLE IF NOT EXISTS ivs_lcd_aoiresult ("
+            "  SysID INT NOT NULL AUTO_INCREMENT,"
+            "  GUID_IVS_LCD_InspectionResult VARCHAR(100) NULL DEFAULT NULL,"
+            "  DefectIndex INT(11) NULL DEFAULT NULL,"
+            "  Type VARCHAR(50) NULL DEFAULT NULL,"
+            "  PatternID INT(11) NULL DEFAULT NULL,"
+            "  PatternName VARCHAR(100) NULL DEFAULT NULL,"
+            "  Pos_x INT(11) NULL DEFAULT NULL,"
+            "  Pos_y INT(11) NULL DEFAULT NULL,"
+            "  Pos_width INT(11) NULL DEFAULT NULL,"
+            "  Pos_height INT(11) NULL DEFAULT NULL,"
+            "  TrueSize FLOAT NULL DEFAULT NULL,"
+            "  TrueDiameter FLOAT NULL DEFAULT NULL,"
+            "  TrueLongSize FLOAT NULL DEFAULT NULL,"
+            "  TrueShortSize FLOAT NULL DEFAULT NULL,"
+            "  GrayScale INT(11) NULL DEFAULT NULL,"
+            "  GrayScale_BK INT(11) NULL DEFAULT NULL,"
+            "  GrayScaleDiff INT(11) NULL DEFAULT NULL,"
+            "  ReviewResult_Worker VARCHAR(50) NULL DEFAULT NULL,"
+            "  ReviewResult_Machine VARCHAR(50) NULL DEFAULT NULL,"
+            "  MachineReviewDefectName VARCHAR(100) NULL DEFAULT NULL,"
+            "  InspType VARCHAR(50) NULL DEFAULT NULL,"
+            "  Layer VARCHAR(50) NULL DEFAULT NULL,"
+            "  Area INT(11) NULL DEFAULT NULL,"
+            "  Roundness FLOAT NULL DEFAULT NULL,"
+            "  GrayscaleMean INT(11) NULL DEFAULT NULL,"
+            "  GrayscaleMin INT(11) NULL DEFAULT NULL,"
+            "  GrayscaleMax INT(11) NULL DEFAULT NULL,"
+            "  JND FLOAT NULL DEFAULT NULL,"
+            "  MajorAxisAngle FLOAT NULL DEFAULT NULL,"
+            "  Code_AOI VARCHAR(50) NULL DEFAULT NULL,"
+            "  Grade_AOI VARCHAR(50) NULL DEFAULT NULL,"
+            "  Level_AOI VARCHAR(50) NULL DEFAULT NULL,"
+            "  Code_AutoReview VARCHAR(50) NULL DEFAULT NULL,"
+            "  Grade_AutoReview VARCHAR(50) NULL DEFAULT NULL,"
+            "  Level_AutoReview VARCHAR(50) NULL DEFAULT NULL,"
+            "  Code_ManualReview VARCHAR(50) NULL DEFAULT NULL,"
+            "  Grade_ManualReview VARCHAR(50) NULL DEFAULT NULL,"
+            "  Level_ManualReview VARCHAR(50) NULL DEFAULT NULL,"
+            "  ImagePath VARCHAR(500) NULL DEFAULT NULL,"
+            "  XMLInfo TEXT NULL,"
+            "  OriArea INT(11) NULL DEFAULT NULL,"
+            "  OriLongSize INT(11) NULL DEFAULT NULL,"
+            "  OriShortSize INT(11) NULL DEFAULT NULL,"
+            "  DefClass_AOI VARCHAR(100) NULL DEFAULT NULL,"
+            "  DefName_AOI VARCHAR(100) NULL DEFAULT NULL,"
+            "  AlgName VARCHAR(100) NULL DEFAULT NULL,"
+            "  AlgID INT(11) NULL DEFAULT NULL,"
+            "  ReasonCode VARCHAR(200) NULL DEFAULT NULL,"
+            "  FeatureName VARCHAR(100) NULL DEFAULT NULL,"
+            "  FeatureMin VARCHAR(100) NULL DEFAULT NULL,"
+            "  FeatureMax VARCHAR(100) NULL DEFAULT NULL,"
+            "  FeatureUnit VARCHAR(100) NULL DEFAULT NULL,"
+            "  FeatureValue VARCHAR(100) NULL DEFAULT NULL,"
+            "  DefColor VARCHAR(50) NULL DEFAULT NULL,"
+            "  DefColorValue FLOAT NULL DEFAULT NULL,"
+            "  DefClass_AutoReview VARCHAR(100) NULL DEFAULT NULL,"
+            "  DefName_AutoReview VARCHAR(100) NULL DEFAULT NULL,"
+            "  PointType VARCHAR(50) NULL DEFAULT NULL,"
+            "  PRIMARY KEY (SysID) USING BTREE,"
+            "  INDEX idx_GUID (GUID_IVS_LCD_InspectionResult) USING BTREE"
+            ") ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8 COLLATE = utf8_general_ci ROW_FORMAT = Compact";
         stmt->execute(createAOIDefect);
-        Log("[DB] Table IVS_LCD_AOIDefect ensured");
+        Log("[DB] Table IVS_LCD_AOIResult ensured");
         
         // Insert sample data into ivs_lcd_idmap for fixtures 1-4 if empty
         std::unique_ptr<ResultSet> res(stmt->executeQuery("SELECT COUNT(*) FROM ivs_lcd_idmap"));
         if (res->next() && res->getInt(1) == 0) {
             for (int i = 1; i <= 4; i++) {
                 std::ostringstream insertSample;
-                insertSample << "INSERT INTO ivs_lcd_idmap (MainAoiFixID, UniqueID, ScreenID, MarkID) VALUES ("
-                           << i << ", '" << GenerateUniqueID() << "', 'SIM_BARCODE_" << i << "', '"
-                           << std::setw(2) << std::setfill('0') << i << "')";
+                insertSample << "INSERT INTO ivs_lcd_idmap (MarkID, UniqueID, Barcode, MainAoiFixID) VALUES ('"
+                           << std::setw(2) << std::setfill('0') << i << "', '" << GenerateUniqueID() << "', 'SIM_BARCODE_" << i << "', '"
+                           << i << "')";
                 stmt->execute(insertSample.str());
             }
             Log("[DB] Sample data inserted into ivs_lcd_idmap");
         }
         
-        // Insert sample defect data into IVS_LCD_AOIDefect if empty (only if idmap has data)
-        std::unique_ptr<ResultSet> resDefect(stmt->executeQuery("SELECT COUNT(*) FROM IVS_LCD_AOIDefect"));
+        // Insert sample defect data into IVS_LCD_AOIResult if empty (only if idmap has data)
+        std::unique_ptr<ResultSet> resDefect(stmt->executeQuery("SELECT COUNT(*) FROM IVS_LCD_AOIResult"));
         if (resDefect->next() && resDefect->getInt(1) == 0) {
             std::unique_ptr<ResultSet> resIdmap(stmt->executeQuery("SELECT UniqueID FROM ivs_lcd_idmap"));
             int defectIdx = 1;
@@ -536,11 +752,11 @@ void CreateTablesIfNotExist() {
                 // Insert 2 sample defects for each UniqueID
                 for (int d = 1; d <= 2; d++) {
                     std::ostringstream insertDefect;
-                    insertDefect << "INSERT INTO IVS_LCD_AOIDefect ("
+                    insertDefect << "INSERT INTO IVS_LCD_AOIResult ("
                                 << "GUID_IVS_LCD_InspectionResult, DefectIndex, Type, PatternID, PatternName, "
                                 << "Pos_x, Pos_y, Pos_width, Pos_height, TrueSize, "
                                 << "GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI, "
-                                << "DefClass_AOI, DefName_AOI"
+                                << "DefClass_AOI, DefName_AOI, ImagePath"
                                 << ") VALUES ("
                                 << "'" << uniqueID << "', "
                                 << defectIdx << ", "
@@ -558,29 +774,151 @@ void CreateTablesIfNotExist() {
                                 << "'BR01', "
                                 << "'B', "
                                 << "'Dot', "
-                                << "'BrightDot_Type" << d << "'"
+                                << "'BrightDot_Type" << d << "', "
+                                << "'C:\\\\LightingSimulator\\\\Images\\\\sample_defect.jpg'"
                                 << ")";
                     stmt->execute(insertDefect.str());
                     defectIdx++;
                 }
             }
-            Log("[DB] Sample defect data inserted into IVS_LCD_AOIDefect");
+            Log("[DB] Sample defect data inserted into IVS_LCD_AOIResult");
         }
     }
     catch (sql::SQLException& e) {
         Log("[DB] Table creation warning: %s", e.what());
     }
+#endif
 }
+
+#ifdef USE_ODBC
+// Print ODBC error
+void PrintOdbcError(SQLHANDLE handle, SQLSMALLINT type) {
+    SQLCHAR sqlState[6];
+    SQLCHAR message[SQL_MAX_MESSAGE_LENGTH];
+    SQLINTEGER nativeError;
+    SQLSMALLINT length;
+    
+    SQLRETURN ret = SQLGetDiagRecA(type, handle, 1, sqlState, &nativeError, message, sizeof(message), &length);
+    if (SQL_SUCCEEDED(ret)) {
+        Log("ODBC Error: %s (SQL State: %s, Native Error: %d)", message, sqlState, nativeError);
+    } else {
+        Log("ODBC Error: Failed to get error information");
+    }
+}
+#endif
 
 // Database connection
 bool InitDatabase() {
+#ifdef USE_ODBC
     try {
-        sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+        // Allocate environment handle
+        SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_ENV, SQL_NULL_HANDLE, &g_odbcEnv);
+        if (!SQL_SUCCEEDED(ret)) {
+            Log("Failed to allocate ODBC environment");
+            return false;
+        }
+        
+        // Set ODBC version
+        ret = SQLSetEnvAttr(g_odbcEnv, SQL_ATTR_ODBC_VERSION, (SQLPOINTER)SQL_OV_ODBC3, SQL_IS_INTEGER);
+        if (!SQL_SUCCEEDED(ret)) {
+            PrintOdbcError(g_odbcEnv, SQL_HANDLE_ENV);
+            SQLFreeHandle(SQL_HANDLE_ENV, g_odbcEnv);
+            g_odbcEnv = SQL_NULL_HANDLE;
+            return false;
+        }
+        
+        // Allocate connection handle
+        ret = SQLAllocHandle(SQL_HANDLE_DBC, g_odbcEnv, &g_odbcConn);
+        if (!SQL_SUCCEEDED(ret)) {
+            PrintOdbcError(g_odbcEnv, SQL_HANDLE_ENV);
+            SQLFreeHandle(SQL_HANDLE_ENV, g_odbcEnv);
+            g_odbcEnv = SQL_NULL_HANDLE;
+            return false;
+        }
+        
+        // Use the installed MySQL ODBC 5.3 driver
+        const char* driverNames[] = {
+            "MySQL ODBC 5.3 ANSI Driver",
+            "MySQL ODBC 5.3 Unicode Driver",
+            "MySQL ODBC 5.3 Driver"
+        };
+        
+        bool connected = false;
+        
+        for (int i = 0; i < sizeof(driverNames) / sizeof(driverNames[0]); i++) {
+            // Free and reallocate connection handle for each attempt
+            if (g_odbcConn != SQL_NULL_HANDLE) {
+                SQLDisconnect(g_odbcConn);
+                SQLFreeHandle(SQL_HANDLE_DBC, g_odbcConn);
+            }
+            
+            ret = SQLAllocHandle(SQL_HANDLE_DBC, g_odbcEnv, &g_odbcConn);
+            if (!SQL_SUCCEEDED(ret)) {
+                Log("[DB] Failed to allocate ODBC connection handle");
+                continue;
+            }
+            
+            Log("[DB] Trying driver: %s", driverNames[i]);
+            
+            // Build connection string - add PORT parameter
+            char connStr[512];
+            sprintf_s(connStr, sizeof(connStr), 
+                     "DRIVER={%s};SERVER=%s;PORT=%d;DATABASE=%s;UID=%s;PWD=%s;OPTION=3;",
+                     driverNames[i], Config::DB_HOST.c_str(), Config::DB_PORT, Config::DB_NAME.c_str(),
+                     Config::DB_USER.c_str(), Config::DB_PASSWORD.c_str());
+            
+            Log("[DB] Connection string: %s", connStr);
+            
+            // Use SQLDriverConnectA
+            ret = SQLDriverConnectA(g_odbcConn, NULL, (SQLCHAR*)connStr, SQL_NTS,
+                                   NULL, 0, NULL, SQL_DRIVER_NOPROMPT);
+            
+            if (SQL_SUCCEEDED(ret)) {
+                Log("[DB] Successfully connected with driver: %s", driverNames[i]);
+                connected = true;
+                break;
+            } else {
+                Log("[DB] Driver %s failed, trying next...", driverNames[i]);
+                PrintOdbcError(g_odbcConn, SQL_HANDLE_DBC);
+            }
+        }
+        
+        if (!connected) {
+            if (g_odbcConn != SQL_NULL_HANDLE) {
+                SQLFreeHandle(SQL_HANDLE_DBC, g_odbcConn);
+                g_odbcConn = SQL_NULL_HANDLE;
+            }
+            SQLFreeHandle(SQL_HANDLE_ENV, g_odbcEnv);
+            g_odbcEnv = SQL_NULL_HANDLE;
+            return false;
+        }
+        
+        Log("Database connected: %s:%d/%s", Config::DB_HOST.c_str(), Config::DB_PORT, Config::DB_NAME.c_str());
+        CreateTablesIfNotExist();
+        return true;
+    } catch (const std::exception& e) {
+        Log("Database connection failed: %s", e.what());
+        if (g_odbcConn != SQL_NULL_HANDLE) {
+            SQLFreeHandle(SQL_HANDLE_DBC, g_odbcConn);
+            g_odbcConn = SQL_NULL_HANDLE;
+        }
+        if (g_odbcEnv != SQL_NULL_HANDLE) {
+            SQLFreeHandle(SQL_HANDLE_ENV, g_odbcEnv);
+            g_odbcEnv = SQL_NULL_HANDLE;
+        }
+        return false;
+    }
+#else
+    try {
+        //sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+        sql::Driver* driver = sql::mysql::get_driver_instance();   // ✅ 1.0.5 唯一正确写法
         std::string url = Config::DB_HOST + ":" + std::to_string(Config::DB_PORT);
         
+        // For MySQL 5.1 compatibility, use the simple connect method
         g_dbConnection.reset(driver->connect(url, Config::DB_USER, Config::DB_PASSWORD));
+        
+        // Select database
         g_dbConnection->setSchema(Config::DB_NAME);
-        g_dbConnection->setClientOption("characterSetResults", Config::DB_CHARSET);
         
         Log("Database connected: %s:%d/%s", Config::DB_HOST.c_str(), Config::DB_PORT, Config::DB_NAME.c_str());
         
@@ -593,27 +931,39 @@ bool InitDatabase() {
         Log("Database connection failed: %s", e.what());
         return false;
     }
+#endif
 }
 
 void CloseDatabase() {
+#ifdef USE_ODBC
+    if (g_odbcConn != SQL_NULL_HANDLE) {
+        SQLDisconnect(g_odbcConn);
+        SQLFreeHandle(SQL_HANDLE_DBC, g_odbcConn);
+        g_odbcConn = SQL_NULL_HANDLE;
+    }
+    if (g_odbcEnv != SQL_NULL_HANDLE) {
+        SQLFreeHandle(SQL_HANDLE_ENV, g_odbcEnv);
+        g_odbcEnv = SQL_NULL_HANDLE;
+    }
+#else
     if (g_dbConnection) {
         g_dbConnection->close();
         g_dbConnection.reset();
     }
+#endif
 }
 
 // Insert inspection result to database
 bool InsertInspectionResult(const std::string& barcode, int fixtureNo, DefectType defect, const std::string& uniqueID) {
-    if (!g_dbConnection) {
-        Log("Database not connected, skipping insert");
+#ifdef USE_ODBC
+    if (g_odbcConn == SQL_NULL_HANDLE) {
+        Log("[DB] Database not connected, skipping insert");
         return false;
     }
 
-    std::lock_guard<std::mutex> lock(g_dbMutex);
+    std::lock_guard<std::mutex> lock(g_odbcMutex);
     
     try {
-        std::unique_ptr<Statement> stmt(g_dbConnection->createStatement());
-        
         // 使用传入的 uniqueID，而不是自己生成
         // 如果传入的 uniqueID 为空，则生成一个新的（兼容旧逻辑）
         std::string finalUniqueID = uniqueID.empty() ? GenerateUniqueID() : uniqueID;
@@ -621,12 +971,48 @@ bool InsertInspectionResult(const std::string& barcode, int fixtureNo, DefectTyp
         std::string screenID = barcode.empty() ? ("BARCODE_" + std::to_string(fixtureNo)) : barcode;
         std::string markID = std::to_string(fixtureNo);
         
+        SQLHSTMT stmt = SQL_NULL_HANDLE;
+        SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, g_odbcConn, &stmt);
+        if (!SQL_SUCCEEDED(ret)) {
+            PrintOdbcError(g_odbcConn, SQL_HANDLE_DBC);
+            return false;
+        }
+        
         // Check if ivs_lcd_idmap has this fixture
-        std::unique_ptr<ResultSet> res(stmt->executeQuery(
-            "SELECT ScreenID, MarkID FROM ivs_lcd_idmap WHERE MainAoiFixID = " + std::to_string(fixtureNo) + " LIMIT 1"));
-        if (res->next()) {
-            screenID = res->getString("ScreenID");
-            markID = res->getString("MarkID");
+        {
+            std::ostringstream queryIdmap;
+            queryIdmap << "SELECT Barcode, MarkID FROM ivs_lcd_idmap WHERE MainAoiFixID = '" << fixtureNo << "' LIMIT 1";
+            
+            ret = SQLExecDirectA(stmt, (SQLCHAR*)queryIdmap.str().c_str(), SQL_NTS);
+            if (SQL_SUCCEEDED(ret)) {
+                SQLCHAR barcodeBuf[129];
+                SQLCHAR markIDBuf[16];
+                SQLLEN lenBarcode, lenMarkID;
+                
+                ret = SQLFetch(stmt);
+                if (SQL_SUCCEEDED(ret)) {
+                    ret = SQLGetData(stmt, 1, SQL_C_CHAR, barcodeBuf, sizeof(barcodeBuf), &lenBarcode);
+                    if (SQL_SUCCEEDED(ret) && lenBarcode > 0) {
+                        screenID = (char*)barcodeBuf;
+                    }
+                    
+                    ret = SQLGetData(stmt, 2, SQL_C_CHAR, markIDBuf, sizeof(markIDBuf), &lenMarkID);
+                    if (SQL_SUCCEEDED(ret) && lenMarkID > 0) {
+                        markID = (char*)markIDBuf;
+                    }
+                }
+            }
+            
+            // Release statement after SELECT to avoid cursor state issues
+            SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+            stmt = SQL_NULL_HANDLE;
+        }
+        
+        // Create new statement for INSERT operations
+        ret = SQLAllocHandle(SQL_HANDLE_STMT, g_odbcConn, &stmt);
+        if (!SQL_SUCCEEDED(ret)) {
+            PrintOdbcError(g_odbcConn, SQL_HANDLE_DBC);
+            return false;
         }
         
         std::string modelName = "SIM_MODEL";
@@ -649,7 +1035,7 @@ bool InsertInspectionResult(const std::string& barcode, int fixtureNo, DefectTyp
                   << "Code_AOI, Grade_AOI, Level_AOI, "
                   << "DefClass_AOI, DefName_AOI"
                   << ") VALUES ("
-                  << "'" << finalUniqueID << "', "  // Use UniqueID as GUID for defect lookup compatibility
+                  << "'" << finalUniqueID << "', "
                   << "'" << screenID << "', "
                   << "'" << deviceID << "', "
                   << (fixtureNo - 1) << ", "
@@ -658,9 +1044,9 @@ bool InsertInspectionResult(const std::string& barcode, int fixtureNo, DefectTyp
                   << "'" << stopTime << "', "
                   << "'" << status << "', "
                   << "'" << aoiResult << "', "
-        << "'" << std::setw(2) << std::setfill('0') << fixtureNo << "', "
-        << "'" << finalUniqueID << "', "
-        << fixtureNo << ", "
+                  << "'" << std::setw(2) << std::setfill('0') << fixtureNo << "', "
+                  << "'" << finalUniqueID << "', "
+                  << "'" << fixtureNo << "', "
                   << "'SIM_OPERATOR', "
                   << "255, "
                   << "0, "
@@ -671,16 +1057,21 @@ bool InsertInspectionResult(const std::string& barcode, int fixtureNo, DefectTyp
                   << "'Default'"
                   << ")";
         
-        stmt->execute(insertSQL.str());
+        ret = SQLExecDirectA(stmt, (SQLCHAR*)insertSQL.str().c_str(), SQL_NTS);
+        if (!SQL_SUCCEEDED(ret)) {
+            PrintOdbcError(stmt, SQL_HANDLE_STMT);
+            SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+            return false;
+        }
         
-        // Insert defect data into IVS_LCD_AOIDefect (using UniqueID as GUID)
+        // Insert defect data into ivs_lcd_aoiresult (using UniqueID as GUID)
         if (defect != DEFECT_OK) {
             std::ostringstream insertDefect;
-            insertDefect << "INSERT INTO IVS_LCD_AOIDefect ("
+            insertDefect << "INSERT INTO ivs_lcd_aoiresult ("
                         << "GUID_IVS_LCD_InspectionResult, DefectIndex, Type, PatternID, PatternName, "
                         << "Pos_x, Pos_y, Pos_width, Pos_height, TrueSize, "
                         << "GrayScale, GrayScale_BK, GrayScaleDiff, "
-                        << "Code_AOI, Grade_AOI, DefClass_AOI, DefName_AOI"
+                        << "Code_AOI, Grade_AOI, DefClass_AOI, DefName_AOI, ImagePath"
                         << ") VALUES ("
                         << "'" << finalUniqueID << "', "
                         << "1, "
@@ -698,7 +1089,124 @@ bool InsertInspectionResult(const std::string& barcode, int fixtureNo, DefectTyp
                         << "'" << aoiResult << "', "
                         << "'B', "
                         << "'" << aoiResult << "', "
-                        << "'Default_" << aoiResult << "'"
+                        << "'Default_" << aoiResult << "', "
+                        << "'C:\\\\LightingSimulator\\\\Images\\\\sample_defect.jpg'"
+                        << ")";
+            
+            ret = SQLExecDirectA(stmt, (SQLCHAR*)insertDefect.str().c_str(), SQL_NTS);
+            if (!SQL_SUCCEEDED(ret)) {
+                PrintOdbcError(stmt, SQL_HANDLE_STMT);
+                SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+                return false;
+            }
+            Log("[DB] Inserted defect for UniqueID=%s, Type=%s", finalUniqueID.c_str(), aoiResult);
+        }
+        
+        SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+        Log("Inserted result: Fixture=%02d, Result=%s, GUID=%s", fixtureNo, aoiResult, finalUniqueID.c_str());
+        return true;
+    }
+    catch (const std::exception& e) {
+        Log("[DB] ERROR: Insert result failed: %s", e.what());
+        return false;
+    }
+#else
+    if (!g_dbConnection) {
+        Log("[DB] Database not connected, skipping insert");
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(g_dbMutex);
+    
+    try {
+        std::unique_ptr<Statement> stmt(g_dbConnection->createStatement());
+        
+        // 使用传入的 uniqueID，而不是自己生成
+        // 如果传入的 uniqueID 为空，则生成一个新的（兼容旧逻辑）
+        std::string finalUniqueID = uniqueID.empty() ? GenerateUniqueID() : uniqueID;
+        
+        std::string screenID = barcode.empty() ? ("BARCODE_" + std::to_string(fixtureNo)) : barcode;
+        std::string markID = std::to_string(fixtureNo);
+        
+        // Check if ivs_lcd_idmap has this fixture
+        std::unique_ptr<ResultSet> resIdmap(stmt->executeQuery(
+            "SELECT Barcode, MarkID FROM ivs_lcd_idmap WHERE MainAoiFixID = " + std::to_string(fixtureNo) + " LIMIT 1"));
+        if (resIdmap->next()) {
+            screenID = resIdmap->getString("Barcode");
+            markID = resIdmap->getString("MarkID");
+        }
+        
+        std::string modelName = "SIM_MODEL";
+        std::string deviceID = "SIM_DEVICE";
+        
+        std::string startTime = GetCurrentTimestamp();
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::string stopTime = GetCurrentTimestamp();
+        
+        const char* aoiResult = DefectTypeToString(defect);
+        const char* status = (defect == DEFECT_OK) ? "Normal" : "Exception";
+        
+        // Insert into IVS_LCD_InspectionResult (using UniqueID as GUID for compatibility)
+        std::ostringstream insertSQL;
+        insertSQL << "INSERT INTO IVS_LCD_InspectionResult ("
+                  << "GUID, ScreenID, DeviceID, PlatformID, ModelName, "
+                  << "StartTime, StopTime, Status, AOIResult, "
+                  << "MarkID, UniqueID, MainAoiFixID, "
+                  << "OperatorID, L255_Grayscale, L0_Grayscale, "
+                  << "Code_AOI, Grade_AOI, Level_AOI, "
+                  << "DefClass_AOI, DefName_AOI"
+                  << ") VALUES ("
+                  << "'" << finalUniqueID << "', "
+                  << "'" << screenID << "', "
+                  << "'" << deviceID << "', "
+                  << (fixtureNo - 1) << ", "
+                  << "'" << modelName << "', "
+                  << "'" << startTime << "', "
+                  << "'" << stopTime << "', "
+                  << "'" << status << "', "
+                  << "'" << aoiResult << "', "
+                  << "'" << std::setw(2) << std::setfill('0') << fixtureNo << "', "
+                  << "'" << finalUniqueID << "', "
+                  << "'" << fixtureNo << "', "
+                  << "'SIM_OPERATOR', "
+                  << "255, "
+                  << "0, "
+                  << "'" << aoiResult << "', "
+                  << "'B', "
+                  << "'1', "
+                  << "'" << aoiResult << "', "
+                  << "'Default'"
+                  << ")";
+        
+        stmt->execute(insertSQL.str());
+        
+        // Insert defect data into ivs_lcd_aoiresult (using UniqueID as GUID)
+        if (defect != DEFECT_OK) {
+            std::ostringstream insertDefect;
+            insertDefect << "INSERT INTO ivs_lcd_aoiresult ("
+                        << "GUID_IVS_LCD_InspectionResult, DefectIndex, Type, PatternID, PatternName, "
+                        << "Pos_x, Pos_y, Pos_width, Pos_height, TrueSize, "
+                        << "GrayScale, GrayScale_BK, GrayScaleDiff, "
+                        << "Code_AOI, Grade_AOI, DefClass_AOI, DefName_AOI, ImagePath"
+                        << ") VALUES ("
+                        << "'" << finalUniqueID << "', "
+                        << "1, "
+                        << "'" << aoiResult << "', "
+                        << "1, "
+                        << "'White', "
+                        << "100, "
+                        << "200, "
+                        << "5, "
+                        << "5, "
+                        << "2.5, "
+                        << "128, "
+                        << "64, "
+                        << "64, "
+                        << "'" << aoiResult << "', "
+                        << "'B', "
+                        << "'" << aoiResult << "', "
+                        << "'Default_" << aoiResult << "', "
+                        << "'C:\\\\LightingSimulator\\\\Images\\\\sample_defect.jpg'"
                         << ")";
             stmt->execute(insertDefect.str());
             Log("[DB] Inserted defect for UniqueID=%s, Type=%s", finalUniqueID.c_str(), aoiResult);
@@ -708,9 +1216,10 @@ bool InsertInspectionResult(const std::string& barcode, int fixtureNo, DefectTyp
         return true;
     }
     catch (sql::SQLException& e) {
-        Log("Database insert error: %s", e.what());
+        Log("[DB] Database insert error: %s", e.what());
         return false;
     }
+#endif
 }
 
 // Generate test result for multiple fixtures
@@ -747,6 +1256,54 @@ int RandomDelay(int minMs, int maxMs) {
 
 // Query UniqueID for a fixture from ivs_lcd_idmap table
 std::string QueryUniqueIDFromDatabase(int fixtureNo) {
+#ifdef USE_ODBC
+    if (g_odbcConn == SQL_NULL_HANDLE) {
+        Log("[DB] Database not connected, cannot query UniqueID");
+        return "";
+    }
+    
+    std::lock_guard<std::mutex> lock(g_odbcMutex);
+    
+    try {
+        SQLHSTMT stmt = SQL_NULL_HANDLE;
+        SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, g_odbcConn, &stmt);
+        if (!SQL_SUCCEEDED(ret)) {
+            PrintOdbcError(g_odbcConn, SQL_HANDLE_DBC);
+            return "";
+        }
+        
+        std::ostringstream query;
+        query << "SELECT UniqueID FROM ivs_lcd_idmap WHERE MainAoiFixID = '" << fixtureNo << "' LIMIT 1";
+        
+        ret = SQLExecDirectA(stmt, (SQLCHAR*)query.str().c_str(), SQL_NTS);
+        if (!SQL_SUCCEEDED(ret)) {
+            PrintOdbcError(stmt, SQL_HANDLE_STMT);
+            SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+            return "";
+        }
+        
+        SQLCHAR uniqueIDBuf[101];
+        SQLLEN len;
+        
+        ret = SQLFetch(stmt);
+        if (SQL_SUCCEEDED(ret)) {
+            ret = SQLGetData(stmt, 1, SQL_C_CHAR, uniqueIDBuf, sizeof(uniqueIDBuf), &len);
+            if (SQL_SUCCEEDED(ret) && len > 0) {
+                std::string result((char*)uniqueIDBuf);
+                Log("[DB] Query UniqueID for Fixture %02d: %s", fixtureNo, result.c_str());
+                SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+                return result;
+            }
+        }
+        
+        Log("[DB] WARNING: No UniqueID found for Fixture %02d in ivs_lcd_idmap", fixtureNo);
+        SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+        return "";
+    } catch (const std::exception& e) {
+        Log("[DB] ERROR: Query UniqueID failed: %s", e.what());
+        return "";
+    }
+#else
     if (!g_dbConnection) {
         Log("[DB] Database not connected, cannot query UniqueID");
         return "";
@@ -770,6 +1327,7 @@ std::string QueryUniqueIDFromDatabase(int fixtureNo) {
         Log("[DB] ERROR: Query UniqueID failed: %s", e.what());
         return "";
     }
+#endif
 }
 
 // Handle client request

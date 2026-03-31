@@ -107,4 +107,16 @@ private:
 	static DWORD WINAPI AutoTestTimerThread(LPVOID lpParam);
 	void StopAutoTestTimer();
 	void StartAutoTestTimer(DWORD dwDelayMs);
+
+	// 连接重试相关
+	CString           m_strServerIP;
+	CString           m_strServerPort;
+	HANDLE            m_hReconnectThread;
+	HANDLE            m_hReconnectStopEvent;
+	DWORD             m_dwReconnectInterval;  // 重试间隔（毫秒）
+	DWORD             m_dwMaxReconnectAttempts;  // 最大重试次数（0表示无限重试）
+	static DWORD WINAPI ReconnectThread(LPVOID lpParam);
+	void StartReconnectThread();
+	void StopReconnectThread();
+	void SetConnectionParameters(const CString& ip, const CString& port);
 };

@@ -73,6 +73,8 @@
 ======================================================================
 */
 
+#include <sql.h>
+
 #define MS_YESNO 0
 #define MS_OK 1
 
@@ -90,7 +92,7 @@
 #define DFS_SHARE_OPVDFS_PATH  _T("\\\\192.168.1.202\\Data\\Share\\")
 #define FS_SHARE_JOBDATA_PATH  _T("D:\\Data\\Share\\JobData\\")
 
-#define USHORT unsigned short
+//#define USHORT unsigned short
 #define UINT unsigned int
 
 static USHORT m_codeReset = 0;

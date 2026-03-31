@@ -3,21 +3,72 @@
 #ifndef _TLS_DB_CONNECTION_H_
 #define _TLS_DB_CONNECTION_H_
 
-#include "jdbc/mysql_connection.h"
-#include <jdbc/mysql_driver.h>
-#include <memory>
+#include <windows.h>
+#include <sql.h>
+#include <sqlext.h>
+#include "stdafx.h"
+#include "Logger.h"
+#include "StringSupport.h"
 
-// çº¿ç¨‹å±€éƒ¨å­˜å‚¨ï¼ˆTLSï¼‰æ•°æ®åº“è¿æ¥ç®¡ç†å™¨
-// æ¯ä¸ªçº¿ç¨‹è‡ªåŠ¨æ‹¥æœ‰ç‹¬ç«‹çš„æ•°æ®åº“è¿æ¥ï¼Œæ— éœ€æ‰‹åŠ¨ä¼ é€’
+// Thread Local Storage (TLS) Database Connection Manager
+// Each thread automatically has an independent database connection, no need to pass manually
 
 //========================================
-// Lighting çº¿ç¨‹ TLS è¿æ¥
+// Lighting Thread TLS Connection
 //========================================
-// TLS å˜é‡å£°æ˜ - æ¯ä¸ªçº¿ç¨‹æœ‰ç‹¬ç«‹çš„å®ä¾‹
-static __declspec(thread) sql::Connection* g_pTlsLightingConn = nullptr;
+// TLS variable declaration - Each thread has an independent instance
+static __declspec(thread) SQLHDBC g_pTlsLightingConn = SQL_NULL_HANDLE;
+static __declspec(thread) SQLHENV g_pTlsLightingEnv = SQL_NULL_HANDLE;
 static __declspec(thread) BOOL g_bTlsLightingDBConnected = FALSE;
 
-// è·å– TLS æ•°æ®åº“è¿æ¥ï¼ˆæ‡’åŠ è½½ï¼‰
+// ==============================================
+// ¹¦ÄÜ£ºUnicode ×Ö·û´® ×ª ¶à×Ö½Ú×Ö·û´® (ANSI/GBK)
+// ÊäÈë£ºunicode ×Ö·û´® (const wchar_t*)
+// Êä³ö£º¶à×Ö½Ú×Ö·û´® (std::string£¬¿É×ª const char*)
+// ==============================================
+inline std::string UnicodeToMultiByte1(const wchar_t* unicodeStr)
+{
+    // ¿ÕÖµÅĞ¶Ï
+    if (unicodeStr == nullptr || wcslen(unicodeStr) == 0)
+    {
+        return "";
+    }
+
+    // µÚÒ»²½£º¼ÆËã×ª»»ºóĞèÒªµÄ»º³åÇø´óĞ¡
+    int bufferSize = WideCharToMultiByte(
+        CP_ACP,         // Ê¹ÓÃÏµÍ³Ä¬ÈÏ±àÂë£¨ÖĞÎÄ¾ÍÊÇ GBK£©
+        0,
+        unicodeStr,     // ÊäÈë Unicode
+        -1,             // ×Ô¶¯¼ÆËã³¤¶È
+        nullptr,        // Êä³ö»º³åÇø£¨null ±íÊ¾Ö»¼ÆËã´óĞ¡£©
+        0,
+        nullptr,
+        nullptr
+    );
+
+    if (bufferSize <= 0)
+    {
+        return "";
+    }
+
+    // µÚ¶ş²½£º·ÖÅäÄÚ´æ²¢Ö´ĞĞ×ª»»
+    std::vector<char> buffer(bufferSize);
+    WideCharToMultiByte(
+        CP_ACP,
+        0,
+        unicodeStr,
+        -1,
+        buffer.data(),  // Êä³ö»º³åÇø
+        bufferSize,
+        nullptr,
+        nullptr
+    );
+
+    // ·µ»Ø std::string£¨¿ÉÒÔÖ±½Óµ± const char* Ê¹ÓÃ£©
+    return std::string(buffer.data());
+}
+
+// Get TLS database connection (lazy loading)
 inline BOOL GetTlsLightingConnection(
     const CString& strServer,
     const CString& strDBName,
@@ -26,99 +77,151 @@ inline BOOL GetTlsLightingConnection(
     CLogger* pLog = nullptr
 )
 {
-    if (g_bTlsLightingDBConnected && g_pTlsLightingConn != nullptr)
+    if (g_bTlsLightingDBConnected && g_pTlsLightingConn != SQL_NULL_HANDLE)
         return TRUE;
 
-    // å…³é—­æ—§è¿æ¥ï¼ˆå¦‚æœæœ‰ï¼‰
-    if (g_pTlsLightingConn != nullptr)
+    // Close old connection (if exists)
+    if (g_pTlsLightingConn != SQL_NULL_HANDLE)
     {
-        try {
-            delete g_pTlsLightingConn;
-        }
-        catch (...) {
-        }
-        g_pTlsLightingConn = nullptr;
-        g_bTlsLightingDBConnected = FALSE;
+        SQLDisconnect(g_pTlsLightingConn);
+        SQLFreeHandle(SQL_HANDLE_DBC, g_pTlsLightingConn);
+        g_pTlsLightingConn = SQL_NULL_HANDLE;
     }
 
-    try {
-        sql::Driver* driver = get_driver_instance();
-        if (!driver) {
-            if (pLog) pLog->LOG_INFO(_T("GetTlsLightingConnection: Failed to get MySQL driver"));
-            return FALSE;
-        }
-
-        CString strUrl;
-        strUrl.Format(_T("tcp://%s:3306"), strServer);
-
-        sql::SQLString sql_str1((std::string)CT2A(strUrl));
-        sql::SQLString sql_user((std::string)CT2A(strUser));
-        sql::SQLString sql_password((std::string)CT2A(strPassword));
-
-        if (pLog) pLog->LOG_INFO(CStringSupport::FormatString(
-            _T("GetTlsLightingConnection: Connecting to %s, User: %s"), strUrl, strUser));
-
-        g_pTlsLightingConn = driver->connect(sql_str1, sql_user, sql_password);
-        if (!g_pTlsLightingConn) {
-            if (pLog) pLog->LOG_INFO(_T("GetTlsLightingConnection: Failed to connect"));
-            return FALSE;
-        }
-
-        // è®¾ç½®è¿æ¥é€‰é¡¹
-        g_pTlsLightingConn->setClientOption("optReadTimeout", "30");
-        g_pTlsLightingConn->setClientOption("optWriteTimeout", "30");
-        g_pTlsLightingConn->setClientOption("optConnectTimeout", "10");
-        g_pTlsLightingConn->setClientOption("characterSetResults", "utf8mb4");
-
-        g_pTlsLightingConn->setSchema((std::string)CT2A(strDBName));
-
-        g_bTlsLightingDBConnected = TRUE;
-        if (pLog) pLog->LOG_INFO(_T("GetTlsLightingConnection: Connected successfully"));
-        return TRUE;
+    if (g_pTlsLightingEnv != SQL_NULL_HANDLE)
+    {
+        SQLFreeHandle(SQL_HANDLE_ENV, g_pTlsLightingEnv);
+        g_pTlsLightingEnv = SQL_NULL_HANDLE;
     }
-    catch (sql::SQLException& e) {
-        if (pLog) pLog->LOG_INFO(CStringSupport::FormatString(
-            _T("GetTlsLightingConnection: SQLException: %s, errCode=%d"),
-            CString(e.what()), e.getErrorCode()));
+
+    SQLRETURN ret;
+
+    // Allocate environment handle
+    ret = SQLAllocHandle(SQL_HANDLE_ENV, SQL_NULL_HANDLE, &g_pTlsLightingEnv);
+    if (!SQL_SUCCEEDED(ret))
+    {
+        if (pLog) pLog->LOG_INFO(_T("GetTlsLightingConnection: Failed to allocate ODBC environment handle"));
         return FALSE;
     }
+
+    // Set environment attributes
+    ret = SQLSetEnvAttr(g_pTlsLightingEnv, SQL_ATTR_ODBC_VERSION, (SQLPOINTER)SQL_OV_ODBC3, 0);
+    if (!SQL_SUCCEEDED(ret))
+    {
+        if (pLog) pLog->LOG_INFO(_T("GetTlsLightingConnection: Failed to set ODBC environment attribute"));
+        SQLFreeHandle(SQL_HANDLE_ENV, g_pTlsLightingEnv);
+        g_pTlsLightingEnv = SQL_NULL_HANDLE;
+        return FALSE;
+    }
+
+    // Allocate connection handle
+    ret = SQLAllocHandle(SQL_HANDLE_DBC, g_pTlsLightingEnv, &g_pTlsLightingConn);
+    if (!SQL_SUCCEEDED(ret))
+    {
+        if (pLog) pLog->LOG_INFO(_T("GetTlsLightingConnection: Failed to allocate ODBC connection handle"));
+        SQLFreeHandle(SQL_HANDLE_ENV, g_pTlsLightingEnv);
+        g_pTlsLightingEnv = SQL_NULL_HANDLE;
+        return FALSE;
+    }
+
+    // Build connection string
+    //const char* server = CT2A(strServer);
+    //const char* dbname = CT2A(strDBName);
+    //const char* user = CT2A(strUser);
+    //const char* password = CT2A(strPassword);
+
+    string server = UnicodeToMultiByte1(strServer.GetString()).c_str();
+    string dbname = UnicodeToMultiByte1(strDBName.GetString()).c_str();
+    string user = UnicodeToMultiByte1(strUser.GetString()).c_str();
+    string password = UnicodeToMultiByte1(strPassword.GetString()).c_str();
+    
+    // Try multiple drivers
+    const char* driverNames[] = {
+        "MySQL ODBC 5.3 ANSI Driver",
+        "MySQL ODBC 5.3 Unicode Driver",
+        "MySQL ODBC 5.3 Driver"
+    };
+    
+    char connStr[512];
+    BOOL connected = FALSE;
+    
+    for (int i = 0; i < sizeof(driverNames)/sizeof(driverNames[0]); i++) {
+        sprintf_s(connStr, sizeof(connStr), 
+            "DRIVER={%s};SERVER=%s;PORT=3306;DATABASE=%s;UID=%s;PWD=%s;OPTION=3;",
+            driverNames[i], server.c_str(), dbname.c_str(), user.c_str(), password.c_str());
+
+        if (pLog) pLog->LOG_INFO(CStringSupport::FormatString(
+            _T("GetTlsLightingConnection: Connecting with driver: %s, Server: %s, DB: %s"), 
+            CString(driverNames[i]), strServer, strDBName));
+
+        // Use ANSI version ODBC functions
+        ret = SQLDriverConnectA(g_pTlsLightingConn, NULL, (SQLCHAR*)connStr, SQL_NTS,
+            NULL, 0, NULL, SQL_DRIVER_NOPROMPT);
+
+        if (SQL_SUCCEEDED(ret))
+        {
+            g_bTlsLightingDBConnected = TRUE;
+            if (pLog) pLog->LOG_INFO(CStringSupport::FormatString(
+                _T("GetTlsLightingConnection: Connected successfully with driver: %s"), 
+                CString(driverNames[i])));
+            connected = TRUE;
+            break;
+        }
+        else
+        {
+            if (pLog) pLog->LOG_INFO(CStringSupport::FormatString(
+                _T("GetTlsLightingConnection: Driver %s failed, trying next..."), 
+                CString(driverNames[i])));
+        }
+    }
+    
+    if (!connected)
+    {
+        if (pLog) pLog->LOG_INFO(_T("GetTlsLightingConnection: Failed to connect with all drivers"));
+        SQLFreeHandle(SQL_HANDLE_DBC, g_pTlsLightingConn);
+        SQLFreeHandle(SQL_HANDLE_ENV, g_pTlsLightingEnv);
+        g_pTlsLightingConn = SQL_NULL_HANDLE;
+        g_pTlsLightingEnv = SQL_NULL_HANDLE;
+        return FALSE;
+    }
+    
+    return TRUE;
 }
 
-// å…³é—­ TLS æ•°æ®åº“è¿æ¥
+// Close TLS database connection
 inline void CloseTlsLightingConnection()
 {
-    if (g_pTlsLightingConn != nullptr)
+    if (g_pTlsLightingConn != SQL_NULL_HANDLE)
     {
-        try {
-            g_pTlsLightingConn->close();
-        }
-        catch (...) {
-        }
-        try {
-            delete g_pTlsLightingConn;
-        }
-        catch (...) {
-        }
-        g_pTlsLightingConn = nullptr;
-        g_bTlsLightingDBConnected = FALSE;
+        SQLDisconnect(g_pTlsLightingConn);
+        SQLFreeHandle(SQL_HANDLE_DBC, g_pTlsLightingConn);
+        g_pTlsLightingConn = SQL_NULL_HANDLE;
     }
+
+    if (g_pTlsLightingEnv != SQL_NULL_HANDLE)
+    {
+        SQLFreeHandle(SQL_HANDLE_ENV, g_pTlsLightingEnv);
+        g_pTlsLightingEnv = SQL_NULL_HANDLE;
+    }
+
+    g_bTlsLightingDBConnected = FALSE;
 }
 
-// è·å– TLS è¿æ¥æŒ‡é’ˆï¼ˆä¸åˆ›å»ºè¿æ¥ï¼‰
-inline sql::Connection* GetTlsLightingConnPtr()
+// Get TLS connection pointer (without creating connection)
+inline SQLHDBC GetTlsLightingConnPtr()
 {
     return g_pTlsLightingConn;
 }
 
-// æ£€æŸ¥ TLS è¿æ¥æ˜¯å¦å·²å»ºç«‹
+// Check if TLS connection is established
 inline BOOL IsTlsLightingDBConnected()
 {
-    return g_bTlsLightingDBConnected && g_pTlsLightingConn != nullptr;
+    return g_bTlsLightingDBConnected && g_pTlsLightingConn != SQL_NULL_HANDLE;
 }
 
 //========================================
-// DFS çº¿ç¨‹ TLS è¿æ¥ï¼ˆå¤ç”¨åŒä¸€ä¸ª TLS å˜é‡ï¼‰
-// æ³¨æ„ï¼šLighting çº¿ç¨‹å’Œ DFS çº¿ç¨‹å…±ç”¨åŒä¸€ä¸ª TLS è¿æ¥å˜é‡
+// DFS Thread TLS Connection (reuse the same TLS variable)
+// Note: Lighting thread and DFS thread share the same TLS connection variable
 //========================================
 inline BOOL GetTlsDfsConnection(
     const CString& strServer,
@@ -128,12 +231,12 @@ inline BOOL GetTlsDfsConnection(
     CLogger* pLog = nullptr
 )
 {
-    // DFS çº¿ç¨‹å¤ç”¨ Lighting çš„ TLS è¿æ¥
-    // å› ä¸ºå®ƒä»¬ä¸ä¼šåŒæ—¶è¿è¡Œï¼Œä¸”ä½¿ç”¨ç›¸åŒçš„æ•°æ®åº“
+    // DFS thread reuses Lighting's TLS connection
+    // Because they won't run simultaneously and use the same database
     return GetTlsLightingConnection(strServer, strDBName, strUser, strPassword, pLog);
 }
 
-inline sql::Connection* GetTlsDfsConnPtr()
+inline SQLHDBC GetTlsDfsConnPtr()
 {
     return GetTlsLightingConnPtr();
 }

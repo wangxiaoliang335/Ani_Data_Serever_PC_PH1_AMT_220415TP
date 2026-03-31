@@ -26,6 +26,10 @@ CLightingManager::CLightingManager()
 	, m_pHandler(nullptr)
 	, m_hAutoTestTimer(NULL)
 	, m_hAutoTestStopEvent(NULL)
+	, m_hReconnectThread(NULL)
+	, m_hReconnectStopEvent(NULL)
+	, m_dwReconnectInterval(5000)  // 默认重试间隔：5秒
+	, m_dwMaxReconnectAttempts(0)  // 默认无限重试
 {
 	// 数据库连接已改为 TLS 方式，每个线程自动拥有独立连接
 }
@@ -36,8 +40,17 @@ CLightingManager::~CLightingManager()
 	// 数据库连接已改为 TLS 方式，线程结束时自动释放
 }
 
+void CLightingManager::SetConnectionParameters(const CString& ip, const CString& port)
+{
+	m_strServerIP = ip;
+	m_strServerPort = port;
+}
+
 bool CLightingManager::ConnectToLighting(const CString& ip, const CString& port)
 {
+	// 保存连接参数
+	SetConnectionParameters(ip, port);
+
 	// 作为 TCP Client 连接到点灯检软件
 	LightingDbgPrint(_T("[Lighting] Connecting to %s:%s...\n"), ip, port);
 	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Connecting to %s:%s"), ip, port));
@@ -47,6 +60,10 @@ bool CLightingManager::ConnectToLighting(const CString& ip, const CString& port)
 		LightingDbgPrint(_T("[Lighting] Connection failed!\n"));
 		theApp.m_pLightingLog->LOG_INFO(_T("Connection failed!"));
 		m_bConnected = FALSE;
+		theApp.m_LightingConectStatus = FALSE;
+		
+		// 启动重试线程
+		StartReconnectThread();
 		return false;
 	}
 
@@ -59,6 +76,9 @@ bool CLightingManager::ConnectToLighting(const CString& ip, const CString& port)
 		m_bConnected = FALSE;
 		theApp.m_LightingConectStatus = FALSE;
 		CloseComm();
+		
+		// 启动重试线程
+		StartReconnectThread();
 		return false;
 	}
 
@@ -82,6 +102,7 @@ bool CLightingManager::ConnectToLighting(const CString& ip, const CString& port)
 void CLightingManager::Close()
 {
 	StopAutoTestTimer();
+	StopReconnectThread();
 	StopComm();
 	CloseComm();
 	m_bConnected = FALSE;
@@ -210,6 +231,9 @@ void CLightingManager::OnEvent(UINT uEvent, LPVOID /*lpvData*/)
 			StopAutoTestTimer();
 		}
 		StopComm();
+		
+		// 启动重试线程
+		StartReconnectThread();
 		break;
 	default:
 		break;
@@ -423,6 +447,165 @@ DWORD WINAPI CLightingManager::AutoTestTimerThread(LPVOID lpParam)
 		// 收到停止信号（手动关闭或连接断开）
 		LightingDbgPrint(_T("[Lighting] Auto-test timer cancelled\n"));
 		theApp.m_pLightingLog->LOG_INFO(_T("Auto-test timer cancelled"));
+	}
+
+	return 0;
+}
+
+//==============================================================================
+// 连接重试线程实现
+//==============================================================================
+
+void CLightingManager::StartReconnectThread()
+{
+	// 如果已经有重试线程在运行，先停止
+	StopReconnectThread();
+
+	LightingDbgPrint(_T("[Lighting] Starting reconnect thread...\n"));
+	theApp.m_pLightingLog->LOG_INFO(_T("Starting reconnect thread"));
+
+	m_hReconnectStopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	if (!m_hReconnectStopEvent)
+	{
+		LightingDbgPrint(_T("[Lighting] Failed to create reconnect stop event\n"));
+		theApp.m_pLightingLog->LOG_INFO(_T("Failed to create reconnect stop event"));
+		return;
+	}
+
+	m_hReconnectThread = CreateThread(NULL, 0, ReconnectThread, this, 0, NULL);
+	if (!m_hReconnectThread)
+	{
+		LightingDbgPrint(_T("[Lighting] Failed to create reconnect thread\n"));
+		theApp.m_pLightingLog->LOG_INFO(_T("Failed to create reconnect thread"));
+		CloseHandle(m_hReconnectStopEvent);
+		m_hReconnectStopEvent = NULL;
+		return;
+	}
+}
+
+void CLightingManager::StopReconnectThread()
+{
+	if (m_hReconnectStopEvent)
+	{
+		SetEvent(m_hReconnectStopEvent);
+	}
+
+	if (m_hReconnectThread)
+	{
+		WaitForSingleObject(m_hReconnectThread, INFINITE);
+		CloseHandle(m_hReconnectThread);
+		m_hReconnectThread = NULL;
+	}
+
+	if (m_hReconnectStopEvent)
+	{
+		CloseHandle(m_hReconnectStopEvent);
+		m_hReconnectStopEvent = NULL;
+	}
+
+	LightingDbgPrint(_T("[Lighting] Reconnect thread stopped\n"));
+	theApp.m_pLightingLog->LOG_INFO(_T("Reconnect thread stopped"));
+}
+
+DWORD WINAPI CLightingManager::ReconnectThread(LPVOID lpParam)
+{
+	CLightingManager* pThis = static_cast<CLightingManager*>(lpParam);
+	if (!pThis)
+		return 0;
+
+	LightingDbgPrint(_T("[Lighting] Reconnect thread started\n"));
+	theApp.m_pLightingLog->LOG_INFO(_T("Reconnect thread started"));
+
+	DWORD dwAttemptCount = 0;
+	HANDLE hStopEvent = pThis->m_hReconnectStopEvent;
+	CString strIP = pThis->m_strServerIP;
+	CString strPort = pThis->m_strServerPort;
+
+	while (TRUE)
+	{
+		// 检查是否需要停止
+		if (WaitForSingleObject(hStopEvent, 0) == WAIT_OBJECT_0)
+		{
+			LightingDbgPrint(_T("[Lighting] Reconnect thread received stop signal\n"));
+			theApp.m_pLightingLog->LOG_INFO(_T("Reconnect thread received stop signal"));
+			break;
+		}
+
+		// 检查连接参数是否有效
+		if (strIP.IsEmpty() || strPort.IsEmpty())
+		{
+			LightingDbgPrint(_T("[Lighting] Invalid connection parameters, stopping reconnect\n"));
+			theApp.m_pLightingLog->LOG_INFO(_T("Invalid connection parameters, stopping reconnect"));
+			break;
+		}
+
+		// 检查是否已经连接
+		if (pThis->m_bConnected)
+		{
+			LightingDbgPrint(_T("[Lighting] Connection already established, stopping reconnect\n"));
+			theApp.m_pLightingLog->LOG_INFO(_T("Connection already established, stopping reconnect"));
+			break;
+		}
+
+		// 递增重试计数
+		dwAttemptCount++;
+		
+		// 检查是否超过最大重试次数
+		if (pThis->m_dwMaxReconnectAttempts > 0 && dwAttemptCount > pThis->m_dwMaxReconnectAttempts)
+		{
+			LightingDbgPrint(_T("[Lighting] Max reconnect attempts reached (%d), stopping\n"), pThis->m_dwMaxReconnectAttempts);
+			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Max reconnect attempts reached (%d), stopping"), pThis->m_dwMaxReconnectAttempts));
+			break;
+		}
+
+		// 尝试重新连接
+		LightingDbgPrint(_T("[Lighting] Reconnect attempt %d to %s:%s...\n"), dwAttemptCount, strIP, strPort);
+		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Reconnect attempt %d to %s:%s"), dwAttemptCount, strIP, strPort));
+
+		// 关闭旧连接（如果有）
+		pThis->StopComm();
+		pThis->CloseComm();
+
+		// 尝试连接
+		if (pThis->ConnectTo(strIP, strPort, AF_INET, SOCK_STREAM))
+		{
+			LightingDbgPrint(_T("[Lighting] Reconnect successful!\n"));
+			theApp.m_pLightingLog->LOG_INFO(_T("Reconnect successful!"));
+
+			// 启动 Socket 线程
+			if (pThis->WatchComm())
+			{
+				pThis->m_bConnected = TRUE;
+				theApp.m_LightingConectStatus = TRUE;
+
+				// 启动自动测试定时器
+				if (_ttoi(theApp.m_strLightingAutoTest) != 0)
+				{
+					pThis->StartAutoTestTimer(10000);
+				}
+				
+				break; // 连接成功，退出重试循环
+			}
+			else
+			{
+				LightingDbgPrint(_T("[Lighting] Reconnect failed: Failed to start communication thread\n"));
+				theApp.m_pLightingLog->LOG_INFO(_T("Reconnect failed: Failed to start communication thread"));
+				pThis->CloseComm();
+			}
+		}
+		else
+		{
+			LightingDbgPrint(_T("[Lighting] Reconnect attempt %d failed\n"), dwAttemptCount);
+			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Reconnect attempt %d failed"), dwAttemptCount));
+		}
+
+		// 等待重试间隔
+		if (WaitForSingleObject(hStopEvent, pThis->m_dwReconnectInterval) == WAIT_OBJECT_0)
+		{
+			LightingDbgPrint(_T("[Lighting] Reconnect thread received stop signal during wait\n"));
+			theApp.m_pLightingLog->LOG_INFO(_T("Reconnect thread received stop signal during wait"));
+			break;
+		}
 	}
 
 	return 0;

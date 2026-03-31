@@ -9,8 +9,9 @@
 
 #include "resource.h"       //
 #include "stdafx.h"
-#include <jdbc/mysql_connection.h>
-#include <mysql/jdbc.h>
+#include <windows.h>
+#include <sql.h>
+#include <sqlext.h>
 #include "Logger.h"
 #include "MsgBox.h"
 #include "AlignThread.h"
@@ -70,15 +71,16 @@ public:
 	LightingInspectionResult QueryInspectionResult(CString uniqueID);
 
 	// Lighting 线程专用的数据库操作（使用线程局部连接）
-	LightingInspectionResult QueryInspectionResultThreadSafe(CString uniqueID, sql::Connection* pConn);
-	BOOL QueryIdMapByFixtureNoThreadSafe(int fixtureNo, CString& uniqueID, CString& screenID, CString& markID, sql::Connection* pConn);
+	LightingInspectionResult QueryInspectionResultThreadSafe(CString uniqueID, SQLHDBC pConn);
+	BOOL QueryIdMapByFixtureNoThreadSafe(int fixtureNo, CString& uniqueID, CString& screenID, CString& markID, SQLHDBC pConn);
 
 	CMultiDocTemplate* m_pDocOperator;
 	HANDLE m_hApp;
 	CCriticalSection m_csLightingFlow;
-	sql::Connection* m_pLightingConn;
-	sql::Connection* m_pDfsLightingConn;  // DFS 模块专用的数据库连接（避免多线程共享连接问题）
+	SQLHDBC m_pLightingConn;
+	SQLHDBC m_pDfsLightingConn;  // DFS 模块专用的数据库连接（避免多线程共享连接问题）
 	BOOL m_bDfsLightingDBConnected;
+	SQLHENV m_odbcEnv;
 
 	CLogger* m_PlcLog;
 	CLogger* m_PlcHeartBitLog;
@@ -262,7 +264,7 @@ public:
 	// DFS 模块专用的数据库连接
 	BOOL ConnectDfsLightingDatabase();
 	void CloseDfsLightingDatabase();
-	sql::Connection* GetDfsLightingConnection();
+	SQLHDBC GetDfsLightingConnection();
 
 	BOOL QueryIdMapByFixtureNo(int fixtureNo, CString& uniqueID, CString& screenID, CString& markID);
 	LightingInspectionResult GetLightingResultByUniqueID(CString uniqueID);
@@ -270,9 +272,9 @@ public:
 	// 根据 UniqueID 查询点灯缺陷详情列表
 	BOOL QueryLightingDefectList(CString strUniqueID, std::vector<LUMITOP_SDFSDefectDataBegin>& vecDefects);
 	// 根据 UniqueID 查询 AOI 缺陷详情列表（点灯缺陷）
-	BOOL QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, sql::Connection* pConn = NULL);
+	BOOL QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, SQLHDBC pConn = SQL_NULL_HANDLE);
 	// 线程安全的 AOI 缺陷列表查询
-	BOOL QueryAOIDefectListThreadSafe(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, sql::Connection* pConn);
+	BOOL QueryAOIDefectListThreadSafe(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, SQLHDBC pConn);
 	// 根据 Barcode 查询 UniqueID
 	CString GetLightingUniqueIDByBarcode(CString strBarcode);
 
