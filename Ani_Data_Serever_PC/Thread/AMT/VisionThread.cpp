@@ -44,6 +44,9 @@ void CVisionThread::ThreadRun()
 
 			if (theApp.m_LightingConectStatus || theApp.m_AOIPassMode)
 		{
+			// Lighting(点灯检) 新协议流程超时兜底：避免 PLC 因未回包一直卡住
+			theApp.LightingFlowTimeoutCheck();
+
 			if (m_bFirstStatus)
 			{
 				theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] First connection status detected"));
@@ -117,10 +120,24 @@ void CVisionThread::ThreadRun()
 						theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + ii, &m_codeReset);
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + ii, OffSet_0, FALSE);
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + ii, OffSet_0, FALSE);
-						//Delay(100);
-						m_iPcNum = ii <= PanelNum2 ? PC1 : PC2;
-						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Calling VisionInspectionMethod for PC%d, Panel%d"), m_iPcNum, PanelNum1 + ii));
-						VisionInspectionMethod(m_iPcNum, PanelNum1 + ii);
+
+						// 新版点灯检软件：优先走 Lighting 协议 Start$...@
+						if (theApp.m_LightingThreadOpenFlag && theApp.m_LightingConectStatus)
+						{
+							theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Using Lighting protocol (6501 port) for inspection"));
+							BOOL startFlags[4] = { FALSE, FALSE, FALSE, FALSE };
+							for (int jj = 0; jj < PanelMaxCount; ++jj)
+								startFlags[jj] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_VisionStart1, OffSet_0 + jj);
+
+							theApp.TryStartLightingFromPlc(startFlags);
+						}
+						else
+						{
+							// 旧版 Vision PC 协议
+							m_iPcNum = ii <= PanelNum2 ? PC1 : PC2;
+							theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Calling VisionInspectionMethod for PC%d, Panel%d"), m_iPcNum, PanelNum1 + ii));
+							VisionInspectionMethod(m_iPcNum, PanelNum1 + ii);
+						}
 					}
 				}
 			}

@@ -22,25 +22,25 @@ static __declspec(thread) SQLHENV g_pTlsLightingEnv = SQL_NULL_HANDLE;
 static __declspec(thread) BOOL g_bTlsLightingDBConnected = FALSE;
 
 // ==============================================
-// ���ܣ�Unicode �ַ��� ת ���ֽ��ַ��� (ANSI/GBK)
-// ���룺unicode �ַ��� (const wchar_t*)
-// ��������ֽ��ַ��� (std::string����ת const char*)
+// Function: Convert Unicode string to multibyte string (ANSI/GBK)
+// Parameter: unicode string (const wchar_t*)
+// Return: multibyte string (std::string can be converted to const char*)
 // ==============================================
 inline std::string UnicodeToMultiByte1(const wchar_t* unicodeStr)
 {
-    // ��ֵ�ж�
+    // Check for null or empty string
     if (unicodeStr == nullptr || wcslen(unicodeStr) == 0)
     {
         return "";
     }
 
-    // ��һ��������ת������Ҫ�Ļ�������С
+    // First call to calculate the required buffer size
     int bufferSize = WideCharToMultiByte(
-        CP_ACP,         // ʹ��ϵͳĬ�ϱ��루���ľ��� GBK��
+        CP_ACP,         // Use system default code page (usually GBK)
         0,
-        unicodeStr,     // ���� Unicode
-        -1,             // �Զ����㳤��
-        nullptr,        // �����������null ��ʾֻ�����С��
+        unicodeStr,     // Input Unicode string
+        -1,             // Auto-calculate length
+        nullptr,        // Pass nullptr to only get size
         0,
         nullptr,
         nullptr
@@ -51,20 +51,20 @@ inline std::string UnicodeToMultiByte1(const wchar_t* unicodeStr)
         return "";
     }
 
-    // �ڶ����������ڴ沢ִ��ת��
+    // Allocate memory and perform conversion
     std::vector<char> buffer(bufferSize);
     WideCharToMultiByte(
         CP_ACP,
         0,
         unicodeStr,
         -1,
-        buffer.data(),  // ���������
+        buffer.data(),  // Output buffer
         bufferSize,
         nullptr,
         nullptr
     );
 
-    // ���� std::string������ֱ�ӵ� const char* ʹ�ã�
+    // Return std::string that can be used directly as const char*
     return std::string(buffer.data());
 }
 

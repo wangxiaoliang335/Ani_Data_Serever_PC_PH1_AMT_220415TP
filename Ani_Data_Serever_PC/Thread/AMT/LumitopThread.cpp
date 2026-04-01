@@ -34,8 +34,8 @@ void CLumitopThread::ThreadRun()
 		theApp.m_LumitopConectStatus[0] = theApp.m_LumitopSocketManager[0].getConectCheck();
 		theApp.m_LumitopConectStatus[1] = theApp.m_LumitopSocketManager[1].getConectCheck();
 
-		// Lighting(点灯检) 新协议流程超时兜底：避免 PLC 因未回包一直卡住
-		theApp.LightingFlowTimeoutCheck();
+		// Lighting(点灯检) 新协议流程超时兜底：避免 PLC 因未回包一直卡住 (已注释，改为使用旧版Lumitop协议)
+		//theApp.LightingFlowTimeoutCheck();
 
 		//if (theApp.m_bAllPassMode)
 		//	continue;
@@ -106,21 +106,21 @@ void CLumitopThread::ThreadRun()
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopGrabEnd1 + ii, OffSet_0, FALSE);
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopEnd1 + ii, OffSet_0, FALSE);
 
-						// 新版点灯检软件：优先走 Lighting 协议 Start$...@
-						if (theApp.m_LightingThreadOpenFlag && theApp.m_LightingConectStatus)
-						{
-							BOOL startFlags[4] = { FALSE, FALSE, FALSE, FALSE };
-							for (int jj = 0; jj < PanelMaxCount; ++jj)
-								startFlags[jj] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_PreGammaStart1, OffSet_0 + jj);
+						// 新版点灯检软件：优先走 Lighting 协议 Start$...@ (已注释，改为使用旧版Lumitop协议)
+						//if (theApp.m_LightingThreadOpenFlag && theApp.m_LightingConectStatus)
+						//{
+						//	BOOL startFlags[4] = { FALSE, FALSE, FALSE, FALSE };
+						//	for (int jj = 0; jj < PanelMaxCount; ++jj)
+						//		startFlags[jj] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_PreGammaStart1, OffSet_0 + jj);
 
-							theApp.TryStartLightingFromPlc(startFlags);
-						}
-						else
-						{
+						//	theApp.TryStartLightingFromPlc(startFlags);
+						//}
+						//else
+						//{
 							// 旧版 Lumitop (MC<->VS) 协议
 							m_iPcNum = ii <= PanelNum2 ? PC1 : PC2;
 							LumitopInspectionMethod(m_iPcNum, PanelNum1 + ii);
-						}
+						//}
 					}
 				}
 			}

@@ -15,6 +15,7 @@
 #include <locale.h>
 
 // ODBC for MySQL Database
+// TLS connection functions are included via AniUtil.h or indirectly
 
 #ifdef _DEBUGUNLOADER_MAIN_TOP_VIEW
 #define new DEBUG_NEW
@@ -123,11 +124,16 @@ CAni_Data_Serever_PCApp theApp;
 
 // ODBC Infrastructure Functions
 void PrintOdbcError(SQLHANDLE handle, SQLSMALLINT type) {
+	DWORD threadId = GetCurrentThreadId();
 	SQLCHAR sqlState[6];
 	SQLCHAR message[SQL_MAX_MESSAGE_LENGTH];
 	SQLINTEGER nativeError;
 	SQLSMALLINT length;
 
+	CString strHeader;
+	strHeader.Format(_T("[DBG] PrintOdbcError: ThreadID=%lu, HandleType=%d"), threadId, type);
+	OutputDebugString(strHeader + _T("\n"));
+	
 	SQLRETURN ret = SQLGetDiagRecA(type, handle, 1, sqlState, &nativeError, message, sizeof(message), &length);
 	if (SQL_SUCCEEDED(ret)) {
 		CString strErr;
@@ -135,8 +141,10 @@ void PrintOdbcError(SQLHANDLE handle, SQLSMALLINT type) {
 		CString strSqlState = CA2T((char*)sqlState);
 		strErr.Format(_T("ODBC Error: %s (SQL State: %s, Native Error: %d)"), strMessage, strSqlState, nativeError);
 		theApp.m_pLightingLog->LOG_INFO(strErr);
+		OutputDebugString(strHeader + _T(", Error: ") + strErr + _T("\n"));
 	} else {
 		theApp.m_pLightingLog->LOG_INFO(_T("ODBC Error: Failed to get error information"));
+		OutputDebugString(strHeader + _T(", Failed to get error info\n"));
 	}
 }
 
@@ -627,21 +635,22 @@ LightingInspectionResult CAni_Data_Serever_PCApp::QueryInspectionResult(CString 
 		}
 		else
 		{
-			// 线程局部连接创建失败，使用全局连接作为后备
-			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResult: TLS connection failed, using global connection"));
-			if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
+			// 线程局部连接创建失败，再次尝试创建TLS连接
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResult: TLS connection failed, retrying TLS connection"));
+			if (!GetTlsLightingConnection(
+				theApp.m_strLightingDBServer,
+				theApp.m_strLightingDBName,
+				theApp.m_strLightingDBUser,
+				theApp.m_strLightingDBPassword,
+				theApp.m_pLightingLog))
 			{
-				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResult: DB not connected, trying to connect..."));
-				if (!ConnectLightingDatabase())
-				{
-					theApp.m_pLightingLog->LOG_INFO(_T("QueryInspectionResult: Database not connected"));
-					LightingInspectionResult result;
-					result.m_bValid = FALSE;
-					return result;
-				}
-				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResult: Database connected successfully"));
+				theApp.m_pLightingLog->LOG_INFO(_T("QueryInspectionResult: Failed to create TLS connection"));
+				LightingInspectionResult result;
+				result.m_bValid = FALSE;
+				return result;
 			}
-			pUseConn = theApp.m_pLightingConn;
+			pUseConn = GetTlsLightingConnPtr();
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResult: TLS connection created successfully"));
 		}
 	}
 
@@ -698,20 +707,21 @@ LightingInspectionResult CAni_Data_Serever_PCApp::QueryInspectionResultThreadSaf
 			}
 			else
 			{
-				// 线程局部连接创建失败，使用全局连接作为后备
-				OutputDebugString(_T("[DBG] QueryInspectionResultThreadSafe: TLS connection failed, using global connection\n"));
-				if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
+				// 线程局部连接创建失败，再次尝试创建TLS连接
+				OutputDebugString(_T("[DBG] QueryInspectionResultThreadSafe: TLS connection failed, retrying TLS connection\n"));
+				if (!GetTlsLightingConnection(
+					theApp.m_strLightingDBServer,
+					theApp.m_strLightingDBName,
+					theApp.m_strLightingDBUser,
+					theApp.m_strLightingDBPassword,
+					theApp.m_pLightingLog))
 				{
-					OutputDebugString(_T("[DBG] QueryInspectionResultThreadSafe: DB not connected, trying to connect...\n"));
-					if (!ConnectLightingDatabase())
-					{
-						OutputDebugString(_T("[DBG] QueryInspectionResultThreadSafe: ConnectLightingDatabase FAILED\n"));
-						theApp.m_pLightingLog->LOG_INFO(_T("QueryInspectionResultThreadSafe: Database not connected"));
-						return result;
-					}
-					OutputDebugString(_T("[DBG] QueryInspectionResultThreadSafe: ConnectLightingDatabase SUCCESS\n"));
+					OutputDebugString(_T("[DBG] QueryInspectionResultThreadSafe: TLS connection FAILED\n"));
+					theApp.m_pLightingLog->LOG_INFO(_T("QueryInspectionResultThreadSafe: Failed to create TLS connection"));
+					return result;
 				}
-				pUseConn = theApp.m_pLightingConn;
+				pUseConn = GetTlsLightingConnPtr();
+				OutputDebugString(_T("[DBG] QueryInspectionResultThreadSafe: TLS connection SUCCESS\n"));
 			}
 		}
 	}
@@ -5092,6 +5102,11 @@ void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4])
 					theApp.m_pEqIf->m_pMNetH->SetDefectGradeRankData(eWordType_DefectGradeResult1 + slotIdx, &pDefectGradeRank);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_DefectCodeEnd1 + slotIdx, OffSet_0, TRUE);
 
+					temp.Format(_T("[Lighting] Write PLC: Slot=%d, FixtureNo=%d, AOIResult=%s, PLC_Result=%s, DefectCount=%d, Code=%s, Grade=%s\n"),
+						slotIdx, fixtureNo, inspResult.m_strAOIResult,
+						plcResult == m_codeOk ? _T("OK") : _T("NG"),
+						vecAOIDefects.size(), strCode, strGrade);
+					OutputDebugString(temp);
 					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
 						_T("[Lighting] Write PLC DefectCode OK: Slot=%d, FixtureNo=%d, DefectCount=%d, Code=%s, Grade=%s"),
 						slotIdx, fixtureNo, vecAOIDefects.size(), strCode, strGrade));
@@ -5110,6 +5125,9 @@ void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4])
 					theApp.m_pEqIf->m_pMNetH->SetDefectGradeRankData(eWordType_DefectGradeResult1 + slotIdx, &pDefectGradeRank);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_DefectCodeEnd1 + slotIdx, OffSet_0, TRUE);
 
+					temp.Format(_T("[Lighting] Write PLC: Slot=%d, FixtureNo=%d, AOIResult=%s, PLC_Result=OK (No defects), Grade=%s\n"),
+						slotIdx, fixtureNo, inspResult.m_strAOIResult, theApp.m_strOkGrade);
+					OutputDebugString(temp);
 					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
 						_T("[Lighting] Write PLC DefectCode OK (No defects): Slot=%d, FixtureNo=%d, Grade=%s"),
 						slotIdx, fixtureNo, theApp.m_strOkGrade));
@@ -5206,7 +5224,12 @@ BOOL CAni_Data_Serever_PCApp::TryStartLightingFromPlc(const BOOL startFlags[4])
 	m_csLightingFlow.Unlock();
 
 	// 发送开始检测前，更新 ivs_lcd_idmap 对应治具号记录，供检测软件使用
-	if (theApp.m_bLightingDBConnected || ConnectLightingDatabase())
+	if (IsTlsLightingDBConnected() || GetTlsLightingConnection(
+		theApp.m_strLightingDBServer,
+		theApp.m_strLightingDBName,
+		theApp.m_strLightingDBUser,
+		theApp.m_strLightingDBPassword,
+		theApp.m_pLightingLog))
 	{
 		PanelData pPanelData;
 		FpcIDData pFpcData;
@@ -6038,6 +6061,10 @@ void CAni_Data_Serever_PCApp::GetLightingResultByBarcode(CString strBarcode, CSt
 	strGradeAOI = _T("");
 	bValid = FALSE;
 
+	// 获取当前线程ID用于调试
+	DWORD threadId = GetCurrentThreadId();
+	OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingResultByBarcode: ThreadID=%lu, Barcode=%s\n"), threadId, strBarcode));
+
 	if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
 	{
 		if (!ConnectLightingDatabase())
@@ -6055,7 +6082,8 @@ void CAni_Data_Serever_PCApp::GetLightingResultByBarcode(CString strBarcode, CSt
 	SQLRETURN ret;
 	try {
 		CString strSQL;
-		strSQL.Format(_T("SELECT UniqueID FROM ivs_lcd_idmap WHERE ScreenID = '%s'"), strBarcode);
+		strSQL.Format(_T("SELECT UniqueID FROM ivs_lcd_idmap WHERE Barcode = '%s'"), strBarcode);
+		OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingResultByBarcode: ThreadID=%lu, SQL=%s\n"), threadId, strSQL));
 
 		ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
 		if (!SQL_SUCCEEDED(ret)) {
@@ -6078,11 +6106,13 @@ void CAni_Data_Serever_PCApp::GetLightingResultByBarcode(CString strBarcode, CSt
 			SQLLEN len;
 			SQLGetData(stmt, 1, SQL_C_CHAR, uniqueIDBuf, sizeof(uniqueIDBuf), &len);
 			strUniqueID = CA2W((char*)uniqueIDBuf);
+			OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingResultByBarcode: ThreadID=%lu, Found UniqueID=%s for Barcode=%s\n"), threadId, strUniqueID, strBarcode));
 			theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
 				_T("GetLightingResultByBarcode: Found UniqueID=%s for Barcode=%s"), strUniqueID, strBarcode));
 		}
 		else
 		{
+			OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingResultByBarcode: ThreadID=%lu, No UniqueID found for Barcode=%s\n"), threadId, strBarcode));
 			theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
 				_T("GetLightingResultByBarcode: No UniqueID found for Barcode=%s"), strBarcode));
 			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
@@ -6108,7 +6138,7 @@ void CAni_Data_Serever_PCApp::GetLightingResultByBarcode(CString strBarcode, CSt
 		}
 		try {
 			CString strSQL;
-			strSQL.Format(_T("SELECT UniqueID FROM ivs_lcd_idmap WHERE ScreenID = '%s'"), strBarcode);
+			strSQL.Format(_T("SELECT UniqueID FROM ivs_lcd_idmap WHERE Barcode = '%s'"), strBarcode);
 
 			ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
 			if (!SQL_SUCCEEDED(ret)) {
@@ -6412,7 +6442,7 @@ BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vecto
 		}
 	}
 
-	BOOL bRetry = FALSE;
+		BOOL bRetry = FALSE;
 	SQLHSTMT stmt = SQL_NULL_HANDLE;
 	SQLRETURN ret;
 
@@ -6450,12 +6480,16 @@ BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vecto
 			bRetry = TRUE;
 			throw 1;
 		}
-		OutputDebugString(_T("[DBG] QueryAOIDefectList: SQLExecDirectA completed\n"));
+		OutputDebugString(_T("[DBG] QueryAOIDefectList: SQLExecDirectA completed, now fetching results...\n"));
 
 		int iDefectCount = 0;
 		ret = SQLFetch(stmt);
+		OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: First SQLFetch ret=%d\n"), ret));
+		
 		while (ret == SQL_SUCCESS || ret == SQL_SUCCESS_WITH_INFO)
 		{
+			OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: Processing row %d...\n"), iDefectCount + 1));
+			
 			SDFSDefectDataBegin defect;
 			SQLCHAR defectIndexBuf[51], typeBuf[51], patternIDBuf[101], patternNameBuf[101], 
 				posXBuf[51], posYBuf[51], posWidthBuf[51], posHeightBuf[51], 
@@ -6469,6 +6503,7 @@ BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vecto
 			defect.strPANEL_ID = strUniqueID;
 			
 			SQLGetData(stmt, 1, SQL_C_CHAR, defectIndexBuf, sizeof(defectIndexBuf), &lenDefectIndex);
+			OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: GetData col1 done, len=%d\n"), lenDefectIndex));
 			SQLGetData(stmt, 2, SQL_C_CHAR, typeBuf, sizeof(typeBuf), &lenType);
 			SQLGetData(stmt, 3, SQL_C_CHAR, patternIDBuf, sizeof(patternIDBuf), &lenPatternID);
 			SQLGetData(stmt, 4, SQL_C_CHAR, patternNameBuf, sizeof(patternNameBuf), &lenPatternName);
@@ -6483,6 +6518,7 @@ BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vecto
 			SQLGetData(stmt, 13, SQL_C_CHAR, codeAOIBuf, sizeof(codeAOIBuf), &lenCodeAOI);
 			SQLGetData(stmt, 14, SQL_C_CHAR, gradeAOIBuf, sizeof(gradeAOIBuf), &lenGradeAOI);
 			SQLGetData(stmt, 15, SQL_C_CHAR, imagePathBuf, sizeof(imagePathBuf), &lenImagePath);
+			OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: GetData all cols done, imagePathLen=%d\n"), lenImagePath));
 
 			defect.strDEFECT_DATA_NUM = (char*)defectIndexBuf;
 			defect.strDEFECT_TYPE = (char*)typeBuf;
@@ -6501,10 +6537,19 @@ BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vecto
 			// 从 IVS_LCD_AOIResult 表读取缺陷图像路径（绝对路径）
 			defect.strIMAGE_DATA = (char*)imagePathBuf;
 
-			// 调试日志：打印每条缺陷的 ImagePath
+			// 调试日志：打印每条缺陷的详细信息
 			OutputDebugString(CStringSupport::FormatString(
-				_T("[DBG] QueryAOIDefectList: DefectIndex=%s, ImagePath=%s\n"),
-				defect.strDEFECT_DATA_NUM, defect.strIMAGE_DATA));
+				_T("[DBG] QueryAOIDefectList: Row %d - DefectIndex=%s, Type=%s, Pattern=%s, Code=%s, Grade=%s, X=%s, Y=%s, Size=%s, ImagePath=%s\n"),
+				iDefectCount + 1,
+				defect.strDEFECT_DATA_NUM, 
+				defect.strDEFECT_TYPE,
+				defect.strDEFECT_PTRN,
+				defect.strDEFECT_CODE,
+				defect.strDEFECT_GRADE,
+				defect.strX,
+				defect.strY,
+				defect.strSIZE,
+				defect.strIMAGE_DATA));
 
 			defect.strCAM_INSPECT = _T("");
 			defect.strZone = _T("");
@@ -6512,13 +6557,18 @@ BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vecto
 
 			vecDefects.push_back(defect);
 			iDefectCount++;
+			OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: push_back done, count=%d\n"), iDefectCount));
 			
 			// 获取下一行数据
 			ret = SQLFetch(stmt);
+			OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: Next SQLFetch ret=%d\n"), ret));
 		}
-
+		OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: Fetch loop ended, ret=%d\n"), ret));
+		
+		// Free statement before logging to avoid any potential issues
 		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 		stmt = SQL_NULL_HANDLE;
+		OutputDebugString(_T("[DBG] QueryAOIDefectList: SQLFreeHandle done\n"));
 
 		CString strLog;
 		strLog.Format(_T("QueryAOIDefectList: Found %d defects for UniqueID=%s"), iDefectCount, strUniqueID);
@@ -6528,6 +6578,8 @@ BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vecto
 		return TRUE;
 	}
 	catch (...) {
+		DWORD lastError = GetLastError();
+		OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: EXCEPTION CAUGHT! LastError=%lu, ThreadID=%lu\n"), lastError, threadId));
 		if (stmt != SQL_NULL_HANDLE) {
 			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 			stmt = SQL_NULL_HANDLE;
@@ -6541,32 +6593,25 @@ BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vecto
 		// 诊断：检查为什么进入重试逻辑
 		OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: ThreadID=%lu, Entering retry logic, bRetry=%d, pConn=%p\n"), threadId, bRetry, pConn));
 		
-		// 重试时也使用传入的连接或重新连接
-		if (pConn != SQL_NULL_HANDLE)
+		// 即使传入了连接参数，如果 TLS 连接失败也需要重试
+		// 先尝试重新建立 TLS 连接
+		OutputDebugString(_T("[DBG] QueryAOIDefectList: Retrying with new TLS connection...\n"));
+		
+		// 强制重新创建 TLS 连接（不使用现有的可能已损坏的连接）
+		CloseTlsLightingConnection();
+		
+		if (!GetTlsLightingConnection(
+			theApp.m_strLightingDBServer,
+			theApp.m_strLightingDBName,
+			theApp.m_strLightingDBUser,
+			theApp.m_strLightingDBPassword,
+			theApp.m_pLightingLog))
 		{
-			// 如果传入了连接但失败了，不重试（调用方负责重连）
-			OutputDebugString(_T("[DBG] QueryAOIDefectList: Retry skipped - using caller-provided connection\n"));
+			OutputDebugString(_T("[DBG] QueryAOIDefectList: TLS reconnection FAILED\n"));
+			theApp.m_pLightingLog->LOG_INFO(_T("QueryAOIDefectList: TLS reconnection failed"));
 			return FALSE;
 		}
-		
-		// 使用线程局部连接进行重试，避免影响全局连接
-		OutputDebugString(_T("[DBG] QueryAOIDefectList: Retrying with TLS connection...\n"));
-		if (!IsTlsLightingDBConnected())
-		{
-			OutputDebugString(_T("[DBG] QueryAOIDefectList: TLS connection not connected, trying to reconnect...\n"));
-			if (!GetTlsLightingConnection(
-				theApp.m_strLightingDBServer,
-				theApp.m_strLightingDBName,
-				theApp.m_strLightingDBUser,
-				theApp.m_strLightingDBPassword,
-				theApp.m_pLightingLog))
-			{
-				OutputDebugString(_T("[DBG] QueryAOIDefectList: TLS reconnection FAILED\n"));
-				theApp.m_pLightingLog->LOG_INFO(_T("QueryAOIDefectList: TLS reconnection failed"));
-				return FALSE;
-			}
-			OutputDebugString(_T("[DBG] QueryAOIDefectList: TLS reconnection SUCCESS\n"));
-		}
+		OutputDebugString(_T("[DBG] QueryAOIDefectList: TLS reconnection SUCCESS\n"));
 		pUseConn = GetTlsLightingConnPtr();
 		try {
 			CString strSQL;
@@ -6677,6 +6722,10 @@ CString CAni_Data_Serever_PCApp::GetLightingUniqueIDByBarcode(CString strBarcode
 {
 	CString strUniqueID = _T("");
 
+	// 获取当前线程ID用于调试
+	DWORD threadId = GetCurrentThreadId();
+	OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingUniqueIDByBarcode: ThreadID=%lu, Barcode=%s\n"), threadId, strBarcode));
+
 	if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
 	{
 		if (!ConnectLightingDatabase())
@@ -6692,7 +6741,8 @@ CString CAni_Data_Serever_PCApp::GetLightingUniqueIDByBarcode(CString strBarcode
 
 	try {
 		CString strSQL;
-		strSQL.Format(_T("SELECT UniqueID FROM ivs_lcd_idmap WHERE ScreenID = '%s'"), strBarcode);
+		strSQL.Format(_T("SELECT UniqueID FROM ivs_lcd_idmap WHERE Barcode = '%s'"), strBarcode);
+		OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingUniqueIDByBarcode: ThreadID=%lu, SQL=%s\n"), threadId, strSQL));
 
 		ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
 		if (!SQL_SUCCEEDED(ret)) {
@@ -6709,6 +6759,9 @@ CString CAni_Data_Serever_PCApp::GetLightingUniqueIDByBarcode(CString strBarcode
 				SQLLEN lenUniqueID;
 				SQLGetData(stmt, 1, SQL_C_CHAR, uniqueIDBuf, sizeof(uniqueIDBuf), &lenUniqueID);
 				strUniqueID = (char*)uniqueIDBuf;
+				OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingUniqueIDByBarcode: ThreadID=%lu, Found UniqueID=%s\n"), threadId, strUniqueID));
+			} else {
+				OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingUniqueIDByBarcode: ThreadID=%lu, No UniqueID found for Barcode=%s\n"), threadId, strBarcode));
 			}
 		}
 		else {
@@ -6736,7 +6789,7 @@ CString CAni_Data_Serever_PCApp::GetLightingUniqueIDByBarcode(CString strBarcode
 		}
 		try {
 			CString strSQL;
-			strSQL.Format(_T("SELECT UniqueID FROM ivs_lcd_idmap WHERE ScreenID = '%s'"), strBarcode);
+			strSQL.Format(_T("SELECT UniqueID FROM ivs_lcd_idmap WHERE Barcode = '%s'"), strBarcode);
 
 			ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
 			if (!SQL_SUCCEEDED(ret)) {
@@ -6765,6 +6818,7 @@ CString CAni_Data_Serever_PCApp::GetLightingUniqueIDByBarcode(CString strBarcode
 		}
 	}
 
+	OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingUniqueIDByBarcode: ThreadID=%lu, Returning UniqueID=%s\n"), threadId, strUniqueID));
 	return strUniqueID;
 }
 
@@ -6785,7 +6839,7 @@ BOOL CAni_Data_Serever_PCApp::QueryIdMapByFixtureNo(int fixtureNo, CString& uniq
 	SQLRETURN ret;
 
 	try {
-		// 查询 ivs_lcd_idmap 表：MainAoiFixID=治具号, ScreenID=产品码
+		// 查询 ivs_lcd_idmap 表：MainAoiFixID=治具号, Barcode=产品码
 		CString strSQL;
 		strSQL.Format(_T("SELECT UniqueID, Barcode, MainAoiFixID FROM ivs_lcd_idmap WHERE MainAoiFixID = '%d'"), fixtureNo);
 
@@ -6848,7 +6902,7 @@ BOOL CAni_Data_Serever_PCApp::QueryIdMapByFixtureNo(int fixtureNo, CString& uniq
 		}
 		try {
 			CString strSQL;
-			strSQL.Format(_T("SELECT UniqueID, ScreenID, MainAoiFixID FROM ivs_lcd_idmap WHERE MainAoiFixID = '%d'"), fixtureNo);
+			strSQL.Format(_T("SELECT UniqueID, Barcode, MainAoiFixID FROM ivs_lcd_idmap WHERE MainAoiFixID = '%d'"), fixtureNo);
 
 			ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
 			if (!SQL_SUCCEEDED(ret)) {
