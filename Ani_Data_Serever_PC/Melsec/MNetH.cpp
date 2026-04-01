@@ -370,7 +370,7 @@ long MNetH::ReadLB(unsigned short nAddr, unsigned short nPoints, unsigned short 
 
 #ifdef _USE_MELSEC_
 	nRet = mdRandR(m_lPath, m_nStation, nDev, pnBuf, nBufSize);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::ReadLB] Dev=B addr=0x%03X pts=%d ret=%d"), nAddr, nPoints, nRet);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::ReadLB] Dev=B addr=0x%03X pts=%d ret=%d"), nAddr, nPoints, nRet);
 #endif
 	MLS_CS_MELSEC_UNLOCK;
 
@@ -709,7 +709,7 @@ long MNetH::WriteLB(unsigned short nAddr, unsigned short nPoints, unsigned short
 
 #ifdef _USE_MELSEC_
 	nRet = mdRandW(m_lPath, m_nStation, nDev, pnBuf, nBufSize);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::WriteLB] Dev=B addr=0x%03X pts=%d ret=%d"), nAddr, nPoints, nRet);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::WriteLB] Dev=B addr=0x%03X pts=%d ret=%d"), nAddr, nPoints, nRet);
 #endif
 	MLS_CS_MELSEC_UNLOCK;
 
@@ -2727,6 +2727,15 @@ long MNetH::GetPlcWordData(int type, void *result)
 
 void MNetH::SetPlcWordData(int type, void *result)
 {
+	long plcAddr = 0;
+	GetPLCAddressWord(m_nCurLocal, type, &plcAddr);
+	unsigned short* pValue = (unsigned short*)result;
+	DWORD threadId = GetCurrentThreadId();
+	
+	theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[MNetH::SetPlcWordData] Type=%d, Addr=0x%X, Value=%d, ThreadID=%lu"),
+		type, plcAddr, *pValue, threadId));
+	
 	SetWordData(m_nCurLocal, type, result, sizeof(unsigned short));
 } 
 void MNetH::SetTrayLowerAlignResult(int type, TrayLowerAlignResult* pTrayLowerAlignResult)
@@ -2736,11 +2745,27 @@ void MNetH::SetTrayLowerAlignResult(int type, TrayLowerAlignResult* pTrayLowerAl
 
 void MNetH::SetTrayCheckResult(int type, TrayCheckResult* pTrayCheckResult)
 {
+	long plcAddr = 0;
+	GetPLCAddressWord(m_nCurLocal, type, &plcAddr);
+	DWORD threadId = GetCurrentThreadId();
+	
+	theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[MNetH::SetTrayCheckResult] Type=%d, Addr=0x%X, Result=%d, ThreadID=%lu"),
+		type, plcAddr, pTrayCheckResult->result[0], threadId));
+	
 	SetWordData(m_nCurLocal, type, pTrayCheckResult, sizeof(TrayCheckResult));
 }
 
 void MNetH::SetAlignResult(int type, AlignResult* pAlignResult)
 {
+	long plcAddr = 0;
+	GetPLCAddressWord(m_nCurLocal, type, &plcAddr);
+	DWORD threadId = GetCurrentThreadId();
+	
+	theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[MNetH::SetAlignResult] Type=%d, Addr=0x%X, Value=%d, X=%d, Y=%d, T=%d, ThreadID=%lu"),
+		type, plcAddr, pAlignResult->resultValue, pAlignResult->resultX, pAlignResult->resultY, pAlignResult->resultT, threadId));
+	
 	SetWordData(m_nCurLocal, type, pAlignResult, sizeof(AlignResult));
 }
 

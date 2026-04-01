@@ -1,4 +1,4 @@
-﻿
+
 #include "stdafx.h"
 #if _SYSTEM_AMTAFT_
 #include "DlgMainView.h"
@@ -38,26 +38,37 @@ void CAlignThread::ThreadRun()
 	TrayLowerAlignResult trayLowerResult;
 
 	while (::WaitForSingleObject(m_hQuit, 50) != WAIT_OBJECT_0)
-	{
-		theApp.m_AlignConectStatus[m_iAlignNum] = theApp.m_AlignSocketManager[m_iAlignNum]->getConectCheck();
-
-		//if (theApp.m_bAllPassMode)
-		//	continue;
-
-		if (theApp.m_AlignConectStatus[m_iAlignNum])
 		{
-			if (m_bFirstStatus)
-			{
-				m_bFirstStatus = FALSE;
-				time_check.SetCheckTime(60000);
-				time_check.StartTimer();
-				for (int ii = 0; ii < 6; ii++)
-				{
-					m_bStartAlign[ii] = FALSE;
-					m_bStartFlag[ii] = FALSE;
+			bool prevStatus = (bool)theApp.m_AlignConectStatus[m_iAlignNum];
+			theApp.m_AlignConectStatus[m_iAlignNum] = (bool)theApp.m_AlignSocketManager[m_iAlignNum]->getConectCheck();
+			
+			// Log connection status changes
+			if (prevStatus != (bool)theApp.m_AlignConectStatus[m_iAlignNum]) {
+				if (theApp.m_AlignConectStatus[m_iAlignNum]) {
+					theApp.m_AlignSocketManager[m_iAlignNum]->LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align PC %d Connected"), m_iAlignNum + 1));
+				} else {
+					theApp.m_AlignSocketManager[m_iAlignNum]->LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align PC %d Disconnected"), m_iAlignNum + 1));
 				}
-				AlignFirstCheckMethod();
 			}
+
+			//if (theApp.m_bAllPassMode)
+			//	continue;
+
+			if (theApp.m_AlignConectStatus[m_iAlignNum])
+			{
+				if (m_bFirstStatus)
+				{
+					m_bFirstStatus = FALSE;
+					time_check.SetCheckTime(60000);
+					time_check.StartTimer();
+					for (int ii = 0; ii < 6; ii++)
+					{
+						m_bStartAlign[ii] = FALSE;
+						m_bStartFlag[ii] = FALSE;
+					}
+					AlignFirstCheckMethod();
+					theApp.m_AlignSocketManager[m_iAlignNum]->LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align PC %d First connection established"), m_iAlignNum + 1));
+				}
 
 			if (theApp.m_PlcConectStatus == FALSE || theApp.m_ChangeModelAlign == TRUE)
 				continue;
@@ -66,6 +77,7 @@ void CAlignThread::ThreadRun()
 			{
 				time_check.StartTimer();
 				AlignCheckMethod();
+				theApp.m_AlignSocketManager[m_iAlignNum]->LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align Thread %d: Heartbeat check, count=%d"), m_iAlignNum + 1, m_AlignCheckCount));
 				if (m_AlignCheckCount > 5)
 				{
 					theApp.m_AlignSocketManager[m_iAlignNum]->LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align PC %d Client Drop"), m_iAlignNum + 1));
@@ -122,12 +134,18 @@ void CAlignThread::ThreadRun()
 
 				if (m_bStartFlag[0] == FALSE && m_bStartFlag[2] == FALSE)
 				{
+					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[AlignThread] SetAlignResult for Panel1, type=%d, alignType=%d, result=%d"), 
+						eWordType_Align1Result1 + m_iAlignTypeNum, m_iAlignTypeNum, alignResult.resultValue));
 					theApp.m_pEqIf->m_pMNetH->SetAlignResult(eWordType_Align1Result1 + m_iAlignTypeNum, &alignResult);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_Align1End1 + m_iAlignTypeNum, OffSet_0, FALSE);
 				}
 
 				if (m_bStartFlag[1] == FALSE && m_bStartFlag[3] == FALSE)
 				{
+					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[AlignThread] SetAlignResult for Panel2, type=%d, alignType=%d, result=%d"), 
+						eWordType_Align1Result2 + m_iAlignTypeNum, m_iAlignTypeNum, alignResult.resultValue));
 					theApp.m_pEqIf->m_pMNetH->SetAlignResult(eWordType_Align1Result2 + m_iAlignTypeNum, &alignResult);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_Align1End2 + m_iAlignTypeNum, OffSet_0, FALSE);
 				}
@@ -138,6 +156,9 @@ void CAlignThread::ThreadRun()
 					theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("%s Panel 1 Position T Start Flag [%s]"), AlignTypeName[m_iAlignType], m_bStartFlag[0] == FALSE ? _T("FALSE") : _T("TRUE")));
 					if (m_bStartFlag[0] == TRUE)
 					{
+						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+							_T("[AlignThread] Start T Panel1, SetAlignResult type=%d, alignType=%d, result=%d"), 
+							eWordType_Align1Result1 + m_iAlignTypeNum, m_iAlignTypeNum, alignResult.resultValue));
 						theApp.m_pEqIf->m_pMNetH->SetAlignResult(eWordType_Align1Result1 + m_iAlignTypeNum, &alignResult);
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_Align1End1 + m_iAlignTypeNum, OffSet_0, FALSE);
 						AlignGrabMethod(PanelNum1, Align_Start_T, m_iAlignTypeNum);
@@ -150,6 +171,9 @@ void CAlignThread::ThreadRun()
 					theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("%s Panel 2 Position T Start Flag [%s]"), AlignTypeName[m_iAlignType], m_bStartFlag[1] == FALSE ? _T("FALSE") : _T("TRUE")));
 					if (m_bStartFlag[1] == TRUE)
 					{
+						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+							_T("[AlignThread] Start T Panel2, SetAlignResult type=%d, alignType=%d, result=%d"), 
+							eWordType_Align1Result2 + m_iAlignTypeNum, m_iAlignTypeNum, alignResult.resultValue));
 						theApp.m_pEqIf->m_pMNetH->SetAlignResult(eWordType_Align1Result2 + m_iAlignTypeNum, &alignResult);
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_Align1End2 + m_iAlignTypeNum, OffSet_0, FALSE);
 						AlignGrabMethod(PanelNum2, Align_Start_T, m_iAlignTypeNum);

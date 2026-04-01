@@ -25,85 +25,101 @@ CVisionThread::~CVisionThread()
 
 void CVisionThread::ThreadRun()
 {
+	theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Thread started"));
 	AutoFocusData pAutoFocusData;
 	for (auto &InspResult : theApp.m_lastInspResultVec)
 		InspResult.Reset();
 
 	while (::WaitForSingleObject(m_hQuit, 50) != WAIT_OBJECT_0)
-	{
-		theApp.m_VisionConectStatus[0] = theApp.m_VisionSocketManager[0].getConectCheck();
-		theApp.m_VisionConectStatus[1] = theApp.m_VisionSocketManager[1].getConectCheck();
+		{
+			theApp.m_VisionConectStatus[0] = theApp.m_VisionSocketManager[0].getConectCheck();
+			theApp.m_VisionConectStatus[1] = theApp.m_VisionSocketManager[1].getConectCheck();
 
-		//if (theApp.m_bAllPassMode)
-		//	continue;
+			//if (theApp.m_bAllPassMode)
+			//	continue;
 
-		if ((theApp.m_VisionConectStatus[0] && theApp.m_VisionConectStatus[1]) || theApp.m_AOIPassMode)
+			theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+				_T("[VisionThread] Connection status - LightingConect=%d, AOIPassMode=%d"), 
+				theApp.m_LightingConectStatus, theApp.m_AOIPassMode));
+
+			if (theApp.m_LightingConectStatus || theApp.m_AOIPassMode)
 		{
 			if (m_bFirstStatus)
 			{
+				theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] First connection status detected"));
 				m_bFirstStatus = FALSE;
 				time_check.SetCheckTime(60000);
 				time_check.StartTimer();
 				for (int ii = 0; ii < PCMaxCount; ii++)
 				{
-					VisionFirstCheckMethod(ii);
+					// VisionFirstCheckMethod is commented out as Vision PC is not available
+					// VisionFirstCheckMethod(ii);
 					theApp.m_VisionPCStatus[ii] = TRUE;
-				}
+			 }
 
 				for (int jj = 0; jj < PanelMaxCount; jj++)
 					m_bStartVision[jj] = FALSE;
+				theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Initialized all panel start flags to FALSE"));
 			}
 
-			//TEST Model ÀÌ (TRUE) Model º¯°æµµ ¾Èº¸°í ±×³É °è¼Ó ÁøÇà ÇÕ´Ï´Ù.
-			//TEST Model ÀÌ (FALSE) Model º¯°æ ¹× »ý¼º °è¼Ó check 
+			//TEST Model ï¿½ï¿½ (TRUE) Model ï¿½ï¿½ï¿½æµµ ï¿½Èºï¿½ï¿½ï¿½ ï¿½×³ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Õ´Ï´ï¿½.
+			//TEST Model ï¿½ï¿½ (FALSE) Model ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ check 
 			if (theApp.m_AOIPassMode == FALSE)
 			{
-				if (theApp.m_PlcConectStatus == FALSE || theApp.m_ChangeModelVision1 == TRUE || theApp.m_ChangeModelVision2 == TRUE)
+				theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+					_T("[VisionThread] AOIPassMode=FALSE, checking PLC connection and model change - PLC=%d, ModelChange1=%d, ModelChange2=%d"),
+					theApp.m_PlcConectStatus, theApp.m_ChangeModelVision1, theApp.m_ChangeModelVision2));
+				/*if (theApp.m_PlcConectStatus == FALSE || theApp.m_ChangeModelVision1 == TRUE || theApp.m_ChangeModelVision2 == TRUE)
+				{
+					theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Skipping due to PLC disconnected or model change in progress"));
 					continue;
+				}*/
 			}
 
 			if (time_check.IsTimeOver())
 			{
+				// VisionCheckMethod is commented out as Vision PC is not available
 				time_check.StartTimer();
-				for (int ii = 0; ii < PCMaxCount; ii++)
-				{
-					VisionCheckMethod(ii);
-					if (theApp.m_VisionSocketManager[ii].m_iVisionSocketCheckCount > 5)
-					{
-						LogWrite(CStringSupport::FormatString(_T("Vision PC %d Client Drop"), ii), ii);
-					}
-					theApp.m_VisionSocketManager[ii].m_iVisionSocketCheckCount++;
-				}
 			}
 
 			if (theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_VisionPlcSend, 0))
+			{
+				theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Received eBitType_VisionPlcSend signal from PLC"));
 				VisionPanelCheck();
+			}
 			else
 				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionPcReceiver, 0, FALSE);
 
 			for (int ii = 0; ii < PanelMaxCount; ii++)
 			{
 				m_bStartFlag = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_VisionStart1, OffSet_0 + ii);
+				theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+					_T("[VisionThread] Panel %d StartFlag=%d"), ii + 1, m_bStartFlag));
 
 				if (m_bStartFlag == FALSE)
 				{
+					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[VisionThread] Resetting Panel %d results and flags"), ii + 1));
 					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + ii, &m_codeReset);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + ii, OffSet_0, FALSE);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + ii, OffSet_0, FALSE);
-				}
+			 }
 
 				if (m_bStartVision[ii] == !m_bStartFlag)
 				{
 					m_bStartVision[ii] = m_bStartFlag;
+					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Panel %d StartFlag changed to %d"), ii + 1, m_bStartVision[ii]));
 					theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Vision Panel %d Start Flag [%s]"), ii + 1, m_bStartVision[ii] == FALSE ? _T("FALSE") : _T("TRUE")));
 
 					if (m_bStartFlag == TRUE)
 					{
+						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Starting inspection for Panel %d"), ii + 1));
 						theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + ii, &m_codeReset);
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + ii, OffSet_0, FALSE);
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + ii, OffSet_0, FALSE);
 						//Delay(100);
 						m_iPcNum = ii <= PanelNum2 ? PC1 : PC2;
+						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Calling VisionInspectionMethod for PC%d, Panel%d"), m_iPcNum, PanelNum1 + ii));
 						VisionInspectionMethod(m_iPcNum, PanelNum1 + ii);
 					}
 				}
@@ -112,23 +128,29 @@ void CVisionThread::ThreadRun()
 			for (int ii = 0; ii < MaxCamCount; ii++)
 			{
 				m_bAutoFocusStartFlag = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_AutoFocusEnd1 + ii, OffSet_0);
+				theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+					_T("[VisionThread] Cam %d AutoFocusEndFlag=%d"), ii + 1, m_bAutoFocusStartFlag));
 
 				if (m_bAutoFocusStartFlag == TRUE)
 				{
+					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Processing AutoFocusEnd for Cam %d"), ii + 1));
 					theApp.m_pEqIf->m_pMNetH->SetAutoFocusData(eWordType_AutoFocusMoter1, &pAutoFocusData);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusSave1 + ii, OffSet_0, FALSE);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusStart1 + ii, OffSet_0, FALSE);
-				}
+			 }
 
 				if (m_bAutoFocusStart[ii] == !m_bAutoFocusStartFlag)
 				{
 					m_bAutoFocusStart[ii] = m_bAutoFocusStartFlag;
+					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Cam %d AutoFocusEndFlag changed to %d"), ii + 1, m_bAutoFocusStart[ii]));
 					theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Auto Focus Cam_%d End Flag [%s]"), ii + 1, m_bAutoFocusStart[ii] == FALSE ? _T("FALSE") : _T("TRUE")));
 
 					if (m_bAutoFocusStartFlag == TRUE)
 					{
+						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Processing AutoFocusEnd for Cam %d"), ii + 1));
 						if (theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_AutoFocusSave1 + ii, OffSet_0))
 						{
+							theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] AutoFocus Save position for Cam %d"), ii + 1));
 							//save
 							theApp.m_VisionSocketManager->SocketSendto(ii, _T("GOOD"), MC_FOCUS_SAVE_POS_DONE);
 							theApp.m_pEqIf->m_pMNetH->SetAutoFocusData(eWordType_AutoFocusMoter1, &pAutoFocusData);
@@ -139,6 +161,7 @@ void CVisionThread::ThreadRun()
 						}
 						else
 						{
+							theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] AutoFocus Axis Move for Cam %d"), ii + 1));
 							//axis Move
 							theApp.m_pEqIf->m_pMNetH->GetPlcWordData(eWordType_AutoFocusMoter1, &m_AutoFocusPosition);
 							if (m_AutoFocusPosition == 1)
@@ -160,8 +183,14 @@ void CVisionThread::ThreadRun()
 			{
 				if (InspResult.m_LastCheck == TRUE)
 				{
+					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[VisionThread] Processing LastCheck for PC%d, Panel%d, Cell=%s"),
+						InspResult.m_iPCNum, InspResult.m_iPanelNum, InspResult.m_cellId));
 					if (InspResult.time_check.IsTimeOver())
 					{
+						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+							_T("[VisionThread] Timeout occurred for PC%d, Panel%d, Cell=%s"),
+							InspResult.m_iPCNum, InspResult.m_iPanelNum, InspResult.m_cellId));
 						VisionPLCResult(InspResult.m_iPCNum,
 							InspResult.m_iPanelNum,
 							PLC_ResultValue[m_codeTimeOut],
@@ -174,8 +203,14 @@ void CVisionThread::ThreadRun()
 				}
 				else if (InspResult.m_bInspStart == TRUE)
 				{
+					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[VisionThread] Processing InspectionStart for PC%d, Panel%d, Cell=%s"),
+						InspResult.m_iPCNum, InspResult.m_iPanelNum, InspResult.m_cellId));
 					if (InspResult.time_check.IsTimeOver())
 					{
+						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+							_T("[VisionThread] Sending inspection end command for PC%d, Cell=%s"),
+							InspResult.m_iPCNum, InspResult.m_cellId));
 						CString sendMsg;
 						sendMsg.Format(_T("%d,%s"), MC_INSPECTION_END, InspResult.m_cellId);
 						SocketSendto(InspResult.m_iPCNum, sendMsg, MC_INSPECTION_END);
@@ -191,18 +226,25 @@ void CVisionThread::ThreadRun()
 				}
 
 				if (InspResult.m_bResult == TRUE && theApp.m_bVisionDeleteFlag == TRUE)
+				{
+					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[VisionThread] Resetting inspection result for PC%d, Panel%d, Cell=%s"),
+						InspResult.m_iPCNum, InspResult.m_iPanelNum, InspResult.m_cellId));
 					InspResult.Reset();
+				}
 
 			}
 			
 		}
 		else
 		{
+			theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Vision PC connection lost, resetting status"));
 			theApp.m_VisionPCStatus[0] = FALSE;
 			theApp.m_VisionPCStatus[1] = FALSE;
 			m_bFirstStatus = TRUE;
 		}
 	}
+	theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Thread exited"));
 }
 
 
@@ -215,7 +257,7 @@ void CVisionThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 	GetSockName(addrin);
 	int Num = ntohs(addrin.GetPort()) == _ttoi(VISION_PC1_PORT_NUM) ? PC1 : PC2;
 
-	//Åë½ÅÁß ¿¬°á µÇ¾î µé¾î¿Ã°æ¿ì¿¡´Â for ¹®À¸·Î ETX ±âÁØÀ¸·Î ÆÄ½ÌÇØ¼­ ÀüºÎ °¡Á®¿Ã¼ö ÀÖµµ·Ï ¼öÁ¤
+	//ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ç¾ï¿½ ï¿½ï¿½ï¿½Ã°ï¿½ì¿¡ï¿½ï¿½ for ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ETX ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ä½ï¿½ï¿½Ø¼ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ã¼ï¿½ ï¿½Öµï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 	CString strData, m_strHeader, m_strCommand, m_strContents, strParsing;
 	int iFind, iFindSTX;
 	MultiByteToWideChar(CP_ACP, 0, reinterpret_cast<LPCSTR>(lpBuffer), dwCount, strData.GetBuffer(dwCount + 1), dwCount + 1);
@@ -371,7 +413,7 @@ void CVisionThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 void CVisionThread::VisionFirstCheckMethod(int Num)
 {
 	BOOL bModelCreate, bModelChange;
-	//Ã³À½ º¸³»ÁÖ´Â°ÍÀÌ IO (MC_ARE_YOU_THERE) , PCTime(MC_PCTIME), ¸ðµ¨¸í(MC_MODEL)
+	//Ã³ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ö´Â°ï¿½ï¿½ï¿½ IO (MC_ARE_YOU_THERE) , PCTime(MC_PCTIME), ï¿½ðµ¨¸ï¿½(MC_MODEL)
 	CString strCommand = CStringSupport::FormatString(_T("%d,%d"), MC_ARE_YOU_THERE, theApp.m_VisionSocketManager[Num].m_iVisionSocketCheckCount);
 	SocketSendto(Num, strCommand, MC_ARE_YOU_THERE);
 	Delay(200, TRUE);
@@ -421,16 +463,28 @@ void CVisionThread::VisionPanelCheck()
 	FpcIDData pFpcData;
 	CString strPanel, strFpcID;
 
+	theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] VisionPanelCheck started"));
+
 	for (int ii = 0; ii < PanelMaxCount; ii++)
 	{
 		theApp.m_pEqIf->m_pMNetH->GetFpcIdData(eWordType_VisionFpcID1 + ii, &pFpcData);
 		strFpcID = CStringSupport::ToWString(pFpcData.m_FpcIDData, sizeof(pFpcData.m_FpcIDData));
+		
+		theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+			_T("[VisionThread] Received eWordType_VisionFpcID%d signal - FPC ID: %s"), 
+			ii + 1, strFpcID));
 
 		theApp.m_pEqIf->m_pMNetH->GetPanelData(eWordType_VisionPanel1 + ii, &pPanelData);
 		strPanel = CStringSupport::ToWString(pPanelData.m_PanelData, sizeof(pPanelData.m_PanelData));
+		
+		theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+			_T("[VisionThread] Received eWordType_VisionPanel%d signal - Panel: %s"), 
+			ii + 1, strPanel));
 
 		if (strFpcID.GetLength() > 0)
 		{
+			theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+				_T("[VisionThread] FPC ID found for panel %d, setting VisionPcReceiver bit"), ii + 1));
 			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionPcReceiver, 0, TRUE);
 			break;
 		}
@@ -615,9 +669,9 @@ BOOL CVisionThread::getConectCheck()
 	GetSockName(addrin);
 	LONG  uAddr = addrin.GetIPAddr();
 	if (uAddr == 0)
-		return FALSE;	//Á¢¼Ó¾ÈÇÔ
+		return FALSE;	//ï¿½ï¿½ï¿½Ó¾ï¿½ï¿½ï¿½
 	else
-		return TRUE;	//Á¢¼ÓÇÔ
+		return TRUE;	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 }
 
 void CVisionThread::RemoveClient()

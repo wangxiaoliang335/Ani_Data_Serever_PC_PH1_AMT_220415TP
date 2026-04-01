@@ -28,7 +28,7 @@ CLightingManager::CLightingManager()
 	, m_hAutoTestStopEvent(NULL)
 	, m_hReconnectThread(NULL)
 	, m_hReconnectStopEvent(NULL)
-	, m_dwReconnectInterval(5000)  // 默认重试间隔：5秒
+	, m_dwReconnectInterval(30000)  // 默认重试间隔：30秒
 	, m_dwMaxReconnectAttempts(0)  // 默认无限重试
 {
 	// 数据库连接已改为 TLS 方式，每个线程自动拥有独立连接
@@ -399,8 +399,9 @@ DWORD WINAPI CLightingManager::AutoTestTimerThread(LPVOID lpParam)
 	if (!pThis)
 		return 0;
 
-	LightingDbgPrint(_T("[Lighting] Auto-test timer started (delay: %ums)\n"), 10000);
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Auto-test timer started (delay: %ums)"), 10000));
+	DWORD threadId = GetCurrentThreadId();
+	LightingDbgPrint(_T("[Lighting] Auto-test timer started (delay: %ums), ThreadID=%lu\n"), 10000, threadId);
+	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Auto-test timer started (delay: %ums), ThreadID=%lu"), 10000, threadId));
 
 	// 等待 10 秒或收到停止信号
 	HANDLE handles[2] = { pThis->m_hAutoTestStopEvent, NULL };
@@ -409,34 +410,33 @@ DWORD WINAPI CLightingManager::AutoTestTimerThread(LPVOID lpParam)
 	if (dwRet == WAIT_TIMEOUT)
 	{
 		// 超时，说明是定时器触发，正常发送 Start 命令
-		LightingDbgPrint(_T("[Lighting] Auto-test timer triggered, sending Start command...\n"));
-		theApp.m_pLightingLog->LOG_INFO(_T("Auto-test timer triggered, sending Start command"));
+		LightingDbgPrint(_T("[Lighting] Auto-test timer triggered, sending Start command... ThreadID=%lu\n"), threadId);
+		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Auto-test timer triggered, sending Start command, ThreadID=%lu"), threadId));
 
 		// 设置所有槽位为激活状态（auto-test 模式下全开）
 		for (int i = 0; i < 4; ++i)
 			theApp.m_bLightingActiveSlot[i] = TRUE;
 
 		// 发送开始检测前，更新 ivs_lcd_idmap 对应治具号记录，供检测软件使用
-		if (theApp.m_bLightingDBConnected || theApp.ConnectLightingDatabase())
+		// 使用线程局部连接（TLS），避免依赖全局连接
+		for (int i = 0; i < 4; ++i)
 		{
-			for (int i = 0; i < 4; ++i)
-			{
-				int fixtureNo = i + 1;  // 治具号 1~4
-				
-				// Auto-test 模式使用模拟的 Barcode
-				CString strBarcode;
-				strBarcode.Format(_T("SIM_BARCODE_%d"), fixtureNo);
-				
-				// UniqueID 使用 GUID 保证全局唯一性
-				CString strUniqueID;
-				CStringSupport::GetGuid(strUniqueID);
-				
-				// MarkID=治具号 "01"~"04"
-				CString strMarkID;
-				strMarkID.Format(_T("%02d"), fixtureNo);
-				
-				theApp.UpdateLightingIdMap(fixtureNo, strUniqueID, strBarcode, strMarkID);
-			}
+			int fixtureNo = i + 1;  // 治具号 1~4
+			
+			// Auto-test 模式使用模拟的 Barcode
+			CString strBarcode;
+			strBarcode.Format(_T("SIM_BARCODE_%d"), fixtureNo);
+			
+			// UniqueID 使用 GUID 保证全局唯一性
+			CString strUniqueID;
+			CStringSupport::GetGuid(strUniqueID);
+			
+			// MarkID=治具号 "01"~"04"
+			CString strMarkID;
+			strMarkID.Format(_T("%02d"), fixtureNo);
+			
+			// UpdateLightingIdMap 内部会自动处理线程局部连接
+			theApp.UpdateLightingIdMap(fixtureNo, strUniqueID, strBarcode, strMarkID);
 		}
 		
 		// 使用默认的 4 个治具位（全开）

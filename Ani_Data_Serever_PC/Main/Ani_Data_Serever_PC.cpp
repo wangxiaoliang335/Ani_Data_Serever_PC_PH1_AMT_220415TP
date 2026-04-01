@@ -597,133 +597,64 @@ int CAni_Data_Serever_PCApp::ExitInstance()
 
 LightingInspectionResult CAni_Data_Serever_PCApp::QueryInspectionResult(CString uniqueID)
 {
-	LightingInspectionResult result;
-	result.m_bValid = FALSE;
+	// 获取当前线程ID
+	DWORD threadId = GetCurrentThreadId();
+	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[DBG] QueryInspectionResult ENTER: ThreadID=%lu, uniqueID=%s"),
+		threadId, uniqueID));
 
-	if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
+	// 优先使用线程局部连接（TLS），避免多线程共享连接
+	SQLHDBC pUseConn = SQL_NULL_HANDLE;
+	
+	// 尝试获取线程局部连接
+	if (IsTlsLightingDBConnected())
 	{
-		if (!ConnectLightingDatabase())
+		pUseConn = GetTlsLightingConnPtr();
+		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResult: Using TLS connection"));
+	}
+	else
+	{
+		// 如果线程局部连接未连接，尝试创建线程局部连接
+		if (GetTlsLightingConnection(
+			theApp.m_strLightingDBServer,
+			theApp.m_strLightingDBName,
+			theApp.m_strLightingDBUser,
+			theApp.m_strLightingDBPassword,
+			theApp.m_pLightingLog))
 		{
-			theApp.m_pLightingLog->LOG_INFO(_T("QueryInspectionResult: Database not connected"));
-			return result;
+			pUseConn = GetTlsLightingConnPtr();
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResult: TLS connection created successfully"));
 		}
-	}
-
-	BOOL bRetry = FALSE;
-	try {
-		SQLHSTMT stmt = SQL_NULL_HANDLE;
-		SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
-		if (!SQL_SUCCEEDED(ret)) {
-			PrintOdbcError(theApp.m_pLightingConn, SQL_HANDLE_DBC);
-			bRetry = TRUE;
-		} else {
-			CString strSQL;
-			strSQL.Format(_T("SELECT GUID, ScreenID, AOIResult, Code_AOI, Grade_AOI, StartTime, StopTime FROM ivs_lcd_inspectionresult WHERE UniqueID = '%s'"), uniqueID);
-
-			ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
-			if (SQL_SUCCEEDED(ret)) {
-				ret = SQLFetch(stmt);
-				if (SQL_SUCCEEDED(ret)) {
-					SQLCHAR guidBuf[101], screenIDBuf[101], aoiResultBuf[51], codeAOIBuf[51], gradeAOIBuf[51], startTimeBuf[51], stopTimeBuf[51];
-					SQLLEN lenGUID, lenScreenID, lenAOIResult, lenCodeAOI, lenGradeAOI, lenStartTime, lenStopTime;
-
-					SQLGetData(stmt, 1, SQL_C_CHAR, guidBuf, sizeof(guidBuf), &lenGUID);
-					SQLGetData(stmt, 2, SQL_C_CHAR, screenIDBuf, sizeof(screenIDBuf), &lenScreenID);
-					SQLGetData(stmt, 3, SQL_C_CHAR, aoiResultBuf, sizeof(aoiResultBuf), &lenAOIResult);
-					SQLGetData(stmt, 4, SQL_C_CHAR, codeAOIBuf, sizeof(codeAOIBuf), &lenCodeAOI);
-					SQLGetData(stmt, 5, SQL_C_CHAR, gradeAOIBuf, sizeof(gradeAOIBuf), &lenGradeAOI);
-					SQLGetData(stmt, 6, SQL_C_CHAR, startTimeBuf, sizeof(startTimeBuf), &lenStartTime);
-					SQLGetData(stmt, 7, SQL_C_CHAR, stopTimeBuf, sizeof(stopTimeBuf), &lenStopTime);
-
-					result.m_strGUID = (char*)guidBuf;
-					result.m_strScreenID = (char*)screenIDBuf;
-					result.m_strUniqueID = uniqueID;
-					result.m_strAOIResult = (char*)aoiResultBuf;
-					result.m_strCodeAOI = (char*)codeAOIBuf;
-					result.m_strGradeAOI = (char*)gradeAOIBuf;
-					result.m_strStartTime = (char*)startTimeBuf;
-					result.m_strStopTime = (char*)stopTimeBuf;
-					result.m_bValid = TRUE;
-
-					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-						_T("QueryInspectionResult: Found result for UniqueID=%s, AOIResult=%s, Code=%s, Grade=%s"),
-						uniqueID, result.m_strAOIResult, result.m_strCodeAOI, result.m_strGradeAOI));
-				} else {
-					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-						_T("QueryInspectionResult: No result found for UniqueID=%s"), uniqueID));
-				}
-			} else {
-				PrintOdbcError(stmt, SQL_HANDLE_STMT);
-				bRetry = TRUE;
-			}
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-		}
-	}
-	catch (...) {
-		CString strErr;
-		strErr.Format(_T("[DBG] QueryInspectionResult exception, reconnecting..."));
-		theApp.m_pLightingLog->LOG_INFO(strErr);
-		OutputDebugString(strErr + _T("\n"));
-		bRetry = TRUE;
-	}
-
-	if (bRetry) {
-		theApp.m_bLightingDBConnected = FALSE;
-		if (!ConnectLightingDatabase())
+		else
 		{
-			theApp.m_pLightingLog->LOG_INFO(_T("QueryInspectionResult: Reconnect failed"));
-			return result;
-		}
-		try {
-			SQLHSTMT stmt = SQL_NULL_HANDLE;
-			SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
-			if (SQL_SUCCEEDED(ret)) {
-				CString strSQL;
-				strSQL.Format(_T("SELECT GUID, ScreenID, AOIResult, Code_AOI, Grade_AOI, StartTime, StopTime FROM ivs_lcd_inspectionresult WHERE UniqueID = '%s'"), uniqueID);
-
-				ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
-				if (SQL_SUCCEEDED(ret)) {
-					ret = SQLFetch(stmt);
-					if (SQL_SUCCEEDED(ret)) {
-						SQLCHAR guidBuf[101], screenIDBuf[101], aoiResultBuf[51], codeAOIBuf[51], gradeAOIBuf[51], startTimeBuf[51], stopTimeBuf[51];
-						SQLLEN lenGUID, lenScreenID, lenAOIResult, lenCodeAOI, lenGradeAOI, lenStartTime, lenStopTime;
-
-						SQLGetData(stmt, 1, SQL_C_CHAR, guidBuf, sizeof(guidBuf), &lenGUID);
-						SQLGetData(stmt, 2, SQL_C_CHAR, screenIDBuf, sizeof(screenIDBuf), &lenScreenID);
-						SQLGetData(stmt, 3, SQL_C_CHAR, aoiResultBuf, sizeof(aoiResultBuf), &lenAOIResult);
-						SQLGetData(stmt, 4, SQL_C_CHAR, codeAOIBuf, sizeof(codeAOIBuf), &lenCodeAOI);
-						SQLGetData(stmt, 5, SQL_C_CHAR, gradeAOIBuf, sizeof(gradeAOIBuf), &lenGradeAOI);
-						SQLGetData(stmt, 6, SQL_C_CHAR, startTimeBuf, sizeof(startTimeBuf), &lenStartTime);
-						SQLGetData(stmt, 7, SQL_C_CHAR, stopTimeBuf, sizeof(stopTimeBuf), &lenStopTime);
-
-						result.m_strGUID = (char*)guidBuf;
-						result.m_strScreenID = (char*)screenIDBuf;
-						result.m_strUniqueID = uniqueID;
-						result.m_strAOIResult = (char*)aoiResultBuf;
-						result.m_strCodeAOI = (char*)codeAOIBuf;
-						result.m_strGradeAOI = (char*)gradeAOIBuf;
-						result.m_strStartTime = (char*)startTimeBuf;
-						result.m_strStopTime = (char*)stopTimeBuf;
-						result.m_bValid = TRUE;
-
-						theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-							_T("QueryInspectionResult: Retry success for UniqueID=%s"), uniqueID));
-					}
-				} else {
-					PrintOdbcError(stmt, SQL_HANDLE_STMT);
+			// 线程局部连接创建失败，使用全局连接作为后备
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResult: TLS connection failed, using global connection"));
+			if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
+			{
+				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResult: DB not connected, trying to connect..."));
+				if (!ConnectLightingDatabase())
+				{
+					theApp.m_pLightingLog->LOG_INFO(_T("QueryInspectionResult: Database not connected"));
+					LightingInspectionResult result;
+					result.m_bValid = FALSE;
+					return result;
 				}
-				SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResult: Database connected successfully"));
 			}
-		}
-		catch (...) {
-			CString strErr;
-			strErr.Format(_T("[DBG] QueryInspectionResult Retry exception"));
-			theApp.m_pLightingLog->LOG_INFO(strErr);
-			OutputDebugString(strErr + _T("\n"));
+			pUseConn = theApp.m_pLightingConn;
 		}
 	}
 
-	return result;
+	if (pUseConn == SQL_NULL_HANDLE)
+	{
+		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResult: No valid connection available"));
+		LightingInspectionResult result;
+		result.m_bValid = FALSE;
+		return result;
+	}
+
+	// 调用线程安全版本
+	return QueryInspectionResultThreadSafe(uniqueID, pUseConn);
 }
 
 // 线程安全的数据库查询版本（使用传入的连接）
@@ -792,12 +723,13 @@ LightingInspectionResult CAni_Data_Serever_PCApp::QueryInspectionResultThreadSaf
 		return result;
 	}
 
+	BOOL bRetry = FALSE;
 	try {
 		SQLHSTMT stmt = SQL_NULL_HANDLE;
 		SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
 		if (!SQL_SUCCEEDED(ret)) {
 			PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
-			return result;
+			throw 1;
 		}
 
 		CString strSQL;
@@ -858,15 +790,105 @@ LightingInspectionResult CAni_Data_Serever_PCApp::QueryInspectionResultThreadSaf
 			}
 		} else {
 			PrintOdbcError(stmt, SQL_HANDLE_STMT);
+			throw 1;
 		}
 		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 	}
 	catch (...) {
-		CString strErr;
-		strErr.Format(_T("[DBG] QueryInspectionResultThreadSafe unknown EXCEPTION: uniqueID=%s"), uniqueID);
-		theApp.m_pLightingLog->LOG_INFO(strErr);
-		OutputDebugString(strErr + _T("\n"));
-		result.m_bValid = FALSE;
+		bRetry = TRUE;
+		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResultThreadSafe: SQL error, retrying..."));
+	}
+
+	if (bRetry) {
+		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResultThreadSafe: Starting retry logic..."));
+		
+		// 使用线程局部连接进行重试，避免影响全局连接
+		if (!IsTlsLightingDBConnected())
+		{
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResultThreadSafe: TLS connection not connected, trying to reconnect..."));
+			if (!GetTlsLightingConnection(
+				theApp.m_strLightingDBServer,
+				theApp.m_strLightingDBName,
+				theApp.m_strLightingDBUser,
+				theApp.m_strLightingDBPassword,
+				theApp.m_pLightingLog))
+			{
+				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResultThreadSafe: TLS reconnection failed"));
+				return result;
+			}
+			pUseConn = GetTlsLightingConnPtr();
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResultThreadSafe: TLS reconnected successfully"));
+		}
+		
+		try {
+			SQLHSTMT stmt = SQL_NULL_HANDLE;
+			SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
+			if (!SQL_SUCCEEDED(ret)) {
+				PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
+				return result;
+			}
+
+			CString strSQL;
+			strSQL.Format(_T("SELECT GUID, ScreenID, AOIResult, Code_AOI, Grade_AOI, StartTime, StopTime FROM ivs_lcd_inspectionresult WHERE UniqueID = '%s'"), uniqueID);
+
+			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+				_T("QueryInspectionResultThreadSafe Retry: SQL=%s"), strSQL));
+
+			ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
+			if (SQL_SUCCEEDED(ret)) {
+				ret = SQLFetch(stmt);
+				if (SQL_SUCCEEDED(ret)) {
+					SQLCHAR guidBuf[101], screenIDBuf[101], aoiResultBuf[51], codeAOIBuf[51], gradeAOIBuf[51], startTimeBuf[51], stopTimeBuf[51];
+					SQLLEN lenGUID, lenScreenID, lenAOIResult, lenCodeAOI, lenGradeAOI, lenStartTime, lenStopTime;
+
+					SQLGetData(stmt, 1, SQL_C_CHAR, guidBuf, sizeof(guidBuf), &lenGUID);
+					SQLGetData(stmt, 2, SQL_C_CHAR, screenIDBuf, sizeof(screenIDBuf), &lenScreenID);
+					SQLGetData(stmt, 3, SQL_C_CHAR, aoiResultBuf, sizeof(aoiResultBuf), &lenAOIResult);
+					SQLGetData(stmt, 4, SQL_C_CHAR, codeAOIBuf, sizeof(codeAOIBuf), &lenCodeAOI);
+					SQLGetData(stmt, 5, SQL_C_CHAR, gradeAOIBuf, sizeof(gradeAOIBuf), &lenGradeAOI);
+					SQLGetData(stmt, 6, SQL_C_CHAR, startTimeBuf, sizeof(startTimeBuf), &lenStartTime);
+					SQLGetData(stmt, 7, SQL_C_CHAR, stopTimeBuf, sizeof(stopTimeBuf), &lenStopTime);
+
+					result.m_strGUID = (char*)guidBuf;
+					result.m_strScreenID = (char*)screenIDBuf;
+					result.m_strUniqueID = uniqueID;
+					result.m_strAOIResult = (char*)aoiResultBuf;
+					result.m_strCodeAOI = (char*)codeAOIBuf;
+					result.m_strGradeAOI = (char*)gradeAOIBuf;
+					result.m_strStartTime = (char*)startTimeBuf;
+					result.m_strStopTime = (char*)stopTimeBuf;
+					result.m_bValid = TRUE;
+
+					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+						_T("QueryInspectionResultThreadSafe Retry: Found result for UniqueID=%s")
+						_T("\n  GUID=%s, ScreenID=%s, AOIResult=%s, Code_AOI=%s, Grade_AOI=%s")
+						_T("\n  StartTime=%s, StopTime=%s"),
+						uniqueID,
+						result.m_strGUID,
+						result.m_strScreenID,
+						result.m_strAOIResult,
+						result.m_strCodeAOI,
+						result.m_strGradeAOI,
+						result.m_strStartTime,
+						result.m_strStopTime));
+				}
+				else
+				{
+					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+						_T("QueryInspectionResultThreadSafe Retry: No result found for UniqueID=%s"), uniqueID));
+				}
+			} else {
+				PrintOdbcError(stmt, SQL_HANDLE_STMT);
+			}
+			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+		}
+		catch (...) {
+			CString strErr;
+			strErr.Format(_T("[DBG] QueryInspectionResultThreadSafe Retry unknown EXCEPTION: uniqueID=%s"), uniqueID);
+			theApp.m_pLightingLog->LOG_INFO(strErr);
+			OutputDebugString(strErr + _T("\n"));
+			result.m_bValid = FALSE;
+		}
 	}
 
 	return result;
@@ -1514,16 +1536,59 @@ void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strF
 // 从数据库读取缺陷代码（AOI/Viewing）
 void CAni_Data_Serever_PCApp::SetLoadResultCodeFromDB(CString strPanelID, CString strFpcID)
 {
+	// 获取当前线程ID
+	DWORD threadId = GetCurrentThreadId();
+	theApp.m_pTraceLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[DBG] SetLoadResultCodeFromDB ENTER: ThreadID=%lu, PanelID=%s"),
+		threadId, strPanelID));
+
 	m_Send_Result_Code_Map.clear();
 
-	if (!theApp.m_bLightingDBConnected)
+	// 优先使用线程局部连接（TLS），避免多线程共享连接
+	SQLHDBC pUseConn = SQL_NULL_HANDLE;
+	
+	// 尝试获取线程局部连接
+	if (IsTlsLightingDBConnected())
 	{
-		if (!ConnectLightingDatabase())
+		pUseConn = GetTlsLightingConnPtr();
+		theApp.m_pTraceLog->LOG_INFO(_T("[DBG] SetLoadResultCodeFromDB: Using TLS connection"));
+	}
+	else
+	{
+		// 如果线程局部连接未连接，尝试创建线程局部连接
+		if (GetTlsLightingConnection(
+			theApp.m_strLightingDBServer,
+			theApp.m_strLightingDBName,
+			theApp.m_strLightingDBUser,
+			theApp.m_strLightingDBPassword,
+			theApp.m_pLightingLog))
 		{
-			theApp.m_pTraceLog->LOG_INFO(CStringSupport::FormatString(
-				_T("SetLoadResultCodeFromDB: Database connection failed")));
-			return;
+			pUseConn = GetTlsLightingConnPtr();
+			theApp.m_pTraceLog->LOG_INFO(_T("[DBG] SetLoadResultCodeFromDB: TLS connection created successfully"));
 		}
+		else
+		{
+			// 线程局部连接创建失败，使用全局连接作为后备
+			theApp.m_pTraceLog->LOG_INFO(_T("[DBG] SetLoadResultCodeFromDB: TLS connection failed, using global connection"));
+			if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
+			{
+				theApp.m_pTraceLog->LOG_INFO(_T("[DBG] SetLoadResultCodeFromDB: DB not connected, trying to connect..."));
+				if (!ConnectLightingDatabase())
+				{
+					theApp.m_pTraceLog->LOG_INFO(CStringSupport::FormatString(
+						_T("SetLoadResultCodeFromDB: Database connection failed")));
+					return;
+				}
+				theApp.m_pTraceLog->LOG_INFO(_T("[DBG] SetLoadResultCodeFromDB: Database connected successfully"));
+			}
+			pUseConn = theApp.m_pLightingConn;
+		}
+	}
+
+	if (pUseConn == SQL_NULL_HANDLE)
+	{
+		theApp.m_pTraceLog->LOG_INFO(_T("[DBG] SetLoadResultCodeFromDB: No valid connection available"));
+		return;
 	}
 
 	// 1. 根据 PanelID/Barcode 获取 UniqueID
@@ -1532,9 +1597,9 @@ void CAni_Data_Serever_PCApp::SetLoadResultCodeFromDB(CString strPanelID, CStrin
 	SQLRETURN ret;
 
 	try {
-		ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
+		ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
 		if (!SQL_SUCCEEDED(ret)) {
-			PrintOdbcError(theApp.m_pLightingConn, SQL_HANDLE_DBC);
+			PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
 			return;
 		}
 
@@ -1575,9 +1640,9 @@ void CAni_Data_Serever_PCApp::SetLoadResultCodeFromDB(CString strPanelID, CStrin
 	// 2. 查询 IVS_LCD_AOIResult 表获取缺陷列表
 	stmt = SQL_NULL_HANDLE;
 	try {
-		ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
+		ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
 		if (!SQL_SUCCEEDED(ret)) {
-			PrintOdbcError(theApp.m_pLightingConn, SQL_HANDLE_DBC);
+			PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
 			return;
 		}
 
@@ -4864,15 +4929,17 @@ void CAni_Data_Serever_PCApp::OnLightingSnapFN()
 
 void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4])
 {
+	DWORD threadId = GetCurrentThreadId();
+	
 	// 使用 OutputDebugString 确保输出
 	CString temp;
-	temp.Format(_T("[Lighting] OnLightingResult called: [%02d][%02d][%02d][%02d]\n"),
-		resultCode[0], resultCode[1], resultCode[2], resultCode[3]);
+	temp.Format(_T("[Lighting] OnLightingResult called: [%02d][%02d][%02d][%02d], ThreadID=%lu\n"),
+		resultCode[0], resultCode[1], resultCode[2], resultCode[3], threadId);
 	OutputDebugString(temp);
 
 	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[Lighting] OnLightingResult called: [%02d][%02d][%02d][%02d]"),
-		resultCode[0], resultCode[1], resultCode[2], resultCode[3]));
+		_T("[Lighting] OnLightingResult called: [%02d][%02d][%02d][%02d], ThreadID=%lu"),
+		resultCode[0], resultCode[1], resultCode[2], resultCode[3], threadId));
 
 	// 不使用全局连接，让各个数据库查询函数使用线程局部连接（TLS）
 	// 避免多线程共享同一个连接导致的冲突
@@ -4968,6 +5035,11 @@ void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4])
 				}
 
 				// 写入检测结果到 PLC
+				long plcAddr = 0;
+				theApp.m_pEqIf->m_pMNetH->GetPLCAddressWord(-1, eWordType_PreGammaResult1 + slotIdx, &plcAddr);
+				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+					_T("[Lighting] Writing PLC Word: Type=%d, Addr=0x%X, Value=%d, Slot=%d, FixtureNo=%d"),
+					eWordType_PreGammaResult1 + slotIdx, plcAddr, plcResult, slotIdx, fixtureNo));
 				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_PreGammaResult1 + slotIdx, &plcResult);
 
 				// ========== 查询缺陷详情并写入 PLC 缺陷代码/等级 ==========
@@ -5241,19 +5313,56 @@ void CAni_Data_Serever_PCApp::LightingFlowTimeoutCheck()
 // 点灯检数据库操作函数 - 使用 ODBC
 BOOL CAni_Data_Serever_PCApp::UpdateLightingIdMap(int fixtureNo, CString uniqueID, CString screenID, CString markID)
 {
+	// 获取当前线程ID
+	DWORD threadId = GetCurrentThreadId();
 	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[DBG] UpdateLightingIdMap ENTER: fixtureNo=%d, uniqueID=%s, screenID=%s, markID=%s"),
-		fixtureNo, uniqueID, screenID, markID));
+		_T("[DBG] UpdateLightingIdMap ENTER: ThreadID=%lu, fixtureNo=%d, uniqueID=%s, screenID=%s, markID=%s"),
+		threadId, fixtureNo, uniqueID, screenID, markID));
 
-	if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
+	// 优先使用线程局部连接（TLS），避免多线程共享连接
+	SQLHDBC pUseConn = SQL_NULL_HANDLE;
+	
+	// 尝试获取线程局部连接
+	if (IsTlsLightingDBConnected())
 	{
-		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: DB not connected, trying to connect..."));
-		if (!ConnectLightingDatabase())
+		pUseConn = GetTlsLightingConnPtr();
+		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Using TLS connection"));
+	}
+	else
+	{
+		// 如果线程局部连接未连接，尝试创建线程局部连接
+		if (GetTlsLightingConnection(
+			theApp.m_strLightingDBServer,
+			theApp.m_strLightingDBName,
+			theApp.m_strLightingDBUser,
+			theApp.m_strLightingDBPassword,
+			theApp.m_pLightingLog))
 		{
-			theApp.m_pLightingLog->LOG_INFO(_T("UpdateLightingIdMap: Database not connected"));
-			return FALSE;
+			pUseConn = GetTlsLightingConnPtr();
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: TLS connection created successfully"));
 		}
-		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Database connected successfully"));
+		else
+		{
+			// 线程局部连接创建失败，使用全局连接作为后备
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: TLS connection failed, using global connection"));
+			if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
+			{
+				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: DB not connected, trying to connect..."));
+				if (!ConnectLightingDatabase())
+				{
+					theApp.m_pLightingLog->LOG_INFO(_T("UpdateLightingIdMap: Database not connected"));
+					return FALSE;
+				}
+				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Database connected successfully"));
+			}
+			pUseConn = theApp.m_pLightingConn;
+		}
+	}
+
+	if (pUseConn == SQL_NULL_HANDLE)
+	{
+		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: No valid connection available"));
+		return FALSE;
 	}
 
 	// 确保 Barcode 列存在（兼容旧数据库 - 不支持 ADD COLUMN IF NOT EXISTS）
@@ -5276,9 +5385,9 @@ BOOL CAni_Data_Serever_PCApp::UpdateLightingIdMap(int fixtureNo, CString uniqueI
 	CString strCheckSQL;
 	strCheckSQL.Format(_T("SELECT COUNT(*) FROM ivs_lcd_idmap WHERE MainAoiFixID='%d'"), fixtureNo);
 	SQLHSTMT checkStmt = SQL_NULL_HANDLE;
-	ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &checkStmt);
+	ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &checkStmt);
 	if (!SQL_SUCCEEDED(ret)) {
-		PrintOdbcError(theApp.m_pLightingConn, SQL_HANDLE_DBC);
+		PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
 		SQLFreeHandle(SQL_HANDLE_STMT, checkStmt);
 		throw 1;
 	}
@@ -5317,9 +5426,9 @@ BOOL CAni_Data_Serever_PCApp::UpdateLightingIdMap(int fixtureNo, CString uniqueI
 	theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Creating statement for UPDATE..."));
 	try {
 		// 按 MainAoiFixID 更新对应治具号记录，供检测软件使用
-		ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
+		ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
 		if (!SQL_SUCCEEDED(ret)) {
-			PrintOdbcError(theApp.m_pLightingConn, SQL_HANDLE_DBC);
+			PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
 			throw 1;
 		}
 
@@ -5376,22 +5485,34 @@ BOOL CAni_Data_Serever_PCApp::UpdateLightingIdMap(int fixtureNo, CString uniqueI
 
 	if (bRetry) {
 		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Starting retry logic..."));
-		theApp.m_bLightingDBConnected = FALSE;
-		if (!ConnectLightingDatabase())
+		
+		// 使用线程局部连接进行重试，避免影响全局连接
+		if (!IsTlsLightingDBConnected())
 		{
-			theApp.m_pLightingLog->LOG_INFO(_T("UpdateLightingIdMap: Reconnect failed"));
-			return FALSE;
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: TLS connection not connected, trying to reconnect..."));
+			if (!GetTlsLightingConnection(
+				theApp.m_strLightingDBServer,
+				theApp.m_strLightingDBName,
+				theApp.m_strLightingDBUser,
+				theApp.m_strLightingDBPassword,
+				theApp.m_pLightingLog))
+			{
+				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: TLS reconnection failed"));
+				return FALSE;
+			}
+			pUseConn = GetTlsLightingConnPtr();
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: TLS reconnected successfully"));
 		}
-		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Reconnected successfully, retrying UPDATE..."));
+		
 		try {
 			// 重新连接后，确保 Barcode 列存在（兼容旧数据库）
 			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap Retry: Checking if Barcode column exists..."));
 			CString strCheckSQL;
 			strCheckSQL.Format(_T("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ivs_lcd_idmap' AND COLUMN_NAME = 'Barcode'"));
 			
-			ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
+			ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
 			if (!SQL_SUCCEEDED(ret)) {
-				PrintOdbcError(theApp.m_pLightingConn, SQL_HANDLE_DBC);
+				PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
 				throw 1;
 			}
 
@@ -5408,9 +5529,9 @@ BOOL CAni_Data_Serever_PCApp::UpdateLightingIdMap(int fixtureNo, CString uniqueI
 						SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 						stmt = SQL_NULL_HANDLE;
 
-						ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
+						ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
 						if (!SQL_SUCCEEDED(ret)) {
-							PrintOdbcError(theApp.m_pLightingConn, SQL_HANDLE_DBC);
+							PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
 							throw 1;
 						}
 
@@ -5428,9 +5549,9 @@ BOOL CAni_Data_Serever_PCApp::UpdateLightingIdMap(int fixtureNo, CString uniqueI
 			CString strCheckSQLRetry;
 			strCheckSQLRetry.Format(_T("SELECT COUNT(*) FROM ivs_lcd_idmap WHERE MainAoiFixID='%d'"), fixtureNo);
 			SQLHSTMT checkStmt = SQL_NULL_HANDLE;
-			ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &checkStmt);
+			ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &checkStmt);
 			if (!SQL_SUCCEEDED(ret)) {
-				PrintOdbcError(theApp.m_pLightingConn, SQL_HANDLE_DBC);
+				PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
 				SQLFreeHandle(SQL_HANDLE_STMT, checkStmt);
 				throw 1;
 			}
@@ -5467,9 +5588,9 @@ BOOL CAni_Data_Serever_PCApp::UpdateLightingIdMap(int fixtureNo, CString uniqueI
 				_T("[DBG] UpdateLightingIdMap Retry: SQL=%s"), strSQL));
 			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap Retry: Creating statement for UPDATE..."));
 
-			ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
+			ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
 			if (!SQL_SUCCEEDED(ret)) {
-				PrintOdbcError(theApp.m_pLightingConn, SQL_HANDLE_DBC);
+				PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
 				throw 1;
 			}
 
@@ -5516,16 +5637,59 @@ BOOL CAni_Data_Serever_PCApp::UpdateLightingIdMap(int fixtureNo, CString uniqueI
 
 BOOL CAni_Data_Serever_PCApp::LoadLightingInspectionResult(CString uniqueID)
 {
-	if (!theApp.m_bLightingDBConnected)
+	// 获取当前线程ID
+	DWORD threadId = GetCurrentThreadId();
+	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[DBG] LoadLightingInspectionResult ENTER: ThreadID=%lu, uniqueID=%s"),
+		threadId, uniqueID));
+
+	// 优先使用线程局部连接（TLS），避免多线程共享连接
+	SQLHDBC pUseConn = SQL_NULL_HANDLE;
+	
+	// 尝试获取线程局部连接
+	if (IsTlsLightingDBConnected())
 	{
-		if (!ConnectLightingDatabase())
+		pUseConn = GetTlsLightingConnPtr();
+		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] LoadLightingInspectionResult: Using TLS connection"));
+	}
+	else
+	{
+		// 如果线程局部连接未连接，尝试创建线程局部连接
+		if (GetTlsLightingConnection(
+			theApp.m_strLightingDBServer,
+			theApp.m_strLightingDBName,
+			theApp.m_strLightingDBUser,
+			theApp.m_strLightingDBPassword,
+			theApp.m_pLightingLog))
 		{
-			theApp.m_pLightingLog->LOG_INFO(_T("LoadLightingInspectionResult: Database not connected"));
-			return FALSE;
+			pUseConn = GetTlsLightingConnPtr();
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] LoadLightingInspectionResult: TLS connection created successfully"));
+		}
+		else
+		{
+			// 线程局部连接创建失败，使用全局连接作为后备
+			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] LoadLightingInspectionResult: TLS connection failed, using global connection"));
+			if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
+			{
+				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] LoadLightingInspectionResult: DB not connected, trying to connect..."));
+				if (!ConnectLightingDatabase())
+				{
+					theApp.m_pLightingLog->LOG_INFO(_T("LoadLightingInspectionResult: Database not connected"));
+					return FALSE;
+				}
+				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] LoadLightingInspectionResult: Database connected successfully"));
+			}
+			pUseConn = theApp.m_pLightingConn;
 		}
 	}
 
-	LightingInspectionResult result = QueryInspectionResult(uniqueID);
+	if (pUseConn == SQL_NULL_HANDLE)
+	{
+		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] LoadLightingInspectionResult: No valid connection available"));
+		return FALSE;
+	}
+
+	LightingInspectionResult result = QueryInspectionResultThreadSafe(uniqueID, pUseConn);
 
 	if (result.m_bValid)
 	{
@@ -6385,16 +6549,25 @@ BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vecto
 			return FALSE;
 		}
 		
-		theApp.m_bLightingDBConnected = FALSE;
-		OutputDebugString(_T("[DBG] QueryAOIDefectList: Retrying with new connection...\n"));
-		if (!ConnectLightingDatabase())
+		// 使用线程局部连接进行重试，避免影响全局连接
+		OutputDebugString(_T("[DBG] QueryAOIDefectList: Retrying with TLS connection...\n"));
+		if (!IsTlsLightingDBConnected())
 		{
-			OutputDebugString(_T("[DBG] QueryAOIDefectList: Reconnect FAILED\n"));
-			theApp.m_pLightingLog->LOG_INFO(_T("QueryAOIDefectList: Reconnect failed"));
-			return FALSE;
+			OutputDebugString(_T("[DBG] QueryAOIDefectList: TLS connection not connected, trying to reconnect...\n"));
+			if (!GetTlsLightingConnection(
+				theApp.m_strLightingDBServer,
+				theApp.m_strLightingDBName,
+				theApp.m_strLightingDBUser,
+				theApp.m_strLightingDBPassword,
+				theApp.m_pLightingLog))
+			{
+				OutputDebugString(_T("[DBG] QueryAOIDefectList: TLS reconnection FAILED\n"));
+				theApp.m_pLightingLog->LOG_INFO(_T("QueryAOIDefectList: TLS reconnection failed"));
+				return FALSE;
+			}
+			OutputDebugString(_T("[DBG] QueryAOIDefectList: TLS reconnection SUCCESS\n"));
 		}
-		OutputDebugString(_T("[DBG] QueryAOIDefectList: Reconnect SUCCESS\n"));
-		pUseConn = theApp.m_pLightingConn;
+		pUseConn = GetTlsLightingConnPtr();
 		try {
 			CString strSQL;
 			strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, ")

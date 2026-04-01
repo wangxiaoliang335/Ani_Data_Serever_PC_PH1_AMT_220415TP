@@ -1,4 +1,4 @@
-﻿
+
 #include "stdafx.h"
 
 #if _SYSTEM_AMTAFT_
@@ -72,9 +72,15 @@ bool CAlignManager::SocketServerOpen(CString strServerPort)
 	m_bMelsecSimulaion = true;
 	SetSmartAddressing(false);
 	SetServerState(true);
+	LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align Manager %d: Opening socket server on port %s"), m_iAlignNum + 1, strServerPort));
 	bool ret = CreateSocket(strServerPort, AF_INET, SOCK_STREAM, 0);
-	if (ret) return WatchComm();
-	else return false;
+	if (ret) {
+		LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align Manager %d: Socket server created successfully"), m_iAlignNum + 1));
+		return WatchComm();
+	} else {
+		LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align Manager %d: Failed to create socket server"), m_iAlignNum + 1));
+		return false;
+	}
 }
 
 void CAlignManager::LogWrite(int iNum, CString strContents)
@@ -108,8 +114,15 @@ void CAlignManager::SocketSendto(int iNum, CString strContents, int iCommand)
 	// 构造协议数据包：STX + 命令内容 + ETX
 	CString strCommand = CStringSupport::FormatString(_T("%c%s%c"), _STX, strContents, _ETX);
 	char *lpCommand = StringToChar(strCommand);
+	
+	// Log send command details
+	LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align Manager %d: Sending command %s to VS"), m_iAlignNum + 1, MC_PacketNameTable[iCommand]));
+	LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align Manager %d: Command parameters: %s"), m_iAlignNum + 1, strContents));
+	
 	// 通过Socket发送数据包，超时时间100ms
-	theApp.m_AlignSocketManager[iNum]->WriteComm((BYTE*)lpCommand, strlen(lpCommand), 100L);
+	int bytesSent = theApp.m_AlignSocketManager[iNum]->WriteComm((BYTE*)lpCommand, strlen(lpCommand), 100L);
+	LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align Manager %d: Sent %d bytes"), m_iAlignNum + 1, bytesSent));
+	
 	delete lpCommand;
 
 	m_lastContent = strContents;
@@ -150,17 +163,19 @@ void CAlignManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 	// 将接收到的字节数据转换为Unicode字符串
 	MultiByteToWideChar(CP_ACP, 0, reinterpret_cast<LPCSTR>(lpBuffer), dwCount, strData.GetBuffer(dwCount + 1), dwCount + 1);
 	strData.ReleaseBuffer(dwCount);
+	
+	// Log raw received data
+	LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align Manager %d: Received %d bytes from VS"), m_iAlignNum + 1, dwCount));
+	LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align Manager %d: Raw data: %s"), m_iAlignNum + 1, strData));
 
 	CStringArray responseTokens;
 	// 按ETX (0x03) 分割数据包，可能包含多个数据包
 	CStringSupport::GetTokenArray(strData, _ETX, responseTokens);
 
-	//theApp.m_pAlignSendReceiverLog[m_iAlignNum]->LOG_INFO(strData);		//TWICE
-
 	// 如果没有ETX分隔符，说明数据包格式错误
 	if (responseTokens.GetSize() == 1)
 	{
-		LogWrite(m_iAlignNum,_T("ETX No Message!!!"));
+		LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align Manager %d: ETX No Message!!! Raw data: %s"), m_iAlignNum + 1, strData));
 		return;
 	}
 
@@ -197,7 +212,8 @@ void CAlignManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 		m_lastRequest = m_strContents;
 
 		// 记录接收日志：[VS -> MC] 表示从视觉系统发送到机器控制器
-		theApp.m_pAlignSendReceiverLog[m_iAlignNum]->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand, strData));
+		theApp.m_pAlignSendReceiverLog[m_iAlignNum]->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand, m_strContents));
+		LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align Manager %d: Received command %s with parameters: %s"), m_iAlignNum + 1, m_lastCommand, m_strContents));
 
 		CString sendMsg;
 		// 根据命令码执行相应处理
@@ -206,22 +222,23 @@ void CAlignManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 		case VS_ARE_YOU_THERE:  // VS心跳检测命令
 			// 重置心跳检测计数器，表示VS在线
 			theApp.m_AlignThread[m_iAlignNum]->m_AlignCheckCount = 0;
+			LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align Manager %d: Received VS_ARE_YOU_THERE heartbeat"), m_iAlignNum + 1));
 			break;
 		case VS_PCTIME_REQUEST:  // VS请求PC时间同步
-			LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("[VS -> MC] %s"), _T("RCV : VS_PCTIME_REQUEST")));
+			LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align Manager %d: Received VS_PCTIME_REQUEST"), m_iAlignNum + 1));
 			AlignPcTimeRequest();  // 发送PC时间给VS
 			break;
 		case VS_STATE:  // VS发送状态信息
 			// 参数：0=停止，1=运行
 			theApp.m_AlignPCStatus[m_iAlignNum] = m_strContents == _T("0") ? FALSE : TRUE;
-			LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("[VS_%d -> MC] %s->%s"), m_iAlignNum,  _T("RCV : VS_STATE"), theApp.m_AlignPCStatus[m_iAlignNum] == TRUE ? _T("Start") : _T("Stop")));
+			LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align Manager %d: Received VS_STATE: %s"), m_iAlignNum + 1, theApp.m_AlignPCStatus[m_iAlignNum] == TRUE ? _T("Start") : _T("Stop")));
 			break;
 		case VS_MODEL_REQUEST:  // VS请求当前模型名称
-			LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("[VS -> MC] %s"), _T("RCV : VS_MODEL_REQUEST")));
+			LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align Manager %d: Received VS_MODEL_REQUEST"), m_iAlignNum + 1));
 			AlignModelRequest();  // 发送当前模型名称给VS
 			break;
 		case VS_MODEL_CREATE:  // VS通知模型创建完成
-			LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("[VS -> MC] %s"), _T("RCV : VS_MODEL_CREATE")));
+			LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("Align Manager %d: Received VS_MODEL_CREATE"), m_iAlignNum + 1));
 			theApp.m_CreateModelAlign = FALSE;  // 清除模型创建标志
 			// 通知PLC线程模型创建完成
 			theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelCreate"), _T("Align"), theApp.m_CreateModelAlign);
