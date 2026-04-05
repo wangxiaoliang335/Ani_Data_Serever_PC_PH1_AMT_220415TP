@@ -32,8 +32,9 @@ void CVisionThread::ThreadRun()
 
 	while (::WaitForSingleObject(m_hQuit, 50) != WAIT_OBJECT_0)
 		{
-			theApp.m_VisionConectStatus[0] = theApp.m_VisionSocketManager[0].getConectCheck();
-			theApp.m_VisionConectStatus[1] = theApp.m_VisionSocketManager[1].getConectCheck();
+			// 5601 端口 (Lighting) 连接状态
+			theApp.m_VisionConectStatus[0] = theApp.m_LightingConectStatus;
+			theApp.m_VisionConectStatus[1] = theApp.m_LightingConectStatus;
 
 			//if (theApp.m_bAllPassMode)
 			//	continue;
@@ -52,13 +53,14 @@ void CVisionThread::ThreadRun()
 				theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] First connection status detected"));
 				m_bFirstStatus = FALSE;
 				time_check.SetCheckTime(60000);
-				time_check.StartTimer();
+			time_check.StartTimer();
 				for (int ii = 0; ii < PCMaxCount; ii++)
 				{
 					// VisionFirstCheckMethod is commented out as Vision PC is not available
 					// VisionFirstCheckMethod(ii);
-					theApp.m_VisionPCStatus[ii] = TRUE;
-			 }
+					// 已禁用 Vision PC 协议，现在只使用 Lighting
+					// theApp.m_VisionPCStatus[ii] = TRUE;
+				}
 
 				for (int jj = 0; jj < PanelMaxCount; jj++)
 					m_bStartVision[jj] = FALSE;
@@ -91,7 +93,10 @@ void CVisionThread::ThreadRun()
 				VisionPanelCheck();
 			}
 			else
+			{
+				theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Received eBitType_VisionPlcSend not signal from PLC"));
 				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionPcReceiver, 0, FALSE);
+			}
 
 			for (int ii = 0; ii < PanelMaxCount; ii++)
 			{
@@ -101,11 +106,14 @@ void CVisionThread::ThreadRun()
 
 				if (m_bStartFlag == FALSE)
 				{
-					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
-						_T("[VisionThread] Resetting Panel %d results and flags"), ii + 1));
-					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + ii, &m_codeReset);
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + ii, OffSet_0, FALSE);
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + ii, OffSet_0, FALSE);
+				theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+					_T("[VisionThread] Resetting Panel %d results and flags"), ii + 1));
+				theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+					_T("[VisionThread] SetPlcWordData eWordType_VisionResult%d = %d (%s)"), 
+					ii + 1, m_codeReset, PLC_ResultValue[m_codeReset]));
+				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + ii, &m_codeReset);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + ii, OffSet_0, FALSE);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + ii, OffSet_0, FALSE);
 			 }
 
 				if (m_bStartVision[ii] == !m_bStartFlag)
@@ -117,11 +125,18 @@ void CVisionThread::ThreadRun()
 					if (m_bStartFlag == TRUE)
 					{
 						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Starting inspection for Panel %d"), ii + 1));
+						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+							_T("[VisionThread] SetPlcWordData eWordType_VisionResult%d = %d (%s)"), 
+							ii + 1, m_codeReset, PLC_ResultValue[m_codeReset]));
 						theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + ii, &m_codeReset);
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + ii, OffSet_0, FALSE);
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + ii, OffSet_0, FALSE);
 
 						// 新版点灯检软件：优先走 Lighting 协议 Start$...@
+						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+							_T("[VisionThread] Lighting check: m_LightingThreadOpenFlag=%d, m_LightingConectStatus=%d"),
+							theApp.m_LightingThreadOpenFlag, theApp.m_LightingConectStatus));
+
 						if (theApp.m_LightingThreadOpenFlag && theApp.m_LightingConectStatus)
 						{
 							theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Using Lighting protocol (6501 port) for inspection"));
@@ -129,14 +144,18 @@ void CVisionThread::ThreadRun()
 							for (int jj = 0; jj < PanelMaxCount; ++jj)
 								startFlags[jj] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_VisionStart1, OffSet_0 + jj);
 
+							theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+								_T("[VisionThread] startFlags[] = [%d, %d, %d, %d] from VisionStart1~4"),
+								startFlags[0], startFlags[1], startFlags[2], startFlags[3]));
 							theApp.TryStartLightingFromPlc(startFlags);
 						}
 						else
 						{
-							// 旧版 Vision PC 协议
-							m_iPcNum = ii <= PanelNum2 ? PC1 : PC2;
-							theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Calling VisionInspectionMethod for PC%d, Panel%d"), m_iPcNum, PanelNum1 + ii));
-							VisionInspectionMethod(m_iPcNum, PanelNum1 + ii);
+							theApp.m_PlcLog->LOG_WARN(CStringSupport::FormatString(
+								_T("[VisionThread] Lighting NOT available, skipping TryStartLightingFromPlc")));
+							// 旧版 Vision PC 协议 - 已禁用，现在只使用 Lighting (5601端口)
+							// m_iPcNum = ii <= PanelNum2 ? PC1 : PC2;
+							// VisionInspectionMethod(m_iPcNum, PanelNum1 + ii);
 						}
 					}
 				}
@@ -166,25 +185,25 @@ void CVisionThread::ThreadRun()
 					{
 						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Processing AutoFocusEnd for Cam %d"), ii + 1));
 						if (theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_AutoFocusSave1 + ii, OffSet_0))
-						{
-							theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] AutoFocus Save position for Cam %d"), ii + 1));
-							//save
-							theApp.m_VisionSocketManager->SocketSendto(ii, _T("GOOD"), MC_FOCUS_SAVE_POS_DONE);
-							theApp.m_pEqIf->m_pMNetH->SetAutoFocusData(eWordType_AutoFocusMoter1, &pAutoFocusData);
-							theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusSave1 + ii, OffSet_0, FALSE);
-							theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusStart1 + ii, OffSet_0, FALSE);
+					{
+						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] AutoFocus Save position for Cam %d"), ii + 1));
+						//save - 已禁用 Vision PC 协议，现在只使用 Lighting
+						//theApp.m_VisionSocketManager->SocketSendto(ii, _T("GOOD"), MC_FOCUS_SAVE_POS_DONE);
+						theApp.m_pEqIf->m_pMNetH->SetAutoFocusData(eWordType_AutoFocusMoter1, &pAutoFocusData);
+						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusSave1 + ii, OffSet_0, FALSE);
+						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusStart1 + ii, OffSet_0, FALSE);
 
-							LogWrite(CStringSupport::FormatString(_T("[CAM_%d] Auto Focus Save Success"), ii + 1), ii);
-						}
+						LogWrite(CStringSupport::FormatString(_T("[CAM_%d] Auto Focus Save Success"), ii + 1), ii);
+					}
 						else
 						{
 							theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] AutoFocus Axis Move for Cam %d"), ii + 1));
-							//axis Move
-							theApp.m_pEqIf->m_pMNetH->GetPlcWordData(eWordType_AutoFocusMoter1, &m_AutoFocusPosition);
-							if (m_AutoFocusPosition == 1)
-								theApp.m_VisionSocketManager->SocketSendto(ii, _T("GOOD"), MC_Z_MOVE_DONE);
-							else
-								theApp.m_VisionSocketManager->SocketSendto(ii, _T("GOOD"), MC_FOCUS_MOVE_DONE);
+							//axis Move - 已禁用 Vision PC 协议，现在只使用 Lighting
+							//theApp.m_pEqIf->m_pMNetH->GetPlcWordData(eWordType_AutoFocusMoter1, &m_AutoFocusPosition);
+							//if (m_AutoFocusPosition == 1)
+							//	theApp.m_VisionSocketManager->SocketSendto(ii, _T("GOOD"), MC_Z_MOVE_DONE);
+							//else
+							//	theApp.m_VisionSocketManager->SocketSendto(ii, _T("GOOD"), MC_FOCUS_MOVE_DONE);
 
 							theApp.m_pEqIf->m_pMNetH->SetAutoFocusData(eWordType_AutoFocusMoter1, &pAutoFocusData);
 							theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusSave1 + ii, OffSet_0, FALSE);
@@ -256,8 +275,9 @@ void CVisionThread::ThreadRun()
 		else
 		{
 			theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Vision PC connection lost, resetting status"));
-			theApp.m_VisionPCStatus[0] = FALSE;
-			theApp.m_VisionPCStatus[1] = FALSE;
+			// Vision PC 状态已禁用，现在只使用 Lighting (5601端口)
+			// theApp.m_VisionPCStatus[0] = FALSE;
+			// theApp.m_VisionPCStatus[1] = FALSE;
 			m_bFirstStatus = TRUE;
 		}
 	}
@@ -265,214 +285,215 @@ void CVisionThread::ThreadRun()
 }
 
 
-void CVisionThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
-{
-	if (theApp.m_bExitFlag == FALSE)
-		return;
+// 已禁用 - 现在只使用 Lighting 协议 (5601端口)，不再处理 Vision PC 协议 (8011/8012端口)
+// void CVisionThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
+// {
+// 	if (theApp.m_bExitFlag == FALSE)
+// 		return;
+// 
+// 	SockAddrIn addrin;
+// 	GetSockName(addrin);
+// 	int Num = ntohs(addrin.GetPort()) == _ttoi(VISION_PC1_PORT_NUM) ? PC1 : PC2;
+// 
+// 	CString strData, m_strHeader, m_strCommand, m_strContents, strParsing;
+// 	int iFind, iFindSTX;
+// 	MultiByteToWideChar(CP_ACP, 0, reinterpret_cast<LPCSTR>(lpBuffer), dwCount, strData.GetBuffer(dwCount + 1), dwCount + 1);
+// 	strData.ReleaseBuffer(dwCount);
+// 
+// 	CStringArray responseTokens;
+// 	CStringSupport::GetTokenArray(strData, _ETX, responseTokens);
+// 
+// 	if (responseTokens.GetSize() == 1)
+// 	{
+// 		LogWrite(_T("ETX No Message!!!"), Num);
+// 		return;
+// 	}
+// 
+// 	for (int ii = 0; ii < responseTokens.GetSize() - 1; ii++)
+// 	{
+// 		strParsing = responseTokens[ii];
+// 
+// 		m_strHeader.Format(_T("%x"), strParsing.GetAt(0));
+// 
+// 		UINT iHeader = (UINT)_ttoi(m_strHeader);
+// 
+// 		if (iHeader != _STX)
+// 		{
+// 			LogWrite(_T("STX No Message!!!"), Num);
+// 			return;
+// 		}
+// 
+// 		iFind = strParsing.Find(',');
+// 		m_strCommand = strParsing.Left(iFind);
+// 
+// 		iFindSTX = strParsing.Find((char)_STX);
+// 		m_strCommand = m_strCommand.Mid(iFindSTX + 1, m_strCommand.GetLength());
+// 
+// 		int iCommand = _ttoi(m_strCommand);
+// 
+// 		m_strContents = strParsing.Mid(iFind + 1, strParsing.GetLength());
+// 
+// 		m_lastCommand[Num] = VS_PacketNameTable[iCommand];
+// 		m_lastRequest[Num] = m_strContents;
+// 
+// 		if (Num == PC1)
+// 			theApp.m_pVisionSendReceiver1Log->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData));
+// 		else
+// 			theApp.m_pVisionSendReceiver2Log->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData));
+// 
+// 		CString sendMsg;
+// 		switch (iCommand)
+// 		{
+// 		case VS_ARE_YOU_THERE:
+// 			theApp.m_VisionSocketManager[Num].m_iVisionSocketCheckCount = 0;
+// 			break;
+// 		case VS_PCTIME_REQUEST:
+// 			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_PCTIME_REQUEST")), Num);
+// 			ParsingPcTimeRequest(Num, m_strContents);			
+// 			sendMsg.Format(_T("%d,%d"), MC_STATE, !theApp.m_PlcThread->m_plcStart);
+// 			for (int ii = 0; ii < PCMaxCount; ii++)
+// 				theApp.m_VisionSocketManager[ii].SocketSendto(ii, sendMsg, MC_STATE);
+// 			break;
+// 		case VS_STATE:
+// 			theApp.m_VisionPCStatus[Num] = m_strContents == _T("0") ? FALSE : TRUE;
+// 			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_STATE"), theApp.m_VisionPCStatus[Num] == TRUE ? _T("Start") : _T("Stop")), Num);
+// 			break;
+// 		case VS_MODEL:
+// 			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_MODEL")), Num);
+// 			ParshingVisionData(Num, m_strContents);
+// 			break;
+// 		case VS_MODEL_REQUEST:
+// 			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_MODEL_REQUEST")), Num);
+// 			ParsingModelRequest(Num, m_strContents);
+// 			break;
+// 		case VS_MODEL_CREATE:
+// 			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_MODEL_CREATE")), Num);
+// 			if (Num == PC1)
+// 			{
+// 				theApp.m_CreateModelVision1 = FALSE;
+// 				theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelCreate"), _T("Vision1"), theApp.m_CreateModelVision1);
+// 
+// 				if (theApp.m_ChangeModelVision1)
+// 				{
+// 					sendMsg.Format(_T("%d,%s"), MC_MODEL_CHANGE, theApp.m_CurrentModel.m_AlignPcCurrentModelName);
+// 					theApp.m_VisionSocketManager[PC1].SocketSendto(PC1, sendMsg, MC_MODEL_CHANGE);
+// 				}
+// 			}
+// 			else
+// 			{
+// 				theApp.m_CreateModelVision2 = FALSE;
+// 				theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelCreate"), _T("Vision2"), theApp.m_CreateModelVision2);
+// 
+// 				if (theApp.m_ChangeModelVision2)
+// 				{
+// 					sendMsg.Format(_T("%d,%s"), MC_MODEL_CHANGE, theApp.m_CurrentModel.m_AlignPcCurrentModelName);
+// 					theApp.m_VisionSocketManager[PC2].SocketSendto(PC2, sendMsg, MC_MODEL_CHANGE);
+// 				}
+// 			}
+// 
+// 			theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Vision %d PC Model Create Success"), Num));
+// 			break;
+// 		case VS_MODEL_CHANGE:
+// 			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_MODEL_CHANGE")), Num);
+// 			if (Num == PC1)
+// 			{
+// 				theApp.m_ChangeModelVision1 = FALSE;
+// 				theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelChange"), _T("Vision1"), theApp.m_ChangeModelVision1);
+// 			}
+// 			else
+// 			{
+// 				theApp.m_ChangeModelVision2 = FALSE;
+// 				theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelChange"), _T("Vision2"), theApp.m_ChangeModelVision2);
+// 			}
+// 
+// 			theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Vision %d PC Model Change Success"), Num));
+// 			break;
+// 		case VS_GRAB_END:
+// 			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_GRAB_END"), m_strContents), Num);
+// 			ParsingGrabEnd(Num, m_strContents);
+// 			break;
+// 		case VS_INSPECTION_OK:
+// 			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_INSPECTION_OK"), m_strContents), Num);
+// 			break;
+// 		case VS_INSPECTION_RESULT:
+// 			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_INSPECTION_RESULT"), m_strContents), Num);
+// 			ParsingInspectionResult(Num, m_strContents);
+// 			break;
+// 		case VS_AUTO_CAM_SET_START:
+// 			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_AUTO_CAM_SET_START"), m_strContents), Num);
+// 			break;
+// 		case VS_Z_MOVE_REQUEST:
+// 			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_Z_MOVE_REQUEST"), m_strContents), Num);
+// 			AutoFocusAxis(Num, 1, m_strContents);
+// 			break;
+// 		case VS_FOCUS_MOVE_REQUEST:
+// 			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_FOCUS_MOVE_REQUEST"), m_strContents), Num);
+// 			AutoFocusAxis(Num, 2, m_strContents);
+// 			break;
+// 		case VS_Z_SAVE_POS_REQUEST:
+// 			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_Z_SAVE_POS_REQUEST"), m_strContents), Num);
+// 			break;
+// 		case VS_FOCUS_SAVE_POS_REQUEST:
+// 			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_FOCUS_SAVE_POS_REQUEST"), m_strContents), Num);
+// 			AutoFocusSave(Num);
+// 			break;
+// 		case VS_VISION_TEST:
+// 			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_VISION_TEST"), m_strContents), Num);
+// 			VisionInspectionMethod(0, 0);
+// 			VisionInspectionMethod(1, 1);
+// 			break;
+// 		}
+// 
+// 	}
+// }
 
-	SockAddrIn addrin;
-	GetSockName(addrin);
-	int Num = ntohs(addrin.GetPort()) == _ttoi(VISION_PC1_PORT_NUM) ? PC1 : PC2;
+// 已禁用 - 现在只使用 Lighting 协议 (5601端口)
+// void CVisionThread::VisionFirstCheckMethod(int Num)
+// {
+// 	BOOL bModelCreate, bModelChange;
+// 	CString strCommand = CStringSupport::FormatString(_T("%d,%d"), MC_ARE_YOU_THERE, theApp.m_VisionSocketManager[Num].m_iVisionSocketCheckCount);
+// 	SocketSendto(Num, strCommand, MC_ARE_YOU_THERE);
+// 	Delay(200, TRUE);
+// 
+// 	strCommand = CStringSupport::FormatString(_T("%d,%s"), MC_PCTIME, GetDateString4());
+// 	SocketSendto(Num, strCommand, MC_PCTIME);
+// 	Delay(200, TRUE);
+// 
+// 	if (Num == PC1)
+// 	{
+// 		bModelCreate = theApp.m_CreateModelVision1;
+// 		bModelChange = theApp.m_ChangeModelVision1;
+// 	}
+// 	else
+// 	{
+// 		bModelCreate = theApp.m_CreateModelVision2;
+// 		bModelChange = theApp.m_ChangeModelVision2;
+// 	}
+// 	
+// 	if (bModelCreate)
+// 	{
+// 		strCommand = CStringSupport::FormatString(_T("%d,%s"), MC_MODEL_CREATE, theApp.m_CurrentModel.m_AlignPcCurrentModelName);
+// 		SocketSendto(Num, strCommand, MC_MODEL_CREATE);
+// 		LogWrite(CStringSupport::FormatString(_T("[MC -> VS %d] %s->%s"), Num, MC_PacketNameTable[MC_MODEL_CREATE], strCommand), Num);
+// 		Delay(200, TRUE);
+// 	}
+// 	
+// 	if (bModelChange)
+// 	{
+// 		strCommand = CStringSupport::FormatString(_T("%d,%s"), MC_MODEL_CHANGE, theApp.m_CurrentModel.m_AlignPcCurrentModelName);
+// 		SocketSendto(Num, strCommand, MC_MODEL_CHANGE);
+// 		LogWrite(CStringSupport::FormatString(_T("[MC -> VS %d] %s->%s"), Num, MC_PacketNameTable[MC_MODEL_CHANGE], strCommand), Num);
+// 		Delay(200, TRUE);
+// 	}
+// 
+// }
 
-	//����� ���� �Ǿ� ���ð�쿡�� for ������ ETX �������� �Ľ��ؼ� ���� �����ü� �ֵ��� ����
-	CString strData, m_strHeader, m_strCommand, m_strContents, strParsing;
-	int iFind, iFindSTX;
-	MultiByteToWideChar(CP_ACP, 0, reinterpret_cast<LPCSTR>(lpBuffer), dwCount, strData.GetBuffer(dwCount + 1), dwCount + 1);
-	strData.ReleaseBuffer(dwCount);
-
-	CStringArray responseTokens;
-	CStringSupport::GetTokenArray(strData, _ETX, responseTokens);
-
-	if (responseTokens.GetSize() == 1)
-	{
-		LogWrite(_T("ETX No Message!!!"), Num);
-		return;
-	}
-
-	for (int ii = 0; ii < responseTokens.GetSize() - 1; ii++)
-	{
-		strParsing = responseTokens[ii];
-
-		m_strHeader.Format(_T("%x"), strParsing.GetAt(0));
-
-		UINT iHeader = (UINT)_ttoi(m_strHeader);
-
-		if (iHeader != _STX)
-		{
-			LogWrite(_T("STX No Message!!!"), Num);
-			return;
-		}
-
-		iFind = strParsing.Find(',');
-		m_strCommand = strParsing.Left(iFind);
-
-		iFindSTX = strParsing.Find((char)_STX);
-		m_strCommand = m_strCommand.Mid(iFindSTX + 1, m_strCommand.GetLength());
-
-		int iCommand = _ttoi(m_strCommand);
-
-		m_strContents = strParsing.Mid(iFind + 1, strParsing.GetLength());
-
-		m_lastCommand[Num] = VS_PacketNameTable[iCommand];
-		m_lastRequest[Num] = m_strContents;
-
-		if (Num == PC1)
-			theApp.m_pVisionSendReceiver1Log->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData));
-		else
-			theApp.m_pVisionSendReceiver2Log->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData));
-
-		CString sendMsg;
-		switch (iCommand)
-		{
-		case VS_ARE_YOU_THERE:
-			theApp.m_VisionSocketManager[Num].m_iVisionSocketCheckCount = 0;
-			break;
-		case VS_PCTIME_REQUEST:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_PCTIME_REQUEST")), Num);
-			ParsingPcTimeRequest(Num, m_strContents);			
-			sendMsg.Format(_T("%d,%d"), MC_STATE, !theApp.m_PlcThread->m_plcStart);
-			for (int ii = 0; ii < PCMaxCount; ii++)
-				theApp.m_VisionSocketManager[ii].SocketSendto(ii, sendMsg, MC_STATE);
-			break;
-		case VS_STATE:
-			theApp.m_VisionPCStatus[Num] = m_strContents == _T("0") ? FALSE : TRUE;
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_STATE"), theApp.m_VisionPCStatus[Num] == TRUE ? _T("Start") : _T("Stop")), Num);
-			break;
-		case VS_MODEL:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_MODEL")), Num);
-			ParshingVisionData(Num, m_strContents);
-			break;
-		case VS_MODEL_REQUEST:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_MODEL_REQUEST")), Num);
-			ParsingModelRequest(Num, m_strContents);
-			break;
-		case VS_MODEL_CREATE:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_MODEL_CREATE")), Num);
-			if (Num == PC1)
-			{
-				theApp.m_CreateModelVision1 = FALSE;
-				theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelCreate"), _T("Vision1"), theApp.m_CreateModelVision1);
-
-				if (theApp.m_ChangeModelVision1)
-				{
-					sendMsg.Format(_T("%d,%s"), MC_MODEL_CHANGE, theApp.m_CurrentModel.m_AlignPcCurrentModelName);
-					theApp.m_VisionSocketManager[PC1].SocketSendto(PC1, sendMsg, MC_MODEL_CHANGE);
-				}
-			}
-			else
-			{
-				theApp.m_CreateModelVision2 = FALSE;
-				theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelCreate"), _T("Vision2"), theApp.m_CreateModelVision2);
-
-				if (theApp.m_ChangeModelVision2)
-				{
-					sendMsg.Format(_T("%d,%s"), MC_MODEL_CHANGE, theApp.m_CurrentModel.m_AlignPcCurrentModelName);
-					theApp.m_VisionSocketManager[PC2].SocketSendto(PC2, sendMsg, MC_MODEL_CHANGE);
-				}
-			}
-
-			theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Vision %d PC Model Create Success"), Num));
-			break;
-		case VS_MODEL_CHANGE:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_MODEL_CHANGE")), Num);
-			if (Num == PC1)
-			{
-				theApp.m_ChangeModelVision1 = FALSE;
-				theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelChange"), _T("Vision1"), theApp.m_ChangeModelVision1);
-			}
-			else
-			{
-				theApp.m_ChangeModelVision2 = FALSE;
-				theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelChange"), _T("Vision2"), theApp.m_ChangeModelVision2);
-			}
-
-			theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Vision %d PC Model Change Success"), Num));
-			break;
-		case VS_GRAB_END:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_GRAB_END"), m_strContents), Num);
-			ParsingGrabEnd(Num, m_strContents);
-			break;
-		case VS_INSPECTION_OK:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_INSPECTION_OK"), m_strContents), Num);
-			break;
-		case VS_INSPECTION_RESULT:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_INSPECTION_RESULT"), m_strContents), Num);
-			ParsingInspectionResult(Num, m_strContents);
-			break;
-		case VS_AUTO_CAM_SET_START:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_AUTO_CAM_SET_START"), m_strContents), Num);
-			break;
-		case VS_Z_MOVE_REQUEST:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_Z_MOVE_REQUEST"), m_strContents), Num);
-			AutoFocusAxis(Num, 1, m_strContents);
-			break;
-		case VS_FOCUS_MOVE_REQUEST:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_FOCUS_MOVE_REQUEST"), m_strContents), Num);
-			AutoFocusAxis(Num, 2, m_strContents);
-			break;
-		case VS_Z_SAVE_POS_REQUEST:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_Z_SAVE_POS_REQUEST"), m_strContents), Num);
-			break;
-		case VS_FOCUS_SAVE_POS_REQUEST:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_FOCUS_SAVE_POS_REQUEST"), m_strContents), Num);
-			AutoFocusSave(Num);
-			break;
-		case VS_VISION_TEST:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_VISION_TEST"), m_strContents), Num);
-			VisionInspectionMethod(0, 0);
-			VisionInspectionMethod(1, 1);
-			break;
-		}
-
-	}
-}
-
-void CVisionThread::VisionFirstCheckMethod(int Num)
-{
-	BOOL bModelCreate, bModelChange;
-	//ó�� �����ִ°��� IO (MC_ARE_YOU_THERE) , PCTime(MC_PCTIME), �𵨸�(MC_MODEL)
-	CString strCommand = CStringSupport::FormatString(_T("%d,%d"), MC_ARE_YOU_THERE, theApp.m_VisionSocketManager[Num].m_iVisionSocketCheckCount);
-	SocketSendto(Num, strCommand, MC_ARE_YOU_THERE);
-	Delay(200, TRUE);
-
-	strCommand = CStringSupport::FormatString(_T("%d,%s"), MC_PCTIME, GetDateString4());
-	SocketSendto(Num, strCommand, MC_PCTIME);
-	Delay(200, TRUE);
-
-	if (Num == PC1)
-	{
-		bModelCreate = theApp.m_CreateModelVision1;
-		bModelChange = theApp.m_ChangeModelVision1;
-	}
-	else
-	{
-		bModelCreate = theApp.m_CreateModelVision2;
-		bModelChange = theApp.m_ChangeModelVision2;
-	}
-	
-	if (bModelCreate)
-	{
-		strCommand = CStringSupport::FormatString(_T("%d,%s"), MC_MODEL_CREATE, theApp.m_CurrentModel.m_AlignPcCurrentModelName);
-		SocketSendto(Num, strCommand, MC_MODEL_CREATE);
-		LogWrite(CStringSupport::FormatString(_T("[MC -> VS %d] %s->%s"), Num, MC_PacketNameTable[MC_MODEL_CREATE], strCommand), Num);
-		Delay(200, TRUE);
-	}
-	
-	if (bModelChange)
-	{
-		strCommand = CStringSupport::FormatString(_T("%d,%s"), MC_MODEL_CHANGE, theApp.m_CurrentModel.m_AlignPcCurrentModelName);
-		SocketSendto(Num, strCommand, MC_MODEL_CHANGE);
-		LogWrite(CStringSupport::FormatString(_T("[MC -> VS %d] %s->%s"), Num, MC_PacketNameTable[MC_MODEL_CHANGE], strCommand), Num);
-		Delay(200, TRUE);
-	}
-
-}
-
-void CVisionThread::VisionCheckMethod(int Num)
-{
-	CString strCommand = CStringSupport::FormatString(_T("%d,%d"), MC_ARE_YOU_THERE, theApp.m_VisionSocketManager[Num].m_iVisionSocketCheckCount);
-	SocketSendto(Num, strCommand, MC_ARE_YOU_THERE);
-}
+// 已禁用 - 现在只使用 Lighting 协议 (5601端口)
+// void CVisionThread::VisionCheckMethod(int Num)
+// {
+// 	CString strCommand = CStringSupport::FormatString(_T("%d,%d"), MC_ARE_YOU_THERE, theApp.m_VisionSocketManager[Num].m_iVisionSocketCheckCount);
+// 	SocketSendto(Num, strCommand, MC_ARE_YOU_THERE);
+// }
 
 void CVisionThread::VisionPanelCheck()
 {
@@ -585,8 +606,9 @@ void CVisionThread::ParsingGrabEnd(int Num, CString strContents)
 	strPanelID.Trim();
 	strFpcID.Trim();
 
-	sendMsg.Format(_T("%d,%s,%s"), MC_GRAB_END_RECEIVE, strPanelID, strFpcID);
-	SocketSendto(Num, sendMsg, MC_GRAB_END_RECEIVE);
+	// 已禁用 Vision PC Socket 发送 - 现在只使用 Lighting 协议
+	// sendMsg.Format(_T("%d,%s,%s"), MC_GRAB_END_RECEIVE, strPanelID, strFpcID);
+	// SocketSendto(Num, sendMsg, MC_GRAB_END_RECEIVE);
 	
 	for (auto &InspResult : theApp.m_lastInspResultVec)
 	{
@@ -615,8 +637,9 @@ void CVisionThread::ParsingInspectionResult(int Num, CString strContents)
 	strPanelID.Trim();
 	strFpcID.Trim();
 
-	sendMsg.Format(_T("%d,%s,%s"), MC_INSPECTION_RESULT_RECEIVE, strPanelID, strFpcID);
-	SocketSendto(Num, sendMsg, MC_INSPECTION_RESULT_RECEIVE);
+	// 已禁用 Vision PC Socket 发送 - 现在只使用 Lighting 协议
+	// sendMsg.Format(_T("%d,%s,%s"), MC_INSPECTION_RESULT_RECEIVE, strPanelID, strFpcID);
+	// SocketSendto(Num, sendMsg, MC_INSPECTION_RESULT_RECEIVE);
 
 	int iokng = 0;
 	for (auto &InspResult : theApp.m_lastInspResultVec)
@@ -647,37 +670,47 @@ void CVisionThread::ParsingInspectionResult(int Num, CString strContents)
 		}
 	}
 	theApp.m_bVisionDeleteFlag = TRUE;
-	
-	
+}
+
+// 已禁用 - 现在只使用 Lighting 协议 (5601端口)
+// void CVisionThread::OnEvent(UINT uEvent, LPVOID lpvData)
+// {
+// 	if (theApp.m_bExitFlag == FALSE)
+// 		return;
+// 
+// 	SockAddrIn addrin;
+// 	GetSockName(addrin);
+// 	int VisionNum = ntohs(addrin.GetPort()) == _ttoi(VISION_PC1_PORT_NUM) ? PC1 : PC2;
+// 	
+// 	switch (uEvent)
+// 	{
+// 	case EVT_CONDROP:
+// 		LogWrite(CStringSupport::FormatString(_T("Vision Connect Drop %d Ch"), VisionNum), VisionNum);
+// 		break;
+// 	case EVT_CONSUCCESS:
+// 		LogWrite(CStringSupport::FormatString(_T("Vision Connect Success %d Ch"), VisionNum), VisionNum);
+// 		break;
+// 	case EVT_ZEROLENGTH:
+// 		LogWrite(CStringSupport::FormatString(_T("Vision EVT_ZEROLENGTH %d Ch"), VisionNum), VisionNum);
+// 		break;
+// 	case EVT_CONFAILURE:
+// 		LogWrite(CStringSupport::FormatString(_T("Vision EVT_CONFAILURE %d Ch"), VisionNum), VisionNum);
+// 		break;
+// 	default:
+// 		LogWrite(CStringSupport::FormatString(_T("Vision Unknown Socket event %d Ch"), VisionNum), VisionNum);
+// 		break;
+// 	}
+// }
+
+// 已禁用 - 现在只使用 Lighting 协议 (5601端口)，不再处理 Vision PC 协议
+void CVisionThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
+{
+	// Vision PC 协议已禁用，现在只使用 Lighting 协议
 }
 
 void CVisionThread::OnEvent(UINT uEvent, LPVOID lpvData)
 {
-	if (theApp.m_bExitFlag == FALSE)
-		return;
-
-	SockAddrIn addrin;
-	GetSockName(addrin);
-	int VisionNum = ntohs(addrin.GetPort()) == _ttoi(VISION_PC1_PORT_NUM) ? PC1 : PC2;
-	
-	switch (uEvent)
-	{
-	case EVT_CONDROP:
-		LogWrite(CStringSupport::FormatString(_T("Vision Connect Drop %d Ch"), VisionNum), VisionNum);
-		break;
-	case EVT_CONSUCCESS:
-		LogWrite(CStringSupport::FormatString(_T("Vision Connect Success %d Ch"), VisionNum), VisionNum);
-		break;
-	case EVT_ZEROLENGTH:
-		LogWrite(CStringSupport::FormatString(_T("Vision EVT_ZEROLENGTH %d Ch"), VisionNum), VisionNum);
-		break;
-	case EVT_CONFAILURE:
-		LogWrite(CStringSupport::FormatString(_T("Vision EVT_CONFAILURE %d Ch"), VisionNum), VisionNum);
-		break;
-	default:
-		LogWrite(CStringSupport::FormatString(_T("Vision Unknown Socket event %d Ch"), VisionNum), VisionNum);
-		break;
-	}
+	// Vision PC 协议已禁用，现在只使用 Lighting 协议
 }
 
 BOOL CVisionThread::getConectCheck()
@@ -750,25 +783,10 @@ void CVisionThread::CloseTask()
 	}
 }
 
+// 已禁用 - 现在只使用 Lighting 协议 (5601端口)
 void CVisionThread::SocketSendto(int Num, CString strContents, int iCommand)
 {
-	if (theApp.m_bExitFlag == FALSE)
-		return;
-
-	m_csSocketSend.Lock();
-	CString strCommand = CStringSupport::FormatString(_T("%c%s,%c"), _STX, strContents, _ETX);
-	char *lpCommand = StringToChar(strCommand);
-	theApp.m_VisionSocketManager[Num].WriteComm((BYTE*)lpCommand, strlen(lpCommand), 100L);
-	delete lpCommand;
-
-	m_lastContent[Num] = strContents;
-
-	if (Num == PC1)
-		theApp.m_pVisionSendReceiver1Log->LOG_INFO(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents));
-	else
-		theApp.m_pVisionSendReceiver2Log->LOG_INFO(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents));
-
-	m_csSocketSend.Unlock();
+	// Vision PC Socket 发送已禁用，现在只使用 Lighting 协议
 }
 
 void CVisionThread::LogWrite(CString strContents,int Num)
@@ -794,6 +812,9 @@ void CVisionThread::VisionPLCResult(int Num, int iPanelNum, CString ResultMsg, i
 	}
 		
 
+	theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[VisionThread] SetPlcWordData eWordType_VisionResult%d = %d (%s)"), 
+		iPanelNum + 1, ResultCode, PLC_ResultValue[ResultCode]));
 	theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + iPanelNum, &ResultCode);
 	theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + iPanelNum, OffSet_0, TRUE);
 	theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + iPanelNum, OffSet_0, TRUE);

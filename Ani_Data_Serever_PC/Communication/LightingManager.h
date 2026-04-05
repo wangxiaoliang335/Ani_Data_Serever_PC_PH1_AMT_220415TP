@@ -95,6 +95,7 @@ protected:
 private:
 	BOOL              m_bConnected;
 	CCriticalSection  m_csSocketSend;
+	CCriticalSection  m_csReconnect;  // 保护重连逻辑，防止多线程竞争
 	ILightingEventHandler* m_pHandler;
 
 	// TCP 可能出现半包/粘包：用 '@' 作为消息结束符

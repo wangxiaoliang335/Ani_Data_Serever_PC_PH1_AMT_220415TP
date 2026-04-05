@@ -1657,7 +1657,7 @@ void CAni_Data_Serever_PCApp::SetLoadResultCodeFromDB(CString strPanelID, CStrin
 		}
 
 		CString strSQL;
-		strSQL.Format(_T("SELECT Code_AOI, Grade_AOI FROM ivs_lcd_aoiresult ")
+		strSQL.Format(_T("SELECT Code_AOI, Grade_AOI FROM ivs_lcd_aoidefect ")
 		_T("WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"), strUniqueID);
 
 		ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
@@ -4933,7 +4933,9 @@ void CAni_Data_Serever_PCApp::OnLightingSnapFN()
 	for (int i = 0; i < 4; ++i)
 	{
 		if (active[i])
-			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopGrabEnd1 + i, OffSet_0, TRUE);
+			//theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopGrabEnd1 + i, OffSet_0, TRUE);
+			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + i, OffSet_0, TRUE);
+			
 	}
 }
 
@@ -4963,8 +4965,16 @@ void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4])
 	// - 为保证 PLC 不被卡住：这里默认写 OK，并打日志提示（如果要更严谨，可改成 Timeout/NG 并报警）
 	BOOL active[4] = { FALSE, FALSE, FALSE, FALSE };
 	m_csLightingFlow.Lock();
+	BOOL cycleInProgress = m_bLightingCycleInProgress;
+	BOOL running = m_bLightingRunning;
+	BOOL snapDone = m_bLightingSnapDone;
 	for (int i = 0; i < 4; ++i) active[i] = m_bLightingActiveSlot[i];
 	m_csLightingFlow.Unlock();
+
+	// 记录 OnLightingResult 进入时的完整状态
+	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[Lighting] OnLightingResult STATE: cycleInProgress=%d, running=%d, snapDone=%d, activeSlots=[%d][%d][%d][%d]"),
+		cycleInProgress, running, snapDone, active[0], active[1], active[2], active[3]));
 
 	CString temp2;
 	temp2.Format(_T("[Lighting] Active slots: [%d][%d][%d][%d]\n"),
@@ -5046,11 +5056,11 @@ void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4])
 
 				// 写入检测结果到 PLC
 				long plcAddr = 0;
-				theApp.m_pEqIf->m_pMNetH->GetPLCAddressWord(-1, eWordType_PreGammaResult1 + slotIdx, &plcAddr);
+				theApp.m_pEqIf->m_pMNetH->GetPLCAddressWord(-1, eWordType_VisionResult1 + slotIdx, &plcAddr);
 				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
 					_T("[Lighting] Writing PLC Word: Type=%d, Addr=0x%X, Value=%d, Slot=%d, FixtureNo=%d"),
-					eWordType_PreGammaResult1 + slotIdx, plcAddr, plcResult, slotIdx, fixtureNo));
-				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_PreGammaResult1 + slotIdx, &plcResult);
+					eWordType_VisionResult1 + slotIdx, plcAddr, plcResult, slotIdx, fixtureNo));
+				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + slotIdx, &plcResult);
 
 				// ========== 查询缺陷详情并写入 PLC 缺陷代码/等级 ==========
 				// 参考老代码 AOI 流程：在 DFSDataStart 中调用 SendPlcDefectCode 写入缺陷代码
@@ -5169,7 +5179,7 @@ void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4])
 					_T("[Lighting] QueryInspectionResult failed: UniqueID=%s, writing default result"), uniqueID));
 
 				USHORT tmpResult = m_codeOk;  // 默认写 OK，避免 PLC 卡住
-				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_PreGammaResult1 + slotIdx, &tmpResult);
+				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + slotIdx, &tmpResult);
 			}
 		}
 		else
@@ -5178,7 +5188,7 @@ void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4])
 			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
 				_T("[Lighting] QueryIdMapByFixtureNo failed: FixtureNo=%d, writing default result"), fixtureNo));
 			USHORT tmpResult = m_codeOk;  // 默认写 OK，避免 PLC 卡住
-			theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_PreGammaResult1 + slotIdx, &tmpResult);
+			theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + slotIdx, &tmpResult);
 		}
 	}
 
@@ -5193,8 +5203,17 @@ void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4])
 
 BOOL CAni_Data_Serever_PCApp::TryStartLightingFromPlc(const BOOL startFlags[4])
 {
+	// 入口日志：记录 startFlags 值，方便分析问题
+	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[Lighting] TryStartLightingFromPlc ENTRY: startFlags=[%d][%d][%d][%d], m_LightingThreadOpenFlag=%d, m_LightingConectStatus=%d"),
+		startFlags[0], startFlags[1], startFlags[2], startFlags[3],
+		m_LightingThreadOpenFlag, m_LightingConectStatus));
+
 	if (!m_LightingThreadOpenFlag || !m_LightingConectStatus)
+	{
+		theApp.m_pLightingLog->LOG_INFO(_T("[Lighting] TryStartLightingFromPlc: Lighting not ready, skipping"));
 		return FALSE;
+	}
 
 	m_csLightingFlow.Lock();
 	if (m_bLightingCycleInProgress)
@@ -5211,9 +5230,15 @@ BOOL CAni_Data_Serever_PCApp::TryStartLightingFromPlc(const BOOL startFlags[4])
 		if (m_bLightingActiveSlot[i]) any = TRUE;
 	}
 
+	// 记录活跃槽位检查结果
+	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[Lighting] TryStartLightingFromPlc: any=%d, activeSlots=[%d][%d][%d][%d]"),
+		any, m_bLightingActiveSlot[0], m_bLightingActiveSlot[1], m_bLightingActiveSlot[2], m_bLightingActiveSlot[3]));
+
 	if (!any)
 	{
 		m_csLightingFlow.Unlock();
+		theApp.m_pLightingLog->LOG_INFO(_T("[Lighting] TryStartLightingFromPlc: no active slots, skipping"));
 		return FALSE;
 	}
 
@@ -6214,7 +6239,7 @@ BOOL CAni_Data_Serever_PCApp::QueryLightingDefectList(CString strUniqueID, std::
 		CString strSQL;
 		strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, ")
 			_T("TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI ")
-			_T("FROM ivs_lcd_aoiresult WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
+			_T("FROM ivs_lcd_aoidefect WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
 			strUniqueID);
 
 		ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
@@ -6451,7 +6476,7 @@ BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vecto
 		CString strSQL;
 		strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, ")
 			_T("TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI, ImagePath ")
-			_T("FROM ivs_lcd_aoiresult WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
+			_T("FROM ivs_lcd_aoidefect WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
 			strUniqueID);
 
 		OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: SQL=%s\n"), strSQL));
@@ -6617,7 +6642,7 @@ BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vecto
 			CString strSQL;
 			strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, ")
 				_T("TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI, ImagePath ")
-				_T("FROM ivs_lcd_aoiresult WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
+				_T("FROM ivs_lcd_aoidefect WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
 				strUniqueID);
 
 			OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList Retry: SQL=%s\n"), strSQL));

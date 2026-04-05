@@ -1210,8 +1210,9 @@ const CString DATA_PLC_ADDR_PATH_WORD = DATA_SYSTEM_PATH + _T("AddrGammaPLC_Data
 
 //Port
 #if _SYSTEM_AMTAFT_
-const CString VISION_PC1_PORT_NUM = _T("8011");
-const CString VISION_PC2_PORT_NUM = _T("8012");
+// 已禁用 - 现在只使用 Lighting 协议 (5601端口)
+// const CString VISION_PC1_PORT_NUM = _T("8011");
+// const CString VISION_PC2_PORT_NUM = _T("8012");
 const CString LUMITOP_PC1_PORT_NUM = _T("8013");
 const CString LUMITOP_PC2_PORT_NUM = _T("8014");
 const CString VIEWING_ANGLE_PANEL1_PORT_NUM = _T("8015");

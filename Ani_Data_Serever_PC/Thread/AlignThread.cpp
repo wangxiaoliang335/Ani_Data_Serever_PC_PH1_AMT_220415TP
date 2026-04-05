@@ -104,12 +104,19 @@ void CAlignThread::ThreadRun()
 				theApp.m_pEqIf->m_pMNetH->GetPlcWordData(eWordType_AlignReverse, &m_AlignReverse);
 #endif
 
-				m_bStartFlag[0] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_Align1TStart1+ m_iAlignTypeNum, OffSet_0);
-				m_bStartFlag[1] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_Align1TStart2+ m_iAlignTypeNum, OffSet_0);
-				m_bStartFlag[2] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_Align1XyStart1+ m_iAlignTypeNum, OffSet_0);
-				m_bStartFlag[3] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_Align1XyStart2+ m_iAlignTypeNum, OffSet_0);
-				m_bStartFlag[4] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_Align1LightOn1+ m_iAlignTypeNum, OffSet_0);
-				m_bStartFlag[5] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_Align1LightOn2+ m_iAlignTypeNum, OffSet_0);
+			m_bStartFlag[0] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_Align1TStart1+ m_iAlignTypeNum, OffSet_0);
+			m_bStartFlag[1] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_Align1TStart2+ m_iAlignTypeNum, OffSet_0);
+			m_bStartFlag[2] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_Align1XyStart1+ m_iAlignTypeNum, OffSet_0);
+			m_bStartFlag[3] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_Align1XyStart2+ m_iAlignTypeNum, OffSet_0);
+			m_bStartFlag[4] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_Align1LightOn1+ m_iAlignTypeNum, OffSet_0);
+			m_bStartFlag[5] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_Align1LightOn2+ m_iAlignTypeNum, OffSet_0);
+
+			// 详细日志：记录所有PLC信号状态
+			theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+				_T("[ALIGN_GRAB] ===== PLC Signals Check =====")));
+			theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+				_T("[ALIGN_GRAB] TypeNum=%d, TStart1=%d, TStart2=%d, XYStart1=%d, XYStart2=%d, LightOn1=%d, LightOn2=%d"),
+				m_iAlignTypeNum, m_bStartFlag[0], m_bStartFlag[1], m_bStartFlag[2], m_bStartFlag[3], m_bStartFlag[4], m_bStartFlag[5]));
 
 
 				if (m_bStartAlign[4] == !m_bStartFlag[4])
@@ -139,6 +146,8 @@ void CAlignThread::ThreadRun()
 						eWordType_Align1Result1 + m_iAlignTypeNum, m_iAlignTypeNum, alignResult.resultValue));
 					theApp.m_pEqIf->m_pMNetH->SetAlignResult(eWordType_Align1Result1 + m_iAlignTypeNum, &alignResult);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_Align1End1 + m_iAlignTypeNum, OffSet_0, FALSE);
+					theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[ALIGN_GRAB] Panel1 Reset: TStart=%d, XYStart=%d"), m_bStartFlag[0], m_bStartFlag[2]));
 				}
 
 				if (m_bStartFlag[1] == FALSE && m_bStartFlag[3] == FALSE)
@@ -150,59 +159,83 @@ void CAlignThread::ThreadRun()
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_Align1End2 + m_iAlignTypeNum, OffSet_0, FALSE);
 				}
 
-				if (m_bStartAlign[0] == !m_bStartFlag[0])
+			if (m_bStartAlign[0] == !m_bStartFlag[0])
+			{
+				m_bStartAlign[0] = m_bStartFlag[0];
+				theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("%s Panel 1 Position T Start Flag [%s]"), AlignTypeName[m_iAlignType], m_bStartFlag[0] == FALSE ? _T("FALSE") : _T("TRUE")));
+				theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+					_T("[ALIGN_GRAB] Panel1 T Start Flag Changed: %s -> Calling AlignGrabMethod"),
+					m_bStartFlag[0] == TRUE ? _T("TRUE") : _T("FALSE")));
+				if (m_bStartFlag[0] == TRUE)
 				{
-					m_bStartAlign[0] = m_bStartFlag[0];
-					theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("%s Panel 1 Position T Start Flag [%s]"), AlignTypeName[m_iAlignType], m_bStartFlag[0] == FALSE ? _T("FALSE") : _T("TRUE")));
-					if (m_bStartFlag[0] == TRUE)
-					{
-						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
-							_T("[AlignThread] Start T Panel1, SetAlignResult type=%d, alignType=%d, result=%d"), 
-							eWordType_Align1Result1 + m_iAlignTypeNum, m_iAlignTypeNum, alignResult.resultValue));
-						theApp.m_pEqIf->m_pMNetH->SetAlignResult(eWordType_Align1Result1 + m_iAlignTypeNum, &alignResult);
-						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_Align1End1 + m_iAlignTypeNum, OffSet_0, FALSE);
-						AlignGrabMethod(PanelNum1, Align_Start_T, m_iAlignTypeNum);
-					}
+					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[AlignThread] Start T Panel1, SetAlignResult type=%d, alignType=%d, result=%d"), 
+						eWordType_Align1Result1 + m_iAlignTypeNum, m_iAlignTypeNum, alignResult.resultValue));
+					theApp.m_pEqIf->m_pMNetH->SetAlignResult(eWordType_Align1Result1 + m_iAlignTypeNum, &alignResult);
+					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_Align1End1 + m_iAlignTypeNum, OffSet_0, FALSE);
+					theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[ALIGN_GRAB] >>>>> Panel1 T: Calling AlignGrabMethod(PanelNum1=%d, Align_Start_T=%d, TypeNum=%d)"),
+						PanelNum1, Align_Start_T, m_iAlignTypeNum));
+					AlignGrabMethod(PanelNum1, Align_Start_T, m_iAlignTypeNum);
 				}
+			}
 
-				if (m_bStartAlign[1] == !m_bStartFlag[1])
+			if (m_bStartAlign[1] == !m_bStartFlag[1])
+			{
+				m_bStartAlign[1] = m_bStartFlag[1];
+				theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("%s Panel 2 Position T Start Flag [%s]"), AlignTypeName[m_iAlignType], m_bStartFlag[1] == FALSE ? _T("FALSE") : _T("TRUE")));
+				theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+					_T("[ALIGN_GRAB] Panel2 T Start Flag Changed: %s -> Calling AlignGrabMethod"),
+					m_bStartFlag[1] == TRUE ? _T("TRUE") : _T("FALSE")));
+				if (m_bStartFlag[1] == TRUE)
 				{
-					m_bStartAlign[1] = m_bStartFlag[1];
-					theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("%s Panel 2 Position T Start Flag [%s]"), AlignTypeName[m_iAlignType], m_bStartFlag[1] == FALSE ? _T("FALSE") : _T("TRUE")));
-					if (m_bStartFlag[1] == TRUE)
-					{
-						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
-							_T("[AlignThread] Start T Panel2, SetAlignResult type=%d, alignType=%d, result=%d"), 
-							eWordType_Align1Result2 + m_iAlignTypeNum, m_iAlignTypeNum, alignResult.resultValue));
-						theApp.m_pEqIf->m_pMNetH->SetAlignResult(eWordType_Align1Result2 + m_iAlignTypeNum, &alignResult);
-						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_Align1End2 + m_iAlignTypeNum, OffSet_0, FALSE);
-						AlignGrabMethod(PanelNum2, Align_Start_T, m_iAlignTypeNum);
-					}
+					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[AlignThread] Start T Panel2, SetAlignResult type=%d, alignType=%d, result=%d"), 
+						eWordType_Align1Result2 + m_iAlignTypeNum, m_iAlignTypeNum, alignResult.resultValue));
+					theApp.m_pEqIf->m_pMNetH->SetAlignResult(eWordType_Align1Result2 + m_iAlignTypeNum, &alignResult);
+					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_Align1End2 + m_iAlignTypeNum, OffSet_0, FALSE);
+					theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[ALIGN_GRAB] >>>>> Panel2 T: Calling AlignGrabMethod(PanelNum2=%d, Align_Start_T=%d, TypeNum=%d)"),
+						PanelNum2, Align_Start_T, m_iAlignTypeNum));
+					AlignGrabMethod(PanelNum2, Align_Start_T, m_iAlignTypeNum);
 				}
+			}
 
-				if (m_bStartAlign[2] == !m_bStartFlag[2])
+			if (m_bStartAlign[2] == !m_bStartFlag[2])
+			{
+				m_bStartAlign[2] = m_bStartFlag[2];
+				theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("%s Panel 1 Position XY Start Flag [%s]"), AlignTypeName[m_iAlignType], m_bStartFlag[2] == FALSE ? _T("FALSE") : _T("TRUE")));
+				theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+					_T("[ALIGN_GRAB] Panel1 XY Start Flag Changed: %s -> Calling AlignGrabMethod"),
+					m_bStartFlag[2] == TRUE ? _T("TRUE") : _T("FALSE")));
+				if (m_bStartFlag[2] == TRUE)
 				{
-					m_bStartAlign[2] = m_bStartFlag[2];
-					theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("%s Panel 1 Position XY Start Flag [%s]"), AlignTypeName[m_iAlignType], m_bStartFlag[2] == FALSE ? _T("FALSE") : _T("TRUE")));
-					if (m_bStartFlag[2] == TRUE)
-					{
-						theApp.m_pEqIf->m_pMNetH->SetAlignResult(eWordType_Align1Result1 + m_iAlignTypeNum, &alignResult);
-						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_Align1End1 + m_iAlignTypeNum, OffSet_0, FALSE);
-						AlignGrabMethod(PanelNum1, Align_Start_XY, m_iAlignTypeNum);
-					}
+					theApp.m_pEqIf->m_pMNetH->SetAlignResult(eWordType_Align1Result1 + m_iAlignTypeNum, &alignResult);
+					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_Align1End1 + m_iAlignTypeNum, OffSet_0, FALSE);
+					theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[ALIGN_GRAB] >>>>> Panel1 XY: Calling AlignGrabMethod(PanelNum1=%d, Align_Start_XY=%d, TypeNum=%d)"),
+						PanelNum1, Align_Start_XY, m_iAlignTypeNum));
+					AlignGrabMethod(PanelNum1, Align_Start_XY, m_iAlignTypeNum);
 				}
+			}
 
-				if (m_bStartAlign[3] == !m_bStartFlag[3])
+			if (m_bStartAlign[3] == !m_bStartFlag[3])
+			{
+				m_bStartAlign[3] = m_bStartFlag[3];
+				theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("%s Panel 2 Position XY Start Flag [%s]"), AlignTypeName[m_iAlignType], m_bStartFlag[3] == FALSE ? _T("FALSE") : _T("TRUE")));
+				theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+					_T("[ALIGN_GRAB] Panel2 XY Start Flag Changed: %s -> Calling AlignGrabMethod"),
+					m_bStartFlag[3] == TRUE ? _T("TRUE") : _T("FALSE")));
+				if (m_bStartFlag[3] == TRUE)
 				{
-					m_bStartAlign[3] = m_bStartFlag[3];
-					theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("%s Panel 2 Position XY Start Flag [%s]"), AlignTypeName[m_iAlignType], m_bStartFlag[3] == FALSE ? _T("FALSE") : _T("TRUE")));
-					if (m_bStartFlag[3] == TRUE)
-					{
-						theApp.m_pEqIf->m_pMNetH->SetAlignResult(eWordType_Align1Result2 + m_iAlignTypeNum, &alignResult);
-						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_Align1End2 + m_iAlignTypeNum, OffSet_0, FALSE);
-						AlignGrabMethod(PanelNum2, Align_Start_XY, m_iAlignTypeNum);
-					}
+					theApp.m_pEqIf->m_pMNetH->SetAlignResult(eWordType_Align1Result2 + m_iAlignTypeNum, &alignResult);
+					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_Align1End2 + m_iAlignTypeNum, OffSet_0, FALSE);
+					theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[ALIGN_GRAB] >>>>> Panel2 XY: Calling AlignGrabMethod(PanelNum2=%d, Align_Start_XY=%d, TypeNum=%d)"),
+						PanelNum2, Align_Start_XY, m_iAlignTypeNum));
+					AlignGrabMethod(PanelNum2, Align_Start_XY, m_iAlignTypeNum);
 				}
+			}
 						
 			}
 			else if (m_iAlignType == TrayCheck)
@@ -388,14 +421,34 @@ void CAlignThread::AlignGrabMethod(int iPanelNum, int iPositionTXY, int iAlignNu
 	FpcIDData pFpcData;
 	CString strPanelID, sendMsg;
 
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] ================== GRAB START ==================")));
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] AlignGrabMethod Called: PanelNum=%d, PositionTXY=%d, AlignNum=%d"),
+		iPanelNum, iPositionTXY, iAlignNum));
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] Current m_positionResult=%ld, m_AlignCount=%ld"), 
+		m_positionResult, m_AlignCount));
+
+	// 获取 PLC 数据区的位置信息和计数
+	theApp.m_pEqIf->m_pMNetH->GetPlcWordData(eWordType_AlignPosition1 + m_iAlignTypeNum, &m_positionResult);
+	theApp.m_pEqIf->m_pMNetH->GetPlcWordData(eWordType_AlignCount1 + m_iAlignTypeNum, &m_AlignCount);
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] After Read: m_positionResult=%ld, m_AlignCount=%ld"), 
+		m_positionResult, m_AlignCount));
+
 	if (m_positionResult == 0 && theApp.m_AlignSocketManager[m_iAlignNum]->m_bstart == FALSE)
 	{
+		theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+			_T("[ALIGN_GRAB] ERROR: Position Error! m_positionResult=%ld"), m_positionResult));
 		AlignPLCResult(iPanelNum, m_iAlignType, iAlignNum, m_codePositionError, PLC_ResultValue[m_codePositionError], _T("NG"));
 		return;
 	}
 
 	if (m_AlignCount == 0 && theApp.m_AlignSocketManager[m_iAlignNum]->m_bstart == FALSE)
 	{
+		theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+			_T("[ALIGN_GRAB] ERROR: Align Count Error! m_AlignCount=%ld"), m_AlignCount));
 		AlignPLCResult(iPanelNum, m_iAlignType, iAlignNum, m_codeAlignCount, PLC_ResultValue[m_codeAlignCount], _T("NG"));
 		return;
 	}
@@ -411,16 +464,24 @@ void CAlignThread::AlignGrabMethod(int iPanelNum, int iPositionTXY, int iAlignNu
 
 		strPanelID = CStringSupport::ToWString(pFpcData.m_FpcIDData, sizeof(pFpcData.m_FpcIDData));
 
+		theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+			_T("[ALIGN_GRAB] PanelID Read from PLC: strPanelID='%s'"), strPanelID));
+
 		if (strPanelID.IsEmpty())
 		{
+			theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+				_T("[ALIGN_GRAB] ERROR: PanelID Empty!")));
 			AlignPLCResult(iPanelNum, m_iAlignType, iAlignNum, m_codePlcPanelError, PLC_ResultValue[m_codePlcPanelError], _T("NG"));
 			return;
 		}
-
 	}
 
 	int iPositionPanelNum = (m_positionResult * 2) - 1;
 	int iPanelCheal = (iPositionPanelNum - 1) % 4;
+
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] Position Calc: iPositionPanelNum=%d, iPanelCheal=%d"), 
+		iPositionPanelNum, iPanelCheal));
 
 #if _SYSTEM_AMTAFT_ 
 	int iIndexNum = (iPositionPanelNum / MaxZone);
@@ -435,11 +496,18 @@ void CAlignThread::AlignGrabMethod(int iPanelNum, int iPositionTXY, int iAlignNu
 	CString strIndexNum = PG_IndexName[iIndexNum];
 #endif
 
-	theApp.m_lastAlignVec[m_iAlignNum][iPanelNum].m_strZoneName = PG_IndexName[iIndexNum];
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] Index Info: iIndexNum=%d, strIndexNum=%s, AlignNum=%d"), 
+		iIndexNum, strIndexNum, iAlignNum));
+
+	theApp.m_lastAlignVec[m_iAlignNum][iPanelNum].m_strZoneName = strIndexNum;
 	theApp.m_lastAlignVec[m_iAlignNum][iPanelNum].m_iPanelNum = iPanelCheal + iPanelNum;
 	theApp.m_lastAlignVec[m_iAlignNum][iPanelNum].m_bInspStart = TRUE;
 	theApp.m_lastAlignVec[m_iAlignNum][iPanelNum].m_cellId = strPanelID;
 
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] Set Timer: %s seconds"), 
+		theApp.m_iTimer[AlignGrabTimer] == 0 ? _T("8 (default)") : CStringSupport::FormatString(_T("%d"), theApp.m_iTimer[AlignGrabTimer])));
 
 	if (theApp.m_iTimer[AlignGrabTimer] == 0)
 		theApp.m_lastAlignVec[m_iAlignNum][iPanelNum].time_check.SetCheckTime(8000);
@@ -448,13 +516,27 @@ void CAlignThread::AlignGrabMethod(int iPanelNum, int iPositionTXY, int iAlignNu
 
 	theApp.m_lastAlignVec[m_iAlignNum][iPanelNum].time_check.StartTimer();
 
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] m_bstart=%d"), theApp.m_AlignSocketManager[m_iAlignType]->m_bstart));
+
 	if (theApp.m_AlignSocketManager[m_iAlignType]->m_bstart)
 		sendMsg.Format(_T("%d,%d,%d,%d,%d,%s,%d"), MC_GRAB_READY_REQUEST, 1, iPositionTXY, 1 + iPanelNum, 2, strPanelID, m_AlignReverse);
 	else
 		sendMsg.Format(_T("%d,%d,%d,%d,%d,%s,%d"), MC_GRAB_READY_REQUEST, m_positionResult, iPositionTXY, iPositionPanelNum + iPanelNum, m_AlignCount, strPanelID, m_AlignReverse);
 	
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] >>>>> SENDING COMMAND TO VISION PC <<<<<")));
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] Command: MC_GRAB_READY_REQUEST (%d)"), MC_GRAB_READY_REQUEST));
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] Full Message: %s"), sendMsg));
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] Target: AlignSocketManager[%d], PanelID=%s"), m_iAlignNum, strPanelID));
+	
 	theApp.m_AlignSocketManager[m_iAlignNum]->SocketSendto(m_iAlignNum, sendMsg, MC_GRAB_READY_REQUEST);
 	theApp.m_AlignSocketManager[m_iAlignNum]->LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("[MC -> VS] [%s] Panel %d Grab Start -> %s"), strIndexNum, iPanelCheal + iPanelNum, sendMsg));
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] Command Sent Successfully! ================== GRAB END =====")));
 }
 
 void CAlignThread::TrayCheckNTrayAlignGrabMethod(int iPanelNum)

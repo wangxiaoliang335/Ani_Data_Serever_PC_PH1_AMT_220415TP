@@ -890,8 +890,8 @@ void CPlcThread::ThreadRun()
 			}
 			else
 			{
-				//°Ë»ç PC ÁØºñ È®ÀÎ	
-				if (theApp.m_VisionPCStatus[0] && theApp.m_VisionPCStatus[1])
+				// 5601 端口 (Lighting) 连接状态确认
+				if (theApp.m_LightingConectStatus)
 				{
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionReady, OffSet_0, TRUE);
 				}
@@ -907,6 +907,8 @@ void CPlcThread::ThreadRun()
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd3, OffSet_0, FALSE);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd4, OffSet_0, FALSE);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionSameDefectAlarmStart, OffSet_0, FALSE);
+					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[PlcThread] Resetting VisionResult1~4 = %d (%s)"), m_codeReset, PLC_ResultValue[m_codeReset]));
 					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1, &m_codeReset);
 					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult2, &m_codeReset);
 					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult3, &m_codeReset);
@@ -1326,11 +1328,12 @@ void CPlcThread::ModelCreateChange(CString sendMsg, int iCommand)
 
 			break;
 		case _MODEL_CHECK_VISION1:
-			if (theApp.m_VisionConectStatus[PC1] == TRUE)
-				theApp.m_VisionSocketManager[PC1].SocketSendto(PC1, sendMsg, iCommand);
-
-			if (theApp.m_VisionConectStatus[PC2] == TRUE)
-				theApp.m_VisionSocketManager[PC2].SocketSendto(PC2, sendMsg, iCommand);
+			// 5601 端口 (Lighting) 连接状态检查
+			if (theApp.m_LightingConectStatus)
+			{
+				// TODO: 通过 LightingManager 发送 MODEL_CHANGE 命令
+				// theApp.m_pLightingManager->SendModelChange(sendMsg);
+			}
 
 			break;
 		case _MODEL_CHECK_OPERATOR_VIEW:

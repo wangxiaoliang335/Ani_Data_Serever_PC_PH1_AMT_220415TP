@@ -221,19 +221,24 @@ void CLightingManager::OnEvent(UINT uEvent, LPVOID /*lpvData*/)
 		break;
 	case EVT_CONDROP:
 	case EVT_CONFAILURE:
-		m_bConnected = FALSE;
-		theApp.m_LightingConectStatus = FALSE;
-		LightingDbgPrint(_T("[Lighting] Connection lost!\n"));
-		theApp.m_pLightingLog->LOG_INFO(_T("Connection lost"));
-		// 连接断开时停止定时器并关闭连接，防止重复触发
-		if (_ttoi(theApp.m_strLightingAutoTest) != 0)
 		{
-			StopAutoTestTimer();
+			// 加锁保护，防止多个线程同时处理断开事件导致竞争条件
+			CSingleLock lock(&m_csReconnect, TRUE);
+
+			m_bConnected = FALSE;
+			theApp.m_LightingConectStatus = FALSE;
+			LightingDbgPrint(_T("[Lighting] Connection lost!\n"));
+			theApp.m_pLightingLog->LOG_INFO(_T("Connection lost"));
+			// 连接断开时停止定时器并关闭连接，防止重复触发
+			if (_ttoi(theApp.m_strLightingAutoTest) != 0)
+			{
+				StopAutoTestTimer();
+			}
+			StopComm();
+			
+			// 启动重试线程
+			StartReconnectThread();
 		}
-		StopComm();
-		
-		// 启动重试线程
-		StartReconnectThread();
 		break;
 	default:
 		break;
@@ -458,6 +463,9 @@ DWORD WINAPI CLightingManager::AutoTestTimerThread(LPVOID lpParam)
 
 void CLightingManager::StartReconnectThread()
 {
+	// 加锁保护，防止多个线程同时调用导致竞争条件
+	CSingleLock lock(&m_csReconnect, TRUE);
+
 	// 如果已经有重试线程在运行，先停止
 	StopReconnectThread();
 

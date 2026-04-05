@@ -258,11 +258,15 @@ void CAlignManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 			theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelChange"), _T("Align"), theApp.m_ChangeModelAlign);
 			theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Align Model Change Success")));
 			break;
-		case VS_GRAB_END:  // VS通知图像采集完成
+	case VS_GRAB_END:  // VS通知图像采集完成
 			LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("[VS -> MC] %s->%s"), _T("RCV : VS_GRAB_END"), m_strContents));
-	
+			theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+				_T("[ALIGN_GRAB] ===== VS_GRAB_END RECEIVED =====")));
+			theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+				_T("[ALIGN_GRAB] Content: %s"), m_strContents));
+
 			// 根据对齐类型处理图像采集结果
-			if (m_iAlignType == PatternAlign)  // 图案对齐
+			if (m_iAlignType == PatternAlign)
 				AlignGrabEnd(m_strContents);
 			else if (m_iAlignType == TrayCheck)  // 托盘检查
 				AlignTrayCheckGrabEnd(m_strContents);
@@ -270,7 +274,9 @@ void CAlignManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 				AlignTrayLowerAlignGrabEnd(m_strContents); 
 			else if (m_iAlignType == TrayAlign)  // 托盘对齐
 				AlignTrayAlignGrabEnd(m_strContents);
-		
+			
+			theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+				_T("[ALIGN_GRAB] ===== VS_GRAB_END PROCESSED =====")));
 			break;
 		}
 	}
@@ -294,6 +300,11 @@ void CAlignManager::AlignPcTimeRequest()
 
 void CAlignManager::AlignGrabEnd(CString strContents)
 {
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] ===== AlignGrabEnd START =====")));
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] m_iAlignType=%d, m_iAlignTypeNum=%d, m_iAlignNum=%d"), 
+		m_iAlignType, m_iAlignTypeNum, m_iAlignNum));
 	
 	AlignResult AlignResult;
 	CString sendMsg;
@@ -301,9 +312,21 @@ void CAlignManager::AlignGrabEnd(CString strContents)
 	CStringArray responseTokens;
 	CStringSupport::GetTokenArray(strContents, _T(','), responseTokens);
 
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] Response Tokens Count: %d"), responseTokens.GetSize()));
+	for (int i = 0; i < responseTokens.GetSize(); i++)
+	{
+		theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+			_T("[ALIGN_GRAB] Token[%d]: '%s'"), i, responseTokens[i]));
+	}
+
 	int iPanelNum = (_ttoi(responseTokens[2]) - 1) % 2;
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] Calculated iPanelNum=%d from responseTokens[2]=%s"), iPanelNum, responseTokens[2]));
 	LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("!!!!!!!!!!!Panel %d_0"), iPanelNum));
 	sendMsg.Format(_T("%d,"), MC_GRAB_END_RECEIVE);
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] Sending MC_GRAB_END_RECEIVE: %s"), sendMsg));
 	SocketSendto(m_iAlignNum, sendMsg, MC_GRAB_END_RECEIVE);
 	LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("!!!!!!!!!!!Panel %d_1"), iPanelNum));
 	switch (iPanelNum)
@@ -311,11 +334,16 @@ void CAlignManager::AlignGrabEnd(CString strContents)
 	case 0: plcEndMap = eBitType_Align1End1 + m_iAlignTypeNum, plcResultMap = eWordType_Align1Result1 + m_iAlignTypeNum; break;
 	case 1: plcEndMap = eBitType_Align1End2 + m_iAlignTypeNum, plcResultMap = eWordType_Align1Result2 + m_iAlignTypeNum; break;
 	}
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] PLC Maps: plcEndMap=%d, plcResultMap=%d"), plcEndMap, plcResultMap));
 
 	AlignResult.resultValue = responseTokens[3] == _T("0") ? m_codeOk : m_codeFail;
 	AlignResult.resultX = _ttof(responseTokens[4]) * 10000;
 	AlignResult.resultY = _ttof(responseTokens[5]) * 10000;
 	AlignResult.resultT = _ttof(responseTokens[6]) * 10000;
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] Align Result: Value=%d, X=%ld, Y=%ld, T=%ld"), 
+		AlignResult.resultValue, AlignResult.resultX, AlignResult.resultY, AlignResult.resultT));
 	LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("!!!!!!!!!!!Panel %d_2"), iPanelNum));
 #if _SYSTEM_AMT_AFT_
 	AlignDataSum(_ttoi(responseTokens[2]), AlignResult.resultValue, m_iAlignTypeNum);
@@ -324,6 +352,8 @@ void CAlignManager::AlignGrabEnd(CString strContents)
 #endif
 	LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("!!!!!!!!!!!Panel %d_3"), iPanelNum));
 	theApp.m_pEqIf->m_pMNetH->SetAlignResult(plcResultMap, &AlignResult); 
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] SetAlignResult Done, Writing AlignEnd Bit=%d"), plcEndMap));
 	LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("%s Panel %d Result : %s[%d]"), AlignTypeName[m_iAlignType], iPanelNum, PLC_ResultValue[AlignResult.resultValue], AlignResult.resultValue));
 	Delay(10, TRUE);
 	theApp.m_pEqIf->m_pMNetH->SetPlcBitData(plcEndMap, OffSet_0, TRUE);
@@ -333,14 +363,20 @@ void CAlignManager::AlignGrabEnd(CString strContents)
 	if (m_bstart && m_testT[iPanelNum])
 	{
 		m_testT[iPanelNum] = FALSE;
+		theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+			_T("[ALIGN_GRAB] Auto Test: Calling AlignGrabMethod XY")));
 		theApp.m_AlignThread[m_iAlignType]->AlignGrabMethod(iPanelNum, Align_Start_XY, m_iAlignTypeNum);
 	}
 	else if (m_bstart)
 	{
 		m_testT[iPanelNum] = TRUE;
+		theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+			_T("[ALIGN_GRAB] Auto Test: Calling AlignGrabMethod T")));
 		theApp.m_AlignThread[m_iAlignType]->AlignGrabMethod(iPanelNum, Align_Start_T, m_iAlignTypeNum);
 	}
 	LogWrite(m_iAlignNum, CStringSupport::FormatString(_T("!!!!!!!!!!!Panel %d_5"), iPanelNum));
+	theApp.m_AlignLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[ALIGN_GRAB] ===== AlignGrabEnd END =====")));
 }
 
 void CAlignManager::AlignTrayCheckGrabEnd(CString strContents)

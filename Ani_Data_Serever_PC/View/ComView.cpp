@@ -440,7 +440,8 @@ void CComView::OnTimer(UINT_PTR nIDEvent)
 		m_ctrlComList.SetItemText(iItemNum, 4, theApp.m_FFUSerialCom->GetLastRequest());
 		iItemNum++;
 
-		BOOL flag = theApp.m_VisionConectStatus[PC1] && theApp.m_VisionConectStatus[PC2];
+		// 5601 端口 (Lighting) 连接状态
+		BOOL flag = theApp.m_LightingConectStatus;
 		UpdateStateButton(flag, &m_VisionState);
 
 		flag = theApp.m_ViewingAngleConectStatus[PanelNum1] && theApp.m_ViewingAngleConectStatus[PanelNum2] && 
@@ -525,25 +526,25 @@ void CComView::OnClickSendVisionCommand()
 
 	if (iPcNum == PC1)
 	{
-		if (!theApp.m_VisionConectStatus[PC1])
+		if (!theApp.m_LightingConectStatus)
 		{
-			theApp.getMsgBox(MS_OK, _T("검사PC2 연결 확인하세요."), _T("Vision PC2 Connect Check"), _T("检查PC连接确认"));
+			theApp.getMsgBox(MS_OK, _T("检查PC2连接确认."), _T("Vision PC2 Connect Check"), _T("检查PC连接确认"));
 			return;
 		}
 	}
 	else if (iPcNum == PC2)
 	{
-		if (!theApp.m_VisionConectStatus[PC2])
+		if (!theApp.m_LightingConectStatus)
 		{
-			theApp.getMsgBox(MS_OK, _T("검사 PC1/PC2 연결 확인하세요."), _T("Vision PC1/PC2 Connect Check"), _T("检查PC连接确认"));
+			theApp.getMsgBox(MS_OK, _T("检查 PC1/PC2 连接确认."), _T("Vision PC1/PC2 Connect Check"), _T("检查PC连接确认"));
 			return;
 		}
 	}
 	else
 	{
-		if (!theApp.m_VisionConectStatus[PC1] || !theApp.m_VisionConectStatus[PC2])
+		if (!theApp.m_LightingConectStatus)
 		{
-			theApp.getMsgBox(MS_OK, _T("검사PC1 연결 확인하세요."), _T("Vision PC1 Connect Check"), _T("检查PC连接确认"));
+			theApp.getMsgBox(MS_OK, _T("检查PC1连接确认."), _T("Vision PC1 Connect Check"), _T("检查PC连接确认"));
 			return;
 		}
 	}

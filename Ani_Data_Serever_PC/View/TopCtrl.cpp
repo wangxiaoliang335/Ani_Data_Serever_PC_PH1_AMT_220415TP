@@ -171,8 +171,9 @@ void CTopCtrl::OnTimer(UINT_PTR nIDEvent)
 		
 
 #if _SYSTEM_AMTAFT_
-	m_netWorkIf[NUM_NETWORK_VISION_1].SetValue(theApp.m_VisionConectStatus[PC1]);
-	m_netWorkIf[NUM_NETWORK_VISION_2].SetValue(theApp.m_VisionConectStatus[PC2]);
+	// 5601 端口 (Lighting) 连接状态
+	m_netWorkIf[NUM_NETWORK_VISION_1].SetValue(theApp.m_LightingConectStatus);
+	m_netWorkIf[NUM_NETWORK_VISION_2].SetValue(theApp.m_LightingConectStatus);
 
 	//m_netWorkIf[NUM_NETWORK_VISION_3].SetValue(theApp.m_VisionConectStatus[PC2]);
 	m_netWorkIf[NUM_NETWORK_VISION_3].SetValue(theApp.m_LightingThreadOpenFlag && theApp.m_LightingConectStatus);
