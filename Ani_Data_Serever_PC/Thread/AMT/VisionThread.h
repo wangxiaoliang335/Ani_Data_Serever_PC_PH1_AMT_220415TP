@@ -7,8 +7,9 @@
 #include "SocketComm.h"
 #include "TimeCheck.h"
 #include "StringSupport.h"
+#include "LightingEventHandler.h"
 
-class CVisionThread : public CSocketComm
+class CVisionThread : public CSocketComm, public ILightingEventHandler
 {
 public:
 	CVisionThread();
@@ -24,12 +25,13 @@ public:
 	void VisionCheckMethod(int Num);
 	void VisionInspectionMethod(int Num, int panelNum);
 	void ParsingGrabEnd(int Num, CString strContents);
-	void ParsingInspectionResult(int Num, CString strContents);
+	//void ParsingInspectionResult(int Num, CString strContents);
 	void ParsingModelRequest(int Num, CString strContents);
 	void ParsingPcTimeRequest(int Num, CString strContents);
 	void SocketSendto(int Num, CString strContents, int iCommand);
 	void LogWrite(CString strContents, int Num);
 	BOOL VisionVecAdd(CString strPanel, CString strFpcID, int iPanelNum, int iIndexNum, int iPCNo, int iCurIndex);
+	BOOL TryStartLightingFromPlc(const BOOL startFlags[4]);
 
 	void AutoFocusAxis(int Num, int iCommand, CString strContents);
 	void AutoFocusSave(int Num);
@@ -43,6 +45,11 @@ public:
 	virtual void OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount);
 	virtual void OnEvent(UINT uEvent, LPVOID lpvData);
 
+	// ILightingEventHandler 回调函数
+	virtual void OnLightingRunning() override;
+	virtual void OnLightingSnapFN() override;
+	virtual void OnLightingResult(const int resultCode[4]) override;
+
 	CWinThread *m_pThreadVision;
 	static UINT VisionThreadProc(LPVOID pParam);
 	HANDLE m_hQuit;
@@ -50,6 +57,9 @@ public:
 	std::vector<CString> m_lastContent;
 	std::vector<CString> m_lastCommand;
 	std::vector<CString> m_lastRequest;
+
+	// 检测结果缓存（与老代码统一，方便管理和查询）
+	std::vector<InspResult> m_lastInspResultVec;
 
 	CString GetLastContents(int index) { return m_lastContent[index]; }
 	CString GetLastCommand(int index) { return m_lastCommand[index]; }

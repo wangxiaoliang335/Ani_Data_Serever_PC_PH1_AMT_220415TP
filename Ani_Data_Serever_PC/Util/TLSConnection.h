@@ -17,9 +17,11 @@
 // Lighting Thread TLS Connection
 //========================================
 // TLS variable declaration - Each thread has an independent instance
-static __declspec(thread) SQLHDBC g_pTlsLightingConn = SQL_NULL_HANDLE;
-static __declspec(thread) SQLHENV g_pTlsLightingEnv = SQL_NULL_HANDLE;
-static __declspec(thread) BOOL g_bTlsLightingDBConnected = FALSE;
+// Note: Not static — must be extern in .h so all TU's share the same thread-local slot.
+// The actual definition (with __declspec(thread)) lives in TLSConnection.cpp.
+extern __declspec(thread) SQLHDBC g_pTlsLightingConn;
+extern __declspec(thread) SQLHENV g_pTlsLightingEnv;
+extern __declspec(thread) BOOL g_bTlsLightingDBConnected;
 
 // ==============================================
 // Function: Convert Unicode string to multibyte string (ANSI/GBK)
@@ -79,6 +81,11 @@ inline BOOL GetTlsLightingConnection(
 {
     if (g_bTlsLightingDBConnected && g_pTlsLightingConn != SQL_NULL_HANDLE)
         return TRUE;
+
+    OutputDebugString(CStringSupport::FormatString(
+        _T("[TLS] GetTlsLightingConnection ENTRY: Server=%s, DB=%s, User=%s, Pwd=%s\n"),
+        strServer, strDBName, strUser,
+        strPassword.IsEmpty() ? _T("(empty)") : _T("******")));
 
     // Close old connection (if exists)
     if (g_pTlsLightingConn != SQL_NULL_HANDLE)
@@ -150,9 +157,8 @@ inline BOOL GetTlsLightingConnection(
             "DRIVER={%s};SERVER=%s;PORT=3306;DATABASE=%s;UID=%s;PWD=%s;OPTION=3;",
             driverNames[i], server.c_str(), dbname.c_str(), user.c_str(), password.c_str());
 
-        if (pLog) pLog->LOG_INFO(CStringSupport::FormatString(
-            _T("GetTlsLightingConnection: Connecting with driver: %s, Server: %s, DB: %s"), 
-            CString(driverNames[i]), strServer, strDBName));
+        OutputDebugString(CStringSupport::FormatString(
+            _T("[TLS] Trying driver[%d]: %s\n"), i, CString(driverNames[i])));
 
         // Use ANSI version ODBC functions
         ret = SQLDriverConnectA(g_pTlsLightingConn, NULL, (SQLCHAR*)connStr, SQL_NTS,
@@ -161,6 +167,9 @@ inline BOOL GetTlsLightingConnection(
         if (SQL_SUCCEEDED(ret))
         {
             g_bTlsLightingDBConnected = TRUE;
+            OutputDebugString(CStringSupport::FormatString(
+                _T("[TLS] SQLDriverConnectA SUCCEEDED! g_pTlsLightingConn=0x%p, flag=%d\n"),
+                (void*)g_pTlsLightingConn, g_bTlsLightingDBConnected));
             if (pLog) pLog->LOG_INFO(CStringSupport::FormatString(
                 _T("GetTlsLightingConnection: Connected successfully with driver: %s"), 
                 CString(driverNames[i])));
@@ -169,6 +178,13 @@ inline BOOL GetTlsLightingConnection(
         }
         else
         {
+            SQLCHAR sqlState[6] = {0}, msg[256] = {0};
+            SQLINTEGER nativeErr = 0;
+            SQLSMALLINT msgLen = 0;
+            SQLGetDiagRecA(SQL_HANDLE_DBC, g_pTlsLightingConn, 1, sqlState, &nativeErr, msg, sizeof(msg), &msgLen);
+            OutputDebugString(CStringSupport::FormatString(
+                _T("[TLS] Driver %s failed: [%s] %s\n"),
+                CString(driverNames[i]), CString((char*)sqlState), CString((char*)msg)));
             if (pLog) pLog->LOG_INFO(CStringSupport::FormatString(
                 _T("GetTlsLightingConnection: Driver %s failed, trying next..."), 
                 CString(driverNames[i])));
@@ -177,6 +193,7 @@ inline BOOL GetTlsLightingConnection(
     
     if (!connected)
     {
+        OutputDebugString(_T("[TLS] All drivers failed, cleanup and return FALSE\n"));
         if (pLog) pLog->LOG_INFO(_T("GetTlsLightingConnection: Failed to connect with all drivers"));
         SQLFreeHandle(SQL_HANDLE_DBC, g_pTlsLightingConn);
         SQLFreeHandle(SQL_HANDLE_ENV, g_pTlsLightingEnv);
@@ -185,6 +202,9 @@ inline BOOL GetTlsLightingConnection(
         return FALSE;
     }
     
+    OutputDebugString(CStringSupport::FormatString(
+        _T("[TLS] GetTlsLightingConnection: SUCCESS, g_pTlsLightingConn=0x%p\n"),
+        (void*)g_pTlsLightingConn));
     return TRUE;
 }
 
@@ -217,6 +237,84 @@ inline SQLHDBC GetTlsLightingConnPtr()
 inline BOOL IsTlsLightingDBConnected()
 {
     return g_bTlsLightingDBConnected && g_pTlsLightingConn != SQL_NULL_HANDLE;
+}
+
+// ==============================================
+// Heartbeat: Ping MySQL server to check if connection is still alive
+// Returns: TRUE if connection is alive, FALSE if connection is lost or error
+// ==============================================
+inline BOOL PingTlsLightingConnection(CLogger* pLog = nullptr)
+{
+    if (!IsTlsLightingDBConnected())
+        return FALSE;
+
+    SQLHSTMT hStmt = SQL_NULL_HANDLE;
+    SQLRETURN ret;
+
+    // Allocate statement handle
+    ret = SQLAllocHandle(SQL_HANDLE_STMT, g_pTlsLightingConn, &hStmt);
+    if (!SQL_SUCCEEDED(ret))
+    {
+        if (pLog) pLog->LOG_INFO(_T("PingTlsLightingConnection: Failed to allocate statement handle"));
+        return FALSE;
+    }
+
+    // Execute simple query to check connection
+    ret = SQLExecDirectA(hStmt, (SQLCHAR*)"SELECT 1", SQL_NTS);
+
+    if (SQL_SUCCEEDED(ret))
+    {
+        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+        return TRUE;
+    }
+
+    // Connection is lost or error occurred
+    if (pLog) pLog->LOG_INFO(_T("PingTlsLightingConnection: Connection lost or error"));
+
+    SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+    return FALSE;
+}
+
+// ==============================================
+// Check and reconnect if connection is lost
+// Call this function before any database operation
+// Returns: TRUE if connection is available (either old or newly connected)
+// ==============================================
+inline BOOL CheckAndReconnectTlsLighting(
+    const CString& strServer,
+    const CString& strDBName,
+    const CString& strUser,
+    const CString& strPassword,
+    CLogger* pLog = nullptr
+)
+{
+    // First check: is connection established at all?
+    if (!IsTlsLightingDBConnected())
+    {
+        OutputDebugString(_T("[TLS] CheckAndReconnectTlsLighting: Not connected, calling GetTlsLightingConnection...\n"));
+        if (pLog) pLog->LOG_INFO(_T("CheckAndReconnectTlsLighting: No connection, creating new one..."));
+        return GetTlsLightingConnection(strServer, strDBName, strUser, strPassword, pLog);
+    }
+
+    OutputDebugString(CStringSupport::FormatString(
+        _T("[TLS] CheckAndReconnectTlsLighting: Already connected, ping check... connPtr=0x%p\n"),
+        (void*)g_pTlsLightingConn));
+
+    // Second check: is connection still alive? (heartbeat)
+    if (!PingTlsLightingConnection(pLog))
+    {
+        OutputDebugString(_T("[TLS] CheckAndReconnectTlsLighting: Ping FAILED, reconnecting...\n"));
+        if (pLog) pLog->LOG_INFO(_T("CheckAndReconnectTlsLighting: Connection lost, reconnecting..."));
+
+        // Close existing connection
+        CloseTlsLightingConnection();
+
+        // Reconnect
+        return GetTlsLightingConnection(strServer, strDBName, strUser, strPassword, pLog);
+    }
+
+    OutputDebugString(_T("[TLS] CheckAndReconnectTlsLighting: Ping OK, return TRUE\n"));
+    return TRUE;
 }
 
 //========================================

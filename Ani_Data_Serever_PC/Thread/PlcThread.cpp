@@ -3099,7 +3099,7 @@ void CPlcThread::SendPlcDefectCode(int iNum, DfsDataValue PanelData, int iType)
 		else
 		{
 			// 优先从数据库读取，失败则回退到 INI 文件
-			theApp.SetLoadResultCodeFromDB(strPanelID, strFpcID);
+			theApp.SetLoadResultCode(strPanelID, strFpcID);
 			if (theApp.m_Send_Result_Code_Map.empty())
 			{
 				theApp.SetLoadResultCode(strPanelID, strFpcID);

@@ -358,7 +358,8 @@
     <None Include="res\Ani_Data_Serever_PC.rc2" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Communication\LightingManager.h" />
+    <ClInclude Include="Communication\LightingEventHandler.h" />
+    <ClInclude Include="Communication\LightingSocketClient.h" />
     <ClInclude Include="Communication\AlignManager.h" />
     <ClInclude Include="Communication\CommThread.h" />
     <ClInclude Include="Communication\MachineManager.h" />
@@ -437,9 +438,14 @@
     <ClInclude Include="Util\BtnEnhReadability.h" />
     <ClInclude Include="Util\cellsmanager.h" />
     <ClInclude Include="Util\ClrListBox.h" />
+    <ClInclude Include="Util\DataModels.h" />
     <ClInclude Include="Util\EZIni.h" />
     <ClInclude Include="Util\FileSupport.h" />
     <ClInclude Include="Util\font.h" />
+    <ClInclude Include="Util\DataModels.h" />
+    <ClInclude Include="Util\CLightingDB.h" />
+    <ClInclude Include="Util\TLSConnection.h" />
+    <ClInclude Include="Util\DBInterface.h" />
     <ClInclude Include="Util\HeaderCtrlEx.h" />
     <ClInclude Include="Util\ListCtrlEx.h" />
     <ClInclude Include="Util\Logger.h" />
@@ -461,7 +467,7 @@
     <ClInclude Include="View\ViewCtrl.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Communication\LightingManager.cpp" />
+    <ClCompile Include="Communication\LightingSocketClient.cpp" />
     <ClCompile Include="Communication\AlignManager.cpp" />
     <ClCompile Include="Communication\CommThread.cpp" />
     <ClCompile Include="Communication\MachineManager.cpp" />
@@ -549,6 +555,8 @@
     <ClCompile Include="Util\MyListCtrl.cpp" />
     <ClCompile Include="Util\StringManager.cpp" />
     <ClCompile Include="Util\StringSupport.cpp" />
+    <ClCompile Include="Util\CLightingDB.cpp" />
+    <ClCompile Include="Util\TLSConnection.cpp" />
     <ClCompile Include="Util\StringTable.cpp" />
     <ClCompile Include="Util\surfacecolor.cpp" />
     <ClCompile Include="Util\textdescriptor.cpp" />

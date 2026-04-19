@@ -198,7 +198,7 @@ BOOL CDlgTimeInspect::OnInitDialog()
 	CBtnEnh *pBtnEnh = (CBtnEnh*)GetDlgItem(IDB_BTN_DY);
 	pBtnEnh->SetValue(TRUE);
 
-	ApplyBtnEnhReadabilitySubtree(this);
+	//ApplyBtnEnhReadabilitySubtree(this);
 
 	// TODO:  ???? ??? ???? ????? ???????.
 	SetTimer(TMR_MAIN_INSPECT_INFO, 1000, NULL);

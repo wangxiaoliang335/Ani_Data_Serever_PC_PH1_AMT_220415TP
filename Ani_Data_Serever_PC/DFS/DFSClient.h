@@ -113,4 +113,7 @@ public:
 	HANDLE m_hDfsUploadQuit;
 	CWinThread *m_pThreadDfsUpload;
 	CCriticalSection m_csDfsUploadLock;
+
+	// AOI缺陷图片根路径（从配置文件读取，默认值为 D:\MEMS_DFS_Data\）
+	CString m_strAOIRootPath;
 };

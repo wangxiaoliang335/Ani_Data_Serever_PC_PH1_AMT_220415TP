@@ -1,4 +1,4 @@
-#include "stdafx.h"
+﻿#include "stdafx.h"
 #include "DFSInfo.h"
 #include "Main/Ani_Data_Serever_PC.h"
 
@@ -1563,4 +1563,539 @@ void CDFSInfo::SetBCServerData(CString strPanel, int iType, CDFSInfo DfsInfo)
 	}
 	else if (iType == Machine_GAMMA)
 		m_PanelDataBegin.strProcess_ID = _T("1J00");
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// WriteOpvDefectCodeINI
+// 功能：写入 OpvDefectCode INI 文件，格式参考 D:\ANI\OpvDefectCode
+// 路径：D:\ANI\DataServer\Data\OpvDefectCode\{日期}\{PanelID}.ini
+// 格式：
+//   [Function]
+//   Under,XIMXG1,R1=1
+//   UnderKill=1
+//
+//   [Dot]
+//   Under,XPOCPP,R1=2
+//   UnderKill=2
+//
+// 新机器 AOI 检测完成后，OPV 还未复检，所以初始状态：
+//   - Under = AOI 检出的缺陷数（作为初始值）
+//   - OverKill = 0
+//   - UnderKill = 总缺陷数
+// OPV 复检后会更新这些值
+///////////////////////////////////////////////////////////////////////////////
+BOOL CDFSInfo::WriteOpvDefectCodeINI(LPCTSTR strPanelID, const CDefectInfoList& defectList, int nFixtureNo)
+{
+	if (strPanelID == NULL || _tcslen(strPanelID) == 0)
+	{
+		theApp.m_pTestLog->Error(_T("[WriteOpvDefectCodeINI] PanelID 为空，跳过写入"));
+		return FALSE;
+	}
+
+	// 路径：D:\ANI\DataServer\Data\OpvDefectCode\{日期}\{PanelID}.ini
+	// 格式参考老机器：Section = Dot/Line/Mura 等，Key = Under,{Code},{Grade}=数量，Key = UnderKill=总数
+	CString strDate = GetDateString2();  // 格式：2026-04-09
+	CString strDirPath;
+	strDirPath.Format(_T("D:\\ANI\\DataServer\\Data\\OpvDefectCode\\%s"), (LPCTSTR)strDate);
+
+	// 创建目录（如果不存在）
+	if (!PathIsDirectory(strDirPath))
+	{
+		if (!CreateDirectory(strDirPath, NULL))
+		{
+			theApp.m_pTestLog->Error(_T("[WriteOpvDefectCodeINI] 创建目录失败: %s"), (LPCTSTR)strDirPath);
+			return FALSE;
+		}
+	}
+
+	CString strFilePath;
+	strFilePath.Format(_T("%s\\%s.ini"), (LPCTSTR)strDirPath, strPanelID);
+
+	TRACE(_T("[WriteOpvDefectCodeINI] 开始写入 INI: %s\n"), (LPCTSTR)strFilePath);
+	theApp.m_pTestLog->Info(_T("[WriteOpvDefectCodeINI] 开始写入 INI: %s, 缺陷数量: %d"),
+		(LPCTSTR)strFilePath, (int)defectList.size());
+
+	// 使用 EZIni 写入
+	EZIni ini(strFilePath);
+
+	// 按缺陷类型分组统计
+	// Map: 缺陷类型 -> Map<"Code,Grade", 数量>
+	CMapStringToString mapUnderCount;  // Key: "Code,Grade", Value: 数量
+	CMapStringToString mapDefectType;  // Key: "Code,Grade", Value: 缺陷类型(Section)
+	CStringArray arrSections;  // 记录所有缺陷类型(Section)
+
+	for (int i = 0; i < (int)defectList.size(); i++)
+	{
+		const CDefectInfo& defect = defectList[i];
+
+		// 确定缺陷类型 Section（老机器格式：Dot/Line/Mura/Function 等）
+		CString strSection;
+		CString strTypeUpper = defect.Type;
+		strTypeUpper.MakeUpper();
+
+		if (strTypeUpper.Find(_T("LINE")) >= 0)
+			strSection = _T("Line");
+		else if (strTypeUpper.Find(_T("MURA")) >= 0)
+			strSection = _T("Mura");
+		else if (strTypeUpper.Find(_T("DOT")) >= 0)
+			strSection = _T("Dot");
+		else if (strTypeUpper.Find(_T("BLOCK")) >= 0)
+			strSection = _T("Block");
+		else if (strTypeUpper.Find(_T("BM")) >= 0)
+			strSection = _T("BM");
+		else
+			strSection = _T("Function");  // 其他类型默认 Function
+
+		// 获取缺陷码和等级
+		CString strCode = defect.Code_AOI;
+		CString strGrade = defect.Grade_AOI;
+
+		if (strCode.IsEmpty())
+			strCode = _T("UNKNOWN");
+
+		// 构建 Key: "Code,Grade"
+		CString strKey;
+		strKey.Format(_T("%s,%s"), (LPCTSTR)strCode, (LPCTSTR)strGrade);
+
+		// 如果是新的 Section，记录下来
+		BOOL bNewSection = TRUE;
+		for (int j = 0; j < arrSections.GetSize(); j++)
+		{
+			if (arrSections[j] == strSection)
+			{
+				bNewSection = FALSE;
+				break;
+			}
+		}
+		if (bNewSection)
+			arrSections.Add(strSection);
+
+		// 记录 Code,Grade -> Section 的映射
+		mapDefectType.SetAt(strKey, strSection);
+
+		// 统计 Under 数量（初始 Under = AOI 检出数）
+		CString strCount;
+		if (mapUnderCount.Lookup(strKey, strCount))
+		{
+			int nCount = _ttoi(strCount) + 1;
+			strCount.Format(_T("%d"), nCount);
+			mapUnderCount.SetAt(strKey, strCount);
+		}
+		else
+		{
+			mapUnderCount.SetAt(strKey, _T("1"));
+		}
+	}
+
+	// 写入 INI 文件
+	// 按 Section 分组写入，格式参考老机器：
+	//   [Dot]
+	//   Under,XIMXG1,R1=1
+	//   UnderKill=1
+	for (int s = 0; s < arrSections.GetSize(); s++)
+	{
+		CString strSection = arrSections[s];
+		CString strUnderCount;
+		int nTotalUnder = 0;
+
+		// 遍历 mapUnderCount，找到属于当前 Section 的所有缺陷
+		POSITION pos = mapUnderCount.GetStartPosition();
+		while (pos != NULL)
+		{
+			CString strKey, strCount;
+			mapUnderCount.GetNextAssoc(pos, strKey, strCount);
+
+			CString strDefectSection;
+			if (!mapDefectType.Lookup(strKey, strDefectSection))
+				continue;
+
+			if (strDefectSection != strSection)
+				continue;
+
+			// 解析 Code 和 Grade
+			CString strCode, strGrade;
+			int nComma = strKey.Find(',');
+			if (nComma >= 0)
+			{
+				strCode = strKey.Left(nComma);
+				strGrade = strKey.Mid(nComma + 1);
+			}
+			else
+			{
+				strCode = strKey;
+				strGrade = _T("");
+			}
+
+			int nCount = _ttoi(strCount);
+			nTotalUnder += nCount;
+
+			// 写入: Under,{Code},{Grade}={数量}
+			CString strKeyName;
+			strKeyName.Format(_T("Under,%s,%s"), (LPCTSTR)strCode, (LPCTSTR)strGrade);
+			ini[strSection][strKeyName] = nCount;
+
+			TRACE(_T("[WriteOpvDefectCodeINI] [%s] %s=%d\n"),
+				(LPCTSTR)strSection, (LPCTSTR)strKeyName, nCount);
+		}
+
+		// 写入 UnderKill 总数
+		ini[strSection][_T("UnderKill")] = nTotalUnder;
+
+		theApp.m_pTestLog->Info(_T("[WriteOpvDefectCodeINI] Section [%s] UnderKill=%d"),
+			(LPCTSTR)strSection, nTotalUnder);
+	}
+
+	// 如果没有缺陷，写入 OK 标记（老机器格式）
+	if (defectList.empty())
+	{
+		ini[_T("OK")][_T("Result")] = _T("1");
+		theApp.m_pTestLog->Info(_T("[WriteOpvDefectCodeINI] 无缺陷，写入 OK=1"));
+	}
+
+	theApp.m_pTestLog->Info(_T("[WriteOpvDefectCodeINI] INI 写入完成: %s"), (LPCTSTR)strFilePath);
+	TRACE(_T("[WriteOpvDefectCodeINI] INI 写入完成: %s\n"), (LPCTSTR)strFilePath);
+
+	return TRUE;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// WriteAOICSVFile - 由 DataServer 程序写入 AOI 检测结果 CSV 文件
+//   格式完全兼容旧版 Vision PC 生成的 DFS 文件，供 AMTAFTSavePanelDFS_SUM 读取
+//
+// 参数：
+//   inspResult - ICW FN$ 处理得到的检测结果（包含 AOIResult/Code/Grade 等）
+//   defectList - 缺陷列表（从数据库查询得到，包含 X/Y/Size/Type 等）
+//   nFixtureNo - 治具号（1~4）
+//
+// 写入路径：DFS_SHARE_PATH + 日期 + \\ + PanelID + \\AOI\\ + PanelID + .csv
+///////////////////////////////////////////////////////////////////////////////
+BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefectInfoList& defectList, int nFixtureNo, LPCTSTR strFpcID)
+{
+	CStdioFile sFile;
+	CString strPanelID = inspResult.UniqueID.IsEmpty() ? inspResult.ScreenID : inspResult.UniqueID;
+	CString strDate = GetDateString2();
+
+	TRACE(_T("[WriteAOICSVFile] ==== 开始写入AOI CSV ====\n"));
+	theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] ==== 开始写入AOI CSV ===="));
+	theApp.m_pTestLog->Info(_T("  inspResult.UniqueID=[%s], inspResult.ScreenID=[%s], inspResult.GUID=[%s]"),
+		(LPCTSTR)inspResult.UniqueID, (LPCTSTR)inspResult.ScreenID, (LPCTSTR)inspResult.GUID);
+	theApp.m_pTestLog->Info(_T("  defectList.size()=%d, nFixtureNo=%d, strFpcID=[%s]"),
+		(int)defectList.size(), nFixtureNo, (LPCTSTR)(strFpcID ? strFpcID : _T("NULL")));
+	TRACE(_T("  inspResult.UniqueID=[%s], inspResult.ScreenID=[%s], inspResult.GUID=[%s]\n"),
+		(LPCTSTR)inspResult.UniqueID, (LPCTSTR)inspResult.ScreenID, (LPCTSTR)inspResult.GUID);
+	TRACE(_T("  defectList.size()=%d, nFixtureNo=%d, strFpcID=[%s]\n"),
+		(int)defectList.size(), nFixtureNo, (LPCTSTR)(strFpcID ? strFpcID : _T("NULL")));
+
+	// 优先使用传入的 FpcID 作为目录/文件名（与 RankThread 读取路径保持一致）
+	CString strCsvPanelID;
+	if (strFpcID != NULL && _tcslen(strFpcID) > 0)
+		strCsvPanelID = strFpcID;
+	else
+		strCsvPanelID = strPanelID;  // 兼容：未传入时退化为 UniqueID
+
+	// 构造 AOI csv 文件路径（与 RankThread/RankSave 保持一致）
+	CString strAOIPath = DFS_SHARE_PATH + strDate + _T("\\") + strCsvPanelID + _T("\\AOI\\") + strCsvPanelID + _T(".csv");
+
+	TRACE(_T("  strCsvPanelID=[%s], strAOIPath=[%s]\n"), (LPCTSTR)strCsvPanelID, (LPCTSTR)strAOIPath);
+	theApp.m_pTestLog->Info(_T("  strCsvPanelID=[%s], strAOIPath=[%s]"), (LPCTSTR)strCsvPanelID, (LPCTSTR)strAOIPath);
+
+	// 创建目录结构
+	CString strAoiDir = DFS_SHARE_PATH + strDate + _T("\\") + strCsvPanelID + _T("\\AOI\\");
+	CreateFolders(strAoiDir);
+
+	// 打开文件（覆盖写入）
+	if (sFile.Open(strAOIPath, CFile::modeCreate | CFile::modeWrite) == FALSE)
+	{
+		theApp.m_pFTPLog->Info(_T("[WriteAOICSVFile] Failed to create file: %s"), strAOIPath);
+		TRACE(_T("[WriteAOICSVFile] 文件打开失败: %s\n"), (LPCTSTR)strAOIPath);
+		theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] 文件打开失败: %s"), (LPCTSTR)strAOIPath);
+		return FALSE;
+	}
+
+	TRACE(_T("[WriteAOICSVFile] 文件打开成功: %s\n"), (LPCTSTR)strAOIPath);
+	theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] 文件打开成功: %s"), (LPCTSTR)strAOIPath);
+
+	// ================================================================
+	// 填充 m_DefectDataList（缺陷列表）
+	//   注意：DEFECT_TYPE 映射为 "Point"（与旧 Vision PC 一致）
+	// ================================================================
+	CString strAOIGrade = inspResult.AOIResult.CompareNoCase(_T("OK")) == 0 ? _T("OK") : inspResult.Grade_AOI;
+	m_DefectDataList.clear();
+
+	TRACE(_T("[WriteAOICSVFile] 开始遍历缺陷列表, defectList.size()=%d\n"), (int)defectList.size());
+	theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] 开始遍历缺陷列表, defectList.size()=%d"), (int)defectList.size());
+	for (int i = 0; i < (int)defectList.size(); i++)
+	{
+		const CDefectInfo& defect = defectList[i];
+
+		TRACE(_T("  [Defect %d] Type=[%s], Pos_x=%d, Pos_y=%d, Pos_w=%d, Pos_h=%d, TrueSize=%.2f\n"),
+			i, (LPCTSTR)defect.Type, defect.Pos_x, defect.Pos_y, defect.Pos_width, defect.Pos_height, defect.TrueSize);
+		theApp.m_pTestLog->Info(_T("  [Defect %d] Type=[%s], Pos_x=%d, Pos_y=%d, Pos_w=%d, Pos_h=%d, TrueSize=%.2f"),
+			i, (LPCTSTR)defect.Type, defect.Pos_x, defect.Pos_y, defect.Pos_width, defect.Pos_height, defect.TrueSize);
+
+		SDFSDefectDataBegin item;
+		item.strPANEL_ID = strCsvPanelID;
+		item.strDEFECT_DATA_NUM = Int2String(i + 1);
+
+		// DEFECT_TYPE：旧 Vision PC 使用 "Point"，非 "Dot"
+		CString strType = defect.Type;
+		strType.MakeUpper();
+		if (strType.Find(_T("LINE")) >= 0)
+			item.strDEFECT_TYPE = _T("Line");
+		else if (strType.Find(_T("MURA")) >= 0)
+			item.strDEFECT_TYPE = _T("Mura");
+		else if (strType.Find(_T("DOT")) >= 0)
+			item.strDEFECT_TYPE = _T("Point");   // Point = 旧 Vision PC 用法
+		else
+			item.strDEFECT_TYPE = _T("Other");
+
+		item.strDEFECT_PTRN = defect.PatternName;
+		item.strDEFECT_CODE = defect.Code_AOI.IsEmpty() ? _T("XIMXDE") : defect.Code_AOI;
+		item.strDEFECT_GRADE = defect.Grade_AOI.IsEmpty() ? strAOIGrade : defect.Grade_AOI;
+
+		// 图像数据（ImagePath → 取文件名记入）
+		if (!defect.ImagePath.IsEmpty())
+		{
+			int nSlash = max(defect.ImagePath.ReverseFind('\\'), defect.ImagePath.ReverseFind('/'));
+			if (nSlash >= 0)
+				item.strIMAGE_DATA = defect.ImagePath.Mid(nSlash + 1);
+			else
+				item.strIMAGE_DATA = defect.ImagePath;
+		}
+		else
+		{
+			item.strIMAGE_DATA = _T("");
+		}
+
+		item.strX = defect.Pos_x > 0 ? Int2String(defect.Pos_x) : _T("");
+		item.strY = defect.Pos_y > 0 ? Int2String(defect.Pos_y) : _T("");
+		item.strSIZE = defect.TrueSize > 0 ? Int2String((int)defect.TrueSize) : _T("");
+
+		TRACE(_T("  [Defect %d] CSV字段: X=[%s], Y=[%s], SIZE=[%s], CODE=[%s], GRADE=[%s]\n"),
+			i, (LPCTSTR)item.strX, (LPCTSTR)item.strY, (LPCTSTR)item.strSIZE,
+			(LPCTSTR)item.strDEFECT_CODE, (LPCTSTR)item.strDEFECT_GRADE);
+		theApp.m_pTestLog->Info(_T("  [Defect %d] CSV字段: X=[%s], Y=[%s], SIZE=[%s], CODE=[%s], GRADE=[%s]"),
+			i, (LPCTSTR)item.strX, (LPCTSTR)item.strY, (LPCTSTR)item.strSIZE,
+			(LPCTSTR)item.strDEFECT_CODE, (LPCTSTR)item.strDEFECT_GRADE);
+
+		// CAM_INSPECT=2（与旧 Vision PC 一致）
+		item.strCAM_INSPECT = _T("2");
+
+		// Zone = PlatformID（从 IVS_LCD_InspectionResult.PlatformID 获取）
+		item.strZone = CStringSupport::FormatString(_T("%d"), inspResult.PlatformID);
+
+		item.strInspName = _T("AOI");
+
+		m_DefectDataList.push_back(item);
+	}
+
+	TRACE(_T("[WriteAOICSVFile] 缺陷列表填充完成, m_DefectDataList.size()=%d\n"), (int)m_DefectDataList.size());
+	theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] 缺陷列表填充完成, m_DefectDataList.size()=%d"), (int)m_DefectDataList.size());
+
+	// ================================================================
+	// 补充汇总缺陷记录
+	//   场景：AOI 检测到 NG（如 Line/Mura）但缺陷坐标异步写入 DB，
+	//   导致 QueryDefectsByParentGUID 返回空列表。
+	//   此时写入一条汇总记录，包含总等级码和总缺陷码，供 Rank 系统使用。
+	// ================================================================
+	if (m_DefectDataList.empty())
+	{
+		CString strAOIRes = inspResult.AOIResult;
+		strAOIRes.MakeUpper();
+		BOOL bIsNG = (strAOIRes != _T("OK")) && !strAOIRes.IsEmpty();
+
+		if (bIsNG && !inspResult.Code_AOI.IsEmpty())
+		{
+			// 写入一条汇总缺陷记录（坐标为空，表示无具体坐标数据）
+			SDFSDefectDataBegin summaryItem;
+			summaryItem.strPANEL_ID = strCsvPanelID;
+			summaryItem.strDEFECT_DATA_NUM = _T("1");
+			// DEFECT_TYPE：从 AOIResult 推导
+			if (strAOIRes.Find(_T("LINE")) >= 0)
+				summaryItem.strDEFECT_TYPE = _T("Line");
+			else if (strAOIRes.Find(_T("MURA")) >= 0)
+				summaryItem.strDEFECT_TYPE = _T("Mura");
+			else if (strAOIRes.Find(_T("DOT")) >= 0 || strAOIRes.Find(_T("POINT")) >= 0)
+				summaryItem.strDEFECT_TYPE = _T("Point");
+			else
+				summaryItem.strDEFECT_TYPE = _T("Point");  // 默认 Point
+			summaryItem.strDEFECT_PTRN = _T("");
+			summaryItem.strDEFECT_CODE = inspResult.Code_AOI;
+			summaryItem.strDEFECT_GRADE = inspResult.Grade_AOI.IsEmpty() ? strAOIGrade : inspResult.Grade_AOI;
+			summaryItem.strIMAGE_DATA = _T("");
+			summaryItem.strX = _T("0");
+			summaryItem.strY = _T("0");
+			summaryItem.strSIZE = _T("0");
+			summaryItem.strCAM_INSPECT = _T("2");
+			// Zone = PlatformID（从 IVS_LCD_InspectionResult.PlatformID 获取）
+			summaryItem.strZone = CStringSupport::FormatString(_T("%d"), inspResult.PlatformID);
+			summaryItem.strInspName = _T("AOI");
+			m_DefectDataList.push_back(summaryItem);
+		}
+	}
+
+	// ================================================================
+	// 6. 开始写入 CSV（完全兼容旧版 Vision PC AOI csv 格式）
+	//    真实格式（参考 D:\ANI\DataServer\AVX55CW02AA11\AOI\AVX55CW02AA11.csv）：
+	//      1. EQP_PANEL_DATA（15列，无 PLC_RECIPE_NAME）
+	//      2. DEFECT_DATA（12列，DEFECT_TYPE=Point，X/Y/SIZE 为浮点）
+	//      3. OPV_DATA（19列，与 DEFECT_DATA 一一对应）
+	// ================================================================
+
+	// --- EQP_PANEL_DATA（15列：去掉 PLC_RECIPE_NAME，与旧 Vision PC 一致）---
+	CString strAOIRecipe = theApp.m_CurrentModel.m_AlignPcCurrentModelName;
+	CString strStartTime = inspResult.StartTime.GetStatus() == COleDateTime::valid
+		? inspResult.StartTime.Format(_T("%Y%m%d%H%M%S")) : GetDateString6();
+	CString strEndTime = inspResult.StopTime.GetStatus() == COleDateTime::valid
+		? inspResult.StopTime.Format(_T("%Y%m%d%H%M%S")) : GetDateString6();
+
+	sFile.WriteString(_T("EQP_PANEL_DATA_BEGIN\n"));
+	sFile.WriteString(_T("RECIPE_NO,AOI_RECIPE_NAME,PG_RECIPE_NAME,TP_RECIPE_NAME,START_TIME,END_TIME,LOAD_STAGE_NO,INSP_STAGE_NO,UNLOAD_STAGE_NO,PROBE_CONTACT_CNT,INDEX_PANEL_GRADE,INDEX_MAIN_CODE,FINAL_PANEL_GRADE,FINAL_MAIN_CODE,OPERATOR_ID\n"));
+	CString strEQPLine;
+	strEQPLine.Format(_T(",%s,,,,,,%d,,,,%s,%s,%s,%s,\n"),
+		(LPCTSTR)strAOIRecipe,
+		nFixtureNo,
+		(LPCTSTR)strAOIGrade,
+		(LPCTSTR)inspResult.Code_AOI,
+		(LPCTSTR)strAOIGrade,
+		(LPCTSTR)inspResult.Code_AOI);
+	sFile.WriteString(strEQPLine);
+	sFile.WriteString(_T("EQP_PANEL_DATA_END\n"));
+
+	// --- DEFECT_DATA ---
+	sFile.WriteString(_T("\nDEFECT_DATA_BEGIN\n"));
+	sFile.WriteString(_T("PANEL_ID,DEFECT_DATA_NUM,DEFECT_TYPE,DEFECT_PTRN,DEFECT_CODE,DEFECT_GRADE,IMAGE_DATA,X,Y,SIZE,CAM_INSPECT,Zone\n"));
+
+	if (m_DefectDataList.empty())
+	{
+		sFile.WriteString(_T(",,,,,,,,,,,,\n"));  // 12列（含Zone）
+	}
+	else
+	{
+		for (size_t ii = 0; ii < m_DefectDataList.size(); ii++)
+		{
+			SDFSDefectDataBegin& item = m_DefectDataList[ii];
+
+			// X/Y/SIZE：旧 Vision PC 使用浮点格式（如 16732.000000）
+			// 从 CDefectInfo 的 Pos_x/Pos_y/TrueSize 转为浮点字符串（玻璃物理坐标）
+			// 修复：添加边界检查，防止 defectList 大小小于 m_DefectDataList 时越界
+			// 坐标转换：像素坐标 → 玻璃物理坐标
+			double fX = 0.0, fY = 0.0, fSize = 0.0;
+			if (ii < (size_t)defectList.size())
+			{
+				// X 方向：像素坐标 → 玻璃物理坐标
+				double fScaleX = (inspResult.GridImageXLen > 0)
+					? (inspResult.PanelPhysicalXLen / (double)inspResult.GridImageXLen) : 1.0;
+				fX = (double)defectList[ii].Pos_x * fScaleX;
+
+				// Y 方向：像素坐标 → 玻璃物理坐标
+				double fScaleY = (inspResult.GridImageYLen > 0)
+					? (inspResult.PanelPhysicalYLen / (double)inspResult.GridImageYLen) : 1.0;
+				fY = (double)defectList[ii].Pos_y * fScaleY;
+
+				fSize = defectList[ii].TrueSize > 0 ? defectList[ii].TrueSize
+					: max((double)defectList[ii].Pos_width, (double)defectList[ii].Pos_height);
+			}
+
+			CString strDefectLine;
+			strDefectLine.Format(_T("%s,%d,%s,%s,%s,%s,%s,%.6f,%.6f,%.6f,2,%s\n"),
+				(LPCTSTR)item.strPANEL_ID,
+				ii + 1,
+				(LPCTSTR)item.strDEFECT_TYPE,
+				(LPCTSTR)item.strDEFECT_PTRN,
+				(LPCTSTR)item.strDEFECT_CODE,
+				(LPCTSTR)item.strDEFECT_GRADE,
+				(LPCTSTR)item.strIMAGE_DATA,
+				fX, fY, fSize,
+				(LPCTSTR)item.strZone);
+			sFile.WriteString(strDefectLine);
+		}
+	}
+	sFile.WriteString(_T("DEFECT_DATA_END\n"));
+
+	// --- OPV_DATA（与 DEFECT_DATA 一一对应，19列，字段含义同 OPV 设备）---
+	// 列：PANEL_ID,FPC_ID,DEFECT_GRADE,TP_FUNCTION,DEFECT_CODE,DEFECT_PTN,DATA_X1,GATE_Y1,DATA_X2,GATE_Y2,DATA_X3,GATE_Y3,IMAGE,GLASS_COORDINATE_X1,GLASS_COORDINATE_Y1,GLASS_COORDINATE_X2,GLASS_COORDINATE_Y2,GLASS_COORDINATE_X3,GLASS_COORDINATE_Y3（无末尾逗号）
+	sFile.WriteString(_T("\nOPV_DATA_BEGIN\n"));
+	sFile.WriteString(_T("PANEL_ID,FPC_ID,DEFECT_GRADE,TP_FUNCTION,DEFECT_CODE,DEFECT_PTN,DATA_X1,GATE_Y1,DATA_X2,GATE_Y2,DATA_X3,GATE_Y3,IMAGE,GLASS_COORDINATE_X1,GLASS_COORDINATE_Y1,GLASS_COORDINATE_X2,GLASS_COORDINATE_Y2,GLASS_COORDINATE_X3,GLASS_COORDINATE_Y3\n"));
+
+	if (m_DefectDataList.empty())
+	{
+		// 19列（无末尾逗号）
+		// 19列（无末尾逗号）：18个逗号
+		sFile.WriteString(_T(",,,,,,,,,,,,,,,,\n"));
+	}
+	else
+	{
+		for (size_t ii = 0; ii < m_DefectDataList.size(); ii++)
+		{
+			SDFSDefectDataBegin& item = m_DefectDataList[ii];
+
+			// 坐标：优先使用 defectList（真实缺陷坐标），否则使用 m_DefectDataList（汇总坐标 0）
+			// DATA_X1/DATA_X2：缺陷起始/结束 X = Pos_x ± Pos_width/2（像素坐标）
+			// GATE_Y1/GATE_Y2：缺陷起始/结束 Y = Pos_y ± Pos_height/2（像素坐标）
+			// 注意：需要转换为玻璃物理坐标 = 像素坐标 × PanelPhysicalXLen / GridImageXLen
+			double fX1 = 0.0, fY1 = 0.0, fX2 = 0.0, fY2 = 0.0;
+			CString strImgFile;
+			if (ii < (size_t)defectList.size())
+			{
+				// X 方向：像素坐标 → 玻璃物理坐标
+				double fImageX = (double)defectList[ii].Pos_x;
+				double fWidthX = (double)defectList[ii].Pos_width / 2.0;
+				double fScaleX = (inspResult.GridImageXLen > 0)
+					? (inspResult.PanelPhysicalXLen / (double)inspResult.GridImageXLen) : 1.0;
+				fX1 = (fImageX - fWidthX) * fScaleX;
+				fX2 = (fImageX + fWidthX) * fScaleX;
+
+				// Y 方向：像素坐标 → 玻璃物理坐标
+				double fImageY = (double)defectList[ii].Pos_y;
+				double fHeightY = (double)defectList[ii].Pos_height / 2.0;
+				double fScaleY = (inspResult.GridImageYLen > 0)
+					? (inspResult.PanelPhysicalYLen / (double)inspResult.GridImageYLen) : 1.0;
+				fY1 = (fImageY - fHeightY) * fScaleY;
+				fY2 = (fImageY + fHeightY) * fScaleY;
+				if (!defectList[ii].ImagePath.IsEmpty())
+				{
+					int nLastSlash = max(defectList[ii].ImagePath.ReverseFind('\\'),
+						defectList[ii].ImagePath.ReverseFind('/'));
+					if (nLastSlash >= 0)
+						strImgFile = defectList[ii].ImagePath.Mid(nLastSlash + 1);
+					else
+						strImgFile = defectList[ii].ImagePath;
+				}
+			}
+			else
+			{
+				// 汇总缺陷记录：坐标为空（数据库查询结果），使用 strX/strY（均为 "0"）
+				// 注：汇总记录本身没有缺陷坐标，无需坐标转换
+				if (!item.strX.IsEmpty()) fX1 = fX2 = _ttof(item.strX);
+				if (!item.strY.IsEmpty()) fY1 = fY2 = _ttof(item.strY);
+			}
+
+			// FPC_ID：从 inspResult.ScreenID 获取
+			CString strFpcID = inspResult.ScreenID;
+
+			// 19列，无末尾逗号（与 GetLastExtractionMsg 用 ';' 解析配合）
+			CString strOpvLine;
+			strOpvLine.Format(_T("%s,%s,%s,***,%s,%s,%.6f,%.6f,%.6f,%.6f,***,***,%s,***,***,***,***,***,***\n"),
+				(LPCTSTR)strPanelID,
+				(LPCTSTR)strFpcID,
+				(LPCTSTR)item.strDEFECT_GRADE,
+				(LPCTSTR)item.strDEFECT_CODE,
+				(LPCTSTR)item.strDEFECT_PTRN,
+				fX1, fY1, fX2, fY2,
+				(LPCTSTR)strImgFile);
+			sFile.WriteString(strOpvLine);
+		}
+	}
+	sFile.WriteString(_T("OPV_DATA_END\n"));
+
+	sFile.Close();
+
+	theApp.m_pFTPLog->Info(_T("[WriteAOICSVFile] AOI CSV written: %s (DefectCount=%d)"),
+		strAOIPath, (int)defectList.size());
+	theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] ==== AOI CSV 写入完成 ===="));
+	theApp.m_pTestLog->Info(_T("  文件路径: %s, 缺陷数量: %d"), (LPCTSTR)strAOIPath, (int)defectList.size());
+	TRACE(_T("[WriteAOICSVFile] ==== AOI CSV 写入完成 ====\n  文件路径: %s\n  缺陷数量: %d\n"), (LPCTSTR)strAOIPath, (int)defectList.size());
+
+	return TRUE;
 }

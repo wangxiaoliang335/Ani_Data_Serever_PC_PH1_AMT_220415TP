@@ -199,8 +199,8 @@ BOOL CDlgInspect::OnInitDialog()
 	}
 
 	// After captions — DDX BtnEnh subtree + extra labels without DDX
-	ApplyBtnEnhReadabilitySubtree(this);
-	ApplyInspectDlgExtraBtnStyles(this);
+	//ApplyBtnEnhReadabilitySubtree(this);
+	//ApplyInspectDlgExtraBtnStyles(this);
 	
 	// TODO:  ¿©±â¿¡ Ãß°¡ ÃÊ±âÈ­ ÀÛ¾÷À» Ãß°¡ÇÕ´Ï´Ù.
 	SetTimer(TMR_MAIN_INSPECT_INFO, 1000, NULL);

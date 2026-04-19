@@ -130,13 +130,20 @@ BOOL CDlgMainLog::OnInitDialog()
 			theApp.m_TpThreadOpenFlag = theApp.m_TpSocketManager.SocketServerOpen(TP_PC_PORT_NUM);
 			break;
 		case _THREAD_LIGHTING:
-	LightingDbgPrint(_T("[MainLog] _THREAD_LIGHTING: IP=%s, Port=%s\n"),
+		LightingDbgPrint(_T("[MainLog] _THREAD_LIGHTING: IP=%s, Port=%s\n"),
 				theApp.m_strLightingIP, theApp.m_strLightingPort);
-			if (!theApp.m_strLightingIP.IsEmpty() && !theApp.m_strLightingPort.IsEmpty())
+		if (!theApp.m_strLightingIP.IsEmpty() && !theApp.m_strLightingPort.IsEmpty())
+		{
+			// 确保 VisionThread 已创建（它继承 ILightingEventHandler）
+			if (!theApp.m_VisionThread)
 			{
-				theApp.m_LightingSocketManager.SetEventHandler(&theApp);
-				theApp.m_LightingThreadOpenFlag = theApp.m_LightingSocketManager.ConnectToLighting(
-					theApp.m_strLightingIP, theApp.m_strLightingPort);
+				theApp.m_VisionThread = new CVisionThread();
+				theApp.m_VisionThread->CreateTask();
+			}
+			// 设置回调到 VisionThread（包含 OnLightingResult 等处理）
+			theApp.m_LightingSocketManager.SetEventHandler(theApp.m_VisionThread);
+			theApp.m_LightingThreadOpenFlag = theApp.m_LightingSocketManager.Connect(
+				theApp.m_strLightingIP, theApp.m_strLightingPort);
 				if (theApp.m_LightingThreadOpenFlag)
 				{
 					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(

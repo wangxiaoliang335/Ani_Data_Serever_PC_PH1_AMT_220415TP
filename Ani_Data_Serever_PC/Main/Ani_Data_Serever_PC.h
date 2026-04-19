@@ -21,12 +21,16 @@
 #include "PgManager.h"
 #include "TpManager.h"
 #include "OpvManager.h"
-#include "LightingManager.h"
+#include "LightingEventHandler.h"
+#include "LightingSocketClient.h"
 
+#include "Util/DataModels.h"
+#include "Util/DBInterface.h"
 #include "DFS/DFSInfo.h"  // 包含完整的 DFSInfo 定义，包括 SDFSDefectDataBegin 和 LUMITOP_SDFSDefectDataBegin
 #include "DFSClient.h"
 #include "FTPClient.h"
 #include "TLSConnection.h"
+#include "Migration.h"  // 包含 m_codeOk, m_codeNg 等常量定义
 #include "AllPassModeThread.h"
 #include "TpThread.h"
 #include "SerialCom.h"
@@ -71,7 +75,7 @@ public:
 	LightingInspectionResult QueryInspectionResult(CString uniqueID);
 
 	// Lighting 线程专用的数据库操作（使用线程局部连接）
-	LightingInspectionResult QueryInspectionResultThreadSafe(CString uniqueID, SQLHDBC pConn);
+	//LightingInspectionResult QueryInspectionResultThreadSafe(CString uniqueID, SQLHDBC pConn);
 	BOOL QueryIdMapByFixtureNoThreadSafe(int fixtureNo, CString& uniqueID, CString& screenID, CString& markID, SQLHDBC pConn);
 
 	CMultiDocTemplate* m_pDocOperator;
@@ -122,6 +126,7 @@ public:
 	CLogger* m_pGammaSendReceiverLog;
 	CLogger* m_pLightingLog;
 	CLogger* m_pLightingSendReceiverLog;
+	CLogger* m_pTestLog;
 
 	//>> Code Log for MachineManager (MesAdapter)
 	CLogger* m_pCodeLog[10];
@@ -227,25 +232,17 @@ public:
 	CPgManager m_PgSocketManager[PgServerMaxCount];
 	CTpManager m_TpSocketManager;
 	COpvManager m_OpvSocketManager[ChMaxCount];
-	CLightingManager m_LightingSocketManager;
+	CLightingSocketClient m_LightingSocketManager;
 	CComView* m_pComView;
 	BOOL m_bLightingCycleInProgress;
-	BOOL m_bLightingRunning;
-	BOOL m_bLightingSnapDone;
 	BOOL m_bLightingActiveSlot[4]; // slot 1..4 -> index 0..3
 	DWORD m_dwLightingStartTick;
 	DWORD m_dwLightingTimeoutMs;
-	BOOL TryStartLightingFromPlc(const BOOL startFlags[4]);
 	void LightingFlowTimeoutCheck();
 	
 	virtual void OnLightingRunning() override;
 	virtual void OnLightingSnapFN() override;
-	virtual void OnLightingResult(const int resultCode[4]) override;
-
-	// Lighting ID 映射和结果更新(MySQL 待实现)
-	BOOL UpdateLightingIdMap(int fixtureNo, CString uniqueID, CString screenID, CString markID);
-	BOOL LoadLightingInspectionResult(CString uniqueID);
-	BOOL UpdateLightingInspectionResult(CString uniqueID);
+	//virtual void OnLightingResult(const int resultCode[4]) override;
 
 	LightingInspectionResult m_LightingInspResult[4];
 	BOOL m_bLightingDBConnected;
@@ -266,17 +263,16 @@ public:
 	void CloseDfsLightingDatabase();
 	SQLHDBC GetDfsLightingConnection();
 
-	BOOL QueryIdMapByFixtureNo(int fixtureNo, CString& uniqueID, CString& screenID, CString& markID);
 	LightingInspectionResult GetLightingResultByUniqueID(CString uniqueID);
 	void GetLightingResultByBarcode(CString strBarcode, CString& strAOIResult, CString& strCodeAOI, CString& strGradeAOI, BOOL& bValid);
-	// 根据 UniqueID 查询点灯缺陷详情列表
 	BOOL QueryLightingDefectList(CString strUniqueID, std::vector<LUMITOP_SDFSDefectDataBegin>& vecDefects);
-	// 根据 UniqueID 查询 AOI 缺陷详情列表（点灯缺陷）
 	BOOL QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, SQLHDBC pConn = SQL_NULL_HANDLE);
-	// 线程安全的 AOI 缺陷列表查询
-	BOOL QueryAOIDefectListThreadSafe(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, SQLHDBC pConn);
-	// 根据 Barcode 查询 UniqueID
+	//BOOL QueryAOIDefectListThreadSafe(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, SQLHDBC pConn);
+	//BOOL QueryAOIDefectListThreadSafe(CString strUniqueID, CDefectInfoList& vecDefects, SQLHDBC pConn);
 	CString GetLightingUniqueIDByBarcode(CString strBarcode);
+
+	// 生成AOI CSV文件（在FN$回调中调用）
+	BOOL GenerateAOICsvFile(CString strPanelID, CString strUniqueID, SQLHDBC pConn);
 
 #if _SYSTEM_AMTAFT_
 	AOIProductionData m_UiShiftProduction[MaxZone];
@@ -507,7 +503,7 @@ public:
 	void GetAlarmCount();
 	CString SetTotalLoadResultCode(CString strPanelID, CString strFpcID, int iTypeNum);
 	void SetLoadResultCode(CString strPanelID, CString strFpcID);
-	void SetLoadResultCodeFromDB(CString strPanelID, CString strFpcID);
+	//void SetLoadResultCodeFromDB(CString strPanelID, CString strFpcID);
 	void SetSaveResultCode(CString strPanelID, CString strFpcID, CString strTypeName, PLCSendDefect Code, int iType);
 	CString GetProcessID(CString strPanel);
 	CString GetProjectID(CString strPanelID);

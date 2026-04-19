@@ -374,7 +374,11 @@
     <ClInclude Include="Communication\MachineManager.h">
       <Filter>Communication</Filter>
     </ClInclude>
-    <ClInclude Include="Communication\LightingManager.h" />
+    <ClInclude Include="Communication\LightingEventHandler.h" />
+    <ClInclude Include="Communication\LightingSocketClient.h" />
+    <ClInclude Include="Util\DataModels.h">
+      <Filter>Util</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Comm\ImageViewNG.cpp">
@@ -665,6 +669,6 @@
     <ClCompile Include="Communication\MachineManager.cpp">
       <Filter>Communication</Filter>
     </ClCompile>
-    <ClCompile Include="Communication\LightingManager.cpp" />
+    <ClCompile Include="Communication\LightingSocketClient.cpp" />
   </ItemGroup>
 </Project>

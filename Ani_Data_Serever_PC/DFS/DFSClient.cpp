@@ -13,6 +13,7 @@
 #include "DataInfo.h"
 #include "Ani_Data_Serever_PC.h"
 #include "Main\Migration.h"
+#include "Util/CLightingDB.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -42,18 +43,22 @@ CDFSClient::CDFSClient()
 	EZIni ini(DATA_SYSTEM_DATA_PATH);
 	CString strFtpIP = ini[_T("FTP")][_T("DFS_IP")];
 	CString strFtpPort = ini[_T("FTP")][_T("DFS_PORT")];
+	CString strAoiRootPath = ini[AOI_INI_SECTION][_T("MainAOIImageRoot")];
 
 	m_strAddress = strFtpIP.IsEmpty() ? DFS_FTP_DEFAULT_IP : strFtpIP;
 	m_nPort = strFtpPort.IsEmpty() ? DFS_FTP_DEFAULT_PORT : _ttoi(strFtpPort);
+	m_strAOIRootPath = strAoiRootPath.IsEmpty() ? DFS_AOI_IMAGE_ROOT_DEFAULT : strAoiRootPath;
 
 	// 日志记录 FTP 配置信息
 	CString strLogMsg;
-	strLogMsg.Format(_T("[DFS FTP Config] ConfigFile=%s, [FTP]DFS_IP=%s (default=%s), [FTP]DFS_PORT=%s (default=%d)"),
+	strLogMsg.Format(_T("[DFS FTP Config] ConfigFile=%s, [FTP]DFS_IP=%s (default=%s), [FTP]DFS_PORT=%s (default=%d), [AOI]MainAOIImageRoot=%s (default=%s)"),
 		DATA_SYSTEM_DATA_PATH,
 		strFtpIP.IsEmpty() ? _T("(empty)") : strFtpIP,
 		DFS_FTP_DEFAULT_IP,
 		strFtpPort.IsEmpty() ? _T("(empty)") : strFtpPort,
-		DFS_FTP_DEFAULT_PORT);
+		DFS_FTP_DEFAULT_PORT,
+		strAoiRootPath.IsEmpty() ? _T("(empty)") : strAoiRootPath,
+		DFS_AOI_IMAGE_ROOT_DEFAULT);
 	theApp.m_pFTPLog->LOG_INFO(strLogMsg);
 
 	m_bUsePASVMode = FALSE;
@@ -644,8 +649,8 @@ void CDFSClient::RunDfsUploadThread()
 					// 从 MySQL 数据库查询点灯检测结果（AOI 点灯检结果，直接从数据库读取）
 					CString strAOIResult, strCodeAOI, strGradeAOI;
 					BOOL bValid = FALSE;
-					CString strUniqueID = theApp.GetLightingUniqueIDByBarcode(strPanelID);
-					theApp.GetLightingResultByBarcode(strPanelID, strAOIResult, strCodeAOI, strGradeAOI, bValid);
+					CString strUniqueID = CLightingDB::Get().GetLightingUniqueIDByBarcode(strPanelID);
+					CLightingDB::Get().GetLightingResultByBarcode(strPanelID, strAOIResult, strCodeAOI, strGradeAOI, bValid);
 					if (bValid)
 					{
 						// 将点灯结果填充到 result 结构
@@ -673,8 +678,8 @@ void CDFSClient::RunDfsUploadThread()
 						if (!strUniqueID.IsEmpty())
 						{
 							std::vector<SDFSDefectDataBegin> vecAOIDefects;
-							SQLHDBC pDfsConn = theApp.GetDfsLightingConnection();
-							if (theApp.QueryAOIDefectList(strUniqueID, vecAOIDefects, pDfsConn))
+							SQLHDBC pDfsConn = CLightingDB::Get().GetDfsLightingConnection();
+							if (CLightingDB::Get().QueryAOIDefectList(strUniqueID, vecAOIDefects, pDfsConn))
 							{
 								theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
 									_T("DFS: QueryAOIDefectList found %d defects for UniqueID=%s, PanelID=%s"),
@@ -685,8 +690,17 @@ void CDFSClient::RunDfsUploadThread()
 								{
 									DfsInfo.m_DefectDataList.push_back(vecAOIDefects[i]);
 
-									// 拷贝缺陷图像（从 ivs_lcd_aoiresult.ImagePath 绝对路径到 DFS AOI\Image 目录）
+									// 拼接完整的缺陷图像路径（数据库存储的是相对路径，需要加上根路径前缀）
 									CString strImgPath = vecAOIDefects[i].strIMAGE_DATA;
+									if (!strImgPath.IsEmpty())
+									{
+										// 如果路径不是以根路径开头，则拼接根路径前缀
+										if (strImgPath.Left(m_strAOIRootPath.GetLength()).CompareNoCase(m_strAOIRootPath) != 0)
+										{
+											strImgPath = m_strAOIRootPath + strImgPath;
+										}
+									}
+
 									theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
 										_T("DFS: [Defect %d] ImagePath=[%s], Code=%s, Grade=%s"),
 										i, strImgPath, vecAOIDefects[i].strDEFECT_CODE, vecAOIDefects[i].strDEFECT_GRADE));
@@ -711,6 +725,51 @@ void CDFSClient::RunDfsUploadThread()
 											{
 												theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
 													_T("DFS: Failed to copy defect image [%s] -> %s"), strImgPath, strDestFile));
+											}
+
+											// 额外拷贝 L255.bmp（白画面/栅格图）和 MarkImg.jpg（缺陷标记图）
+											CString strDir = strImgPath.Left(strImgPath.ReverseFind('\\'));
+											CString strL255Src = strDir + _T("\\L255.bmp");
+											CString strMarkImgSrc = strDir + _T("\\MarkImg.jpg");
+											CString strL255Dest = strAoiImagePath + _T("\\") + strPanelID + _T("_L255.bmp");
+											CString strMarkImgDest = strAoiImagePath + _T("\\") + strPanelID + _T("_MarkImg.jpg");
+
+											if (PathFileExists(strL255Src))
+											{
+												if (CopyFile(strL255Src, strL255Dest, FALSE))
+												{
+													theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+														_T("DFS: Copied L255 image [%s] -> %s"), strL255Src, strL255Dest));
+												}
+												else
+												{
+													theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+														_T("DFS: Failed to copy L255 image [%s] -> %s"), strL255Src, strL255Dest));
+												}
+											}
+											else
+											{
+												theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+													_T("DFS: L255 image not found [%s]"), strL255Src));
+											}
+
+											if (PathFileExists(strMarkImgSrc))
+											{
+												if (CopyFile(strMarkImgSrc, strMarkImgDest, FALSE))
+												{
+													theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+														_T("DFS: Copied MarkImg image [%s] -> %s"), strMarkImgSrc, strMarkImgDest));
+												}
+												else
+												{
+													theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+														_T("DFS: Failed to copy MarkImg image [%s] -> %s"), strMarkImgSrc, strMarkImgDest));
+												}
+											}
+											else
+											{
+												theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+													_T("DFS: MarkImg image not found [%s]"), strMarkImgSrc));
 											}
 										}
 										else

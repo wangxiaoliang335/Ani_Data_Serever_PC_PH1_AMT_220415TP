@@ -12,6 +12,8 @@
 
 using namespace std;
 
+#include "../Util/DataModels.h"
+
 
 struct SDFSHeaderInfo{
 	CString strFile_Ver;
@@ -330,6 +332,12 @@ public:
 
 	BOOL DFSDefectBeginLoad(CString strFileName, CString strTypeName, BOOL bTotalDfs);
 	BOOL DFSDefectBeginLoad_OP(CString strFileName, CString strTypeName, BOOL bTotalDfs);
+
+	BOOL WriteAOICSVFile(const CInspectionResult& inspResult, const CDefectInfoList& defectList, int nFixtureNo, LPCTSTR strFpcID = NULL);
+
+	// 写入 OpvDefectCode INI 文件（格式参考 D:\ANI\OpvDefectCode）
+	// 用于 OPV 复检环节读取 Match/OverKill/UnderKill 统计
+	BOOL WriteOpvDefectCodeINI(LPCTSTR strPanelID, const CDefectInfoList& defectList, int nFixtureNo);
 	
 	BOOL VisionLoadPanelDFSInfo(CString strPanelID, int iMachineNum);
 	BOOL LoadOpvDataInfo(CString strPanel, int iMachineNum);

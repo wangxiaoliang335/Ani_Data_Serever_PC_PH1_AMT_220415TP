@@ -92,6 +92,15 @@
 #define DFS_SHARE_OPVDFS_PATH  _T("\\\\192.168.1.202\\Data\\Share\\")
 #define FS_SHARE_JOBDATA_PATH  _T("D:\\Data\\Share\\JobData\\")
 
+// AOI缺陷图片根路径前缀（用于拼接数据库ImagePath得到完整路径）
+#define DFS_AOI_IMAGE_ROOT_DEFAULT	_T("D:\\MEMS_DFS_Data\\")
+
+// AOI CSV 文件保存路径（DFS本地中转目录）
+#define DFS_AOI_CSV_PATH	_T("D:\\Data\\Share\\")
+
+// AOI 配置文件节名
+#define AOI_INI_SECTION		_T("AOI")
+
 //#define USHORT unsigned short
 #define UINT unsigned int
 

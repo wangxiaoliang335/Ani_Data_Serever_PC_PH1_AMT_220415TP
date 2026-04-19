@@ -509,6 +509,79 @@ void CAni_Data_Serever_PCView::ClickBtnSetngrank3()
 	
 }
 
+//void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strFpcID) //
+//{
+//	CString strFilePath, strShift, strCode, strGrade, strCodeGrade;
+//
+//	// 优先从数据库获取缺陷码
+//	BOOL bGetFromDB = FALSE;
+//	if (GetDBInterface().IsConnected())
+//	{
+//		CString strDBCode, strDBGrade;
+//		if (GetDBInterface().QueryDefectCodeByBarcode(strPanelID, strDBCode, strDBGrade))
+//		{
+//			if (!strDBCode.IsEmpty())
+//			{
+//				m_pTestLog->Info(_T("SetLoadResultCode DB Success: FpcID=%s, Code=%s, Grade=%s"),
+//					strFpcID, strDBCode, strDBGrade);
+//				m_Send_Result_Code_Map.insert(make_pair(strDBCode, strDBGrade));
+//				bGetFromDB = TRUE;
+//			}
+//		}
+//		else
+//		{
+//			m_pTestLog->Info(_T("SetLoadResultCode DB Failed: %s"), GetDBInterface().GetLastError());
+//		}
+//	}
+//
+//	// 如果从数据库获取成功，则直接返回
+//	if (bGetFromDB)
+//	{
+//		return;
+//	}
+//
+//	// 数据库获取失败，fallback到文件读取
+//	m_pTestLog->Info(_T("SetLoadResultCode: Fallback to file read"));
+//
+//	strShift = theApp.m_lastShiftIndex == 0 ? _T("DY") : _T("NT");
+//	strFilePath.Format(_T("%s\\%s\\%s_%s\\%s.ini"), DATA_DEFECT_CODE_PATH, _T("AOI"), theApp.m_strCurrentToday, strShift, strFpcID);
+//	EZIni ini(strFilePath);
+//
+//	std::vector<CString> listOfKeyNames;
+//
+//	ini["AOI"].EnumKeyNames(listOfKeyNames);
+//	for (auto code : listOfKeyNames)
+//	{
+//		strCodeGrade = ini[_T("AOI")][code];
+//		CStringArray responseTokens;
+//		CStringSupport::GetTokenArray(strCodeGrade, _T('^'), responseTokens);
+//
+//		strCode = responseTokens[0];
+//		strCodeGrade = responseTokens[1];
+//
+//		m_Send_Result_Code_Map.insert(make_pair(strCode, strCodeGrade));
+//
+//		responseTokens.RemoveAll();
+//		strCodeGrade = strCode = strGrade = _T("");
+//	}
+//	listOfKeyNames.clear();
+//
+//	ini["Viewing"].EnumKeyNames(listOfKeyNames);
+//	for (auto code : listOfKeyNames)
+//	{
+//		strCodeGrade = ini[_T("Viewing")][code];
+//		CStringArray responseTokens;
+//		CStringSupport::GetTokenArray(strCodeGrade, _T('^'), responseTokens);
+//
+//		strCode = responseTokens[0];
+//		strCodeGrade = responseTokens[1];
+//
+//		m_Send_Result_Code_Map.insert(make_pair(strCode, strCodeGrade));
+//
+//		responseTokens.RemoveAll();
+//		strCodeGrade = strCode = strGrade = _T("");
+//	}
+//}
 
 void CAni_Data_Serever_PCView::SendPlcDefectCode(int iNum, DfsDataValue PanelData, int iType)
 {
@@ -531,7 +604,7 @@ void CAni_Data_Serever_PCView::SendPlcDefectCode(int iNum, DfsDataValue PanelDat
 		else
 		{
 			// 优先从数据库读取，失败则回退到 INI 文件
-			theApp.SetLoadResultCodeFromDB(strPanelID, strFpcID);
+			theApp.SetLoadResultCode(strPanelID, strFpcID);
 			if (theApp.m_Send_Result_Code_Map.empty())
 			{
 				theApp.SetLoadResultCode(strPanelID, strFpcID);

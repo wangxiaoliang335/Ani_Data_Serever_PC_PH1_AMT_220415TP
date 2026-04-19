@@ -1,4 +1,4 @@
-
+﻿
 // Ani_Data_Serever_PCApp.cpp
 //
 
@@ -12,8 +12,12 @@
 #include "Ani_Data_Serever_PCDoc.h"
 #include "Ani_Data_Serever_PCView.h"
 #include "MsgBox.h"
+#include "Util/CLightingDB.h"
 #include <locale.h>
-
+#include <DbgHelp.h>
+#include <Shlwapi.h>
+#pragma comment(lib, "dbghelp.lib")
+#pragma comment(lib, "Shlwapi.lib")
 // ODBC for MySQL Database
 // TLS connection functions are included via AniUtil.h or indirectly
 
@@ -26,53 +30,293 @@
 #include <string>
 #include <vector>
 #include <Windows.h>
+// 全局崩溃捕获器相关变量和函数
+static TCHAR g_szLogDir[MAX_PATH] = { 0 };
+static TCHAR g_szDumpPath[MAX_PATH] = { 0 };
 
-// ==============================================
-// 功能：Unicode 字符串 转 多字节字符串 (ANSI/GBK)
-// 输入：unicode 字符串 (const wchar_t*)
-// 输出：多字节字符串 (std::string，可转 const char*)
-// ==============================================
-std::string UnicodeToMultiByte(const wchar_t* unicodeStr)
+// 获取崩溃日志目录
+CString GetCrashLogDir()
 {
-	// 空值判断
-	if (unicodeStr == nullptr || wcslen(unicodeStr) == 0)
+	if (g_szLogDir[0] == 0)
 	{
-		return "";
+		GetModuleFileName(NULL, g_szLogDir, MAX_PATH);
+		PathRemoveFileSpec(g_szLogDir);
+		PathAppend(g_szLogDir, _T("CrashLogs"));
+		CreateDirectory(g_szLogDir, NULL);
 	}
-
-	// 第一步：计算转换后需要的缓冲区大小
-	int bufferSize = WideCharToMultiByte(
-		CP_ACP,         // 使用系统默认编码（中文就是 GBK）
-		0,
-		unicodeStr,     // 输入 Unicode
-		-1,             // 自动计算长度
-		nullptr,        // 输出缓冲区（null 表示只计算大小）
-		0,
-		nullptr,
-		nullptr
-	);
-
-	if (bufferSize <= 0)
-	{
-		return "";
-	}
-
-	// 第二步：分配内存并执行转换
-	std::vector<char> buffer(bufferSize);
-	WideCharToMultiByte(
-		CP_ACP,
-		0,
-		unicodeStr,
-		-1,
-		buffer.data(),  // 输出缓冲区
-		bufferSize,
-		nullptr,
-		nullptr
-	);
-
-	// 返回 std::string（可以直接当 const char* 使用）
-	return std::string(buffer.data());
+	return CString(g_szLogDir);
 }
+
+// 获取Dump文件保存路径
+CString GetDumpFilePath()
+{
+	if (g_szDumpPath[0] == 0)
+	{
+		GetModuleFileName(NULL, g_szDumpPath, MAX_PATH);
+		PathRemoveFileSpec(g_szDumpPath);
+		PathAppend(g_szDumpPath, _T("CrashLogs"));
+		CreateDirectory(g_szDumpPath, NULL);
+
+		SYSTEMTIME st;
+		GetLocalTime(&st);
+		TCHAR szFileName[MAX_PATH];
+		wsprintf(szFileName, _T("\\Ani_Data_Server_PC_%04d%02d%02d_%02d%02d%02d.dmp"),
+			st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+		lstrcat(g_szDumpPath, szFileName);
+	}
+	return CString(g_szDumpPath);
+}
+
+// 写入崩溃日志
+void WriteCrashLog(LPCTSTR lpTitle, LPCTSTR lpFormat, ...)
+{
+	try
+	{
+		CString strLogDir = GetCrashLogDir();
+		SYSTEMTIME st;
+		GetLocalTime(&st);
+		CString strLogFile;
+		strLogFile.Format(_T("%s\\crash_%04d%02d%02d.log"), strLogDir.GetString(),
+			st.wYear, st.wMonth, st.wDay);
+
+		FILE* pFile = NULL;
+		_tfopen_s(&pFile, strLogFile, _T("a"));
+		if (pFile)
+		{
+			TCHAR szTime[64];
+			wsprintf(szTime, _T("[%04d-%02d-%02d %02d:%02d:%02d.%03d] "),
+				st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+
+			fputws(szTime, pFile);
+			fputws(lpTitle, pFile);
+			fputws(_T("\n"), pFile);
+
+			va_list args;
+			va_start(args, lpFormat);
+			TCHAR szBuffer[4096];
+			_vstprintf_s(szBuffer, lpFormat, args);
+			va_end(args);
+
+			fputws(szBuffer, pFile);
+			fputws(_T("\n\n"), pFile);
+			fclose(pFile);
+		}
+	}
+	catch (...) {}
+}
+
+// 生成MiniDump
+BOOL WriteMiniDump(_EXCEPTION_POINTERS* pExceptionInfo)
+{
+	BOOL bResult = FALSE;
+	HANDLE hDumpFile = NULL;
+
+	try
+	{
+		CString strDumpPath = GetDumpFilePath();
+		hDumpFile = CreateFile(strDumpPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+		if (hDumpFile != INVALID_HANDLE_VALUE)
+		{
+			MINIDUMP_EXCEPTION_INFORMATION ExInfo;
+			ExInfo.ThreadId = GetCurrentThreadId();
+			ExInfo.ExceptionPointers = pExceptionInfo;
+			ExInfo.ClientPointers = FALSE;
+
+			MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), hDumpFile,
+				MiniDumpWithFullMemory, &ExInfo, NULL, NULL);
+			bResult = TRUE;
+		}
+	}
+	catch (...) {}
+	
+	if (hDumpFile)
+		CloseHandle(hDumpFile);
+
+	return bResult;
+}
+
+// 获取异常描述
+CString GetExceptionDescription(_EXCEPTION_POINTERS* pExceptionInfo)
+{
+	CString strDesc;
+	if (!pExceptionInfo)
+		return strDesc;
+
+	EXCEPTION_RECORD* pExceptionRecord = pExceptionInfo->ExceptionRecord;
+	if (pExceptionRecord)
+	{
+		DWORD dwExceptionCode = pExceptionRecord->ExceptionCode;
+		CString strCode;
+		strCode.Format(_T("异常代码: 0x%08X"), dwExceptionCode);
+		strDesc += strCode + _T("\n");
+
+		switch (dwExceptionCode)
+		{
+		case EXCEPTION_ACCESS_VIOLATION:
+			strDesc += _T("类型: 访问违规\n");
+			if (pExceptionRecord->NumberParameters >= 2)
+			{
+				CString strTemp;
+				strTemp.Format(_T("尝试%s地址: 0x%p\n"),
+					pExceptionRecord->ExceptionInformation[0] ? _T("写入") : _T("读取"),
+					(PVOID)pExceptionRecord->ExceptionInformation[1]);
+				strDesc += strTemp;
+			}
+			break;
+		case EXCEPTION_STACK_OVERFLOW:
+			strDesc += _T("类型: 栈溢出\n"); break;
+		case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
+			strDesc += _T("类型: 数组越界\n"); break;
+		case EXCEPTION_DATATYPE_MISALIGNMENT:
+			strDesc += _T("类型: 数据对齐错误\n"); break;
+		case EXCEPTION_FLT_DIVIDE_BY_ZERO:
+		case EXCEPTION_INT_DIVIDE_BY_ZERO:
+			strDesc += _T("类型: 除零错误\n"); break;
+		case EXCEPTION_BREAKPOINT:
+			strDesc += _T("类型: 断点命中\n"); break;
+		case EXCEPTION_SINGLE_STEP:
+			strDesc += _T("类型: 单步执行\n"); break;
+		case EXCEPTION_GUARD_PAGE:
+			strDesc += _T("类型: 保护页面\n"); break;
+		case EXCEPTION_INVALID_HANDLE:
+			strDesc += _T("类型: 无效句柄\n"); break;
+		case 0xC0000194:  // EXCEPTION_POSSIBLE_DEADLOCK
+			strDesc += _T("类型: 可能死锁\n"); break;
+		case STATUS_HEAP_CORRUPTION:
+			strDesc += _T("类型: 堆损坏\n"); break;
+		case STATUS_STACK_BUFFER_OVERRUN:
+			strDesc += _T("类型: 栈缓冲区溢出\n"); break;
+		default:
+		{
+			CString strTemp;
+			strTemp.Format(_T("类型: 未知异常 (0x%08X)\n"), dwExceptionCode);
+			strDesc += strTemp;
+		}
+		break;
+		}
+	}
+
+	return strDesc;
+}
+
+// 获取调用栈信息
+void GetStackTrace(CString& strStack, _EXCEPTION_POINTERS* pExceptionInfo)
+{
+	strStack.Empty();
+
+	HANDLE hProcess = GetCurrentProcess();
+	HANDLE hThread = GetCurrentThread();
+
+	CONTEXT Context;
+	if (!pExceptionInfo)
+	{
+		RtlCaptureContext(&Context);
+	}
+	else
+	{
+		Context = *(pExceptionInfo->ContextRecord);
+	}
+
+	STACKFRAME64 StackFrame;
+	memset(&StackFrame, 0, sizeof(StackFrame));
+
+#ifdef _M_IX86
+	DWORD MachineType = IMAGE_FILE_MACHINE_I386;
+	StackFrame.AddrPC.Offset = Context.Eip;
+	StackFrame.AddrStack.Offset = Context.Esp;
+	StackFrame.AddrFrame.Offset = Context.Ebp;
+#elif defined(_M_AMD64)
+	DWORD MachineType = IMAGE_FILE_MACHINE_AMD64;
+	StackFrame.AddrPC.Offset = Context.Rip;
+	StackFrame.AddrStack.Offset = Context.Rsp;
+	StackFrame.AddrFrame.Offset = Context.Rbp;
+#elif defined(_M_ARM64)
+	DWORD MachineType = IMAGE_FILE_MACHINE_ARM64;
+	StackFrame.AddrPC.Offset = Context.Pc;
+	StackFrame.AddrStack.Offset = Context.Sp;
+	StackFrame.AddrFrame.Offset = Context.Fp;
+#else
+	DWORD MachineType = IMAGE_FILE_MACHINE_UNKNOWN;
+#endif
+
+	StackFrame.AddrPC.Mode = AddrModeFlat;
+	StackFrame.AddrStack.Mode = AddrModeFlat;
+	StackFrame.AddrFrame.Mode = AddrModeFlat;
+
+	strStack.Format(_T("调用栈:\n"));
+
+	for (int i = 0; i < 32; i++)
+	{
+		if (!StackWalk64(MachineType, hProcess, hThread, &StackFrame, &Context, NULL,
+			SymFunctionTableAccess64, SymGetModuleBase64, NULL))
+			break;
+
+		if (StackFrame.AddrPC.Offset == 0)
+			break;
+
+		CString strLine;
+		strLine.Format(_T("  #%02d PC: 0x%08p"), i, (PVOID)StackFrame.AddrPC.Offset);
+
+		// 获取符号信息
+		BYTE symbolBuffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME * sizeof(TCHAR)];
+		SYMBOL_INFO* pSymbol = (SYMBOL_INFO*)symbolBuffer;
+		memset(pSymbol, 0, sizeof(symbolBuffer));
+		pSymbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+		pSymbol->MaxNameLen = MAX_SYM_NAME;
+
+		if (SymFromAddr(hProcess, StackFrame.AddrPC.Offset, NULL, pSymbol))
+		{
+			strLine.AppendFormat(_T("  %s"), CString(pSymbol->Name));
+		}
+
+		strStack += strLine + _T("\n");
+	}
+}
+
+// 崩溃处理回调函数
+LONG WINAPI CrashHandler(_EXCEPTION_POINTERS* pExceptionInfo)
+{
+	// 生成MiniDump
+	BOOL bDumpCreated = WriteMiniDump(pExceptionInfo);
+
+	// 获取异常信息
+	CString strException = GetExceptionDescription(pExceptionInfo);
+
+	// 获取调用栈
+	CString strStack;
+	GetStackTrace(strStack, pExceptionInfo);
+
+	// 写入日志
+	WriteCrashLog(_T("=== 程序崩溃报告 ==="),
+		_T("%s\n%s\nMiniDump: %s"),
+		strException.GetString(), strStack.GetString(),
+		bDumpCreated ? _T("已生成") : _T("生成失败"));
+
+	// 显示崩溃对话框
+	CString strMsg;
+	strMsg.Format(_T("程序发生崩溃!\n\n%s\n\n调用栈已保存到日志文件。\n请将日志文件发送给开发人员分析。"),
+		strException.GetString());
+
+	MessageBox(NULL, strMsg, _T("崩溃报告"), MB_OK | MB_ICONERROR | MB_TOPMOST);
+
+	return EXCEPTION_EXECUTE_HANDLER;
+}
+
+// 初始化崩溃捕获器
+void InitCrashHandler()
+{
+	// 初始化符号系统
+	SymInitialize(GetCurrentProcess(), NULL, TRUE);
+
+	// 设置全局异常处理
+	SetUnhandledExceptionFilter(CrashHandler);
+
+	WriteCrashLog(_T("=== 崩溃捕获器初始化 ==="),
+		_T("崩溃捕获器已成功初始化，系统将自动捕获未处理的异常。"));
+}
+
+
 
 BEGIN_MESSAGE_MAP(CAni_Data_Serever_PCApp, CWinApp)
 	ON_COMMAND(ID_APP_ABOUT, &CAni_Data_Serever_PCApp::OnAppAbout)
@@ -83,7 +327,7 @@ END_MESSAGE_MAP()
 
 // CAni_Data_Serever_PCApp
 
-CAni_Data_Serever_PCApp::CAni_Data_Serever_PCApp() :m_pEqIf(NULL), m_pComView(NULL), m_lastShiftIndex(99), m_bLightingCycleInProgress(FALSE), m_bLightingRunning(FALSE), m_bLightingSnapDone(FALSE), m_dwLightingStartTick(0), m_dwLightingTimeoutMs(60000), m_bLightingDBConnected(FALSE)
+CAni_Data_Serever_PCApp::CAni_Data_Serever_PCApp() :m_pEqIf(NULL), m_pComView(NULL), m_lastShiftIndex(99), m_bLightingCycleInProgress(FALSE), m_dwLightingStartTick(0), m_dwLightingTimeoutMs(60000), m_bLightingDBConnected(FALSE)
 {
 	m_dwRestartManagerSupportFlags = AFX_RESTART_MANAGER_SUPPORT_ALL_ASPECTS;
 
@@ -122,36 +366,13 @@ CAni_Data_Serever_PCApp::CAni_Data_Serever_PCApp() :m_pEqIf(NULL), m_pComView(NU
 
 CAni_Data_Serever_PCApp theApp;
 
-// ODBC Infrastructure Functions
-void PrintOdbcError(SQLHANDLE handle, SQLSMALLINT type) {
-	DWORD threadId = GetCurrentThreadId();
-	SQLCHAR sqlState[6];
-	SQLCHAR message[SQL_MAX_MESSAGE_LENGTH];
-	SQLINTEGER nativeError;
-	SQLSMALLINT length;
 
-	CString strHeader;
-	strHeader.Format(_T("[DBG] PrintOdbcError: ThreadID=%lu, HandleType=%d"), threadId, type);
-	OutputDebugString(strHeader + _T("\n"));
-	
-	SQLRETURN ret = SQLGetDiagRecA(type, handle, 1, sqlState, &nativeError, message, sizeof(message), &length);
-	if (SQL_SUCCEEDED(ret)) {
-		CString strErr;
-		CString strMessage = CA2T((char*)message);
-		CString strSqlState = CA2T((char*)sqlState);
-		strErr.Format(_T("ODBC Error: %s (SQL State: %s, Native Error: %d)"), strMessage, strSqlState, nativeError);
-		theApp.m_pLightingLog->LOG_INFO(strErr);
-		OutputDebugString(strHeader + _T(", Error: ") + strErr + _T("\n"));
-	} else {
-		theApp.m_pLightingLog->LOG_INFO(_T("ODBC Error: Failed to get error information"));
-		OutputDebugString(strHeader + _T(", Failed to get error info\n"));
-	}
-}
 
 // CAni_Data_Serever_PCApp
 
 BOOL CAni_Data_Serever_PCApp::InitInstance()
 {
+	InitCrashHandler();
 	INITCOMMONCONTROLSEX InitCtrls;
 	InitCtrls.dwSize = sizeof(InitCtrls);
 	InitCtrls.dwICC = ICC_WIN95_CLASSES;
@@ -375,11 +596,17 @@ BOOL CAni_Data_Serever_PCApp::InitInstance()
 	theApp.m_pLightingLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
 
 	// 初始化 Lighting 数据库连接
-	InitLightingDatabase();
+	CLightingDB::SetAppPtr(this);
+	InitLightingDatabase();  // 读取配置到 m_strLightingDB*
+	CLightingDB::Get().Connect();  // 建立连接
 
 	strPath.Format(_T("%sLightingSendReceiverLog.log"), LOG_LIGHTING_SEND_RECEIVER_PATH);
 	m_pLightingSendReceiverLog = new CLogger(_T("LightingSendReceiverLog"), strPath, FALSE);
 	theApp.m_pLightingSendReceiverLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+
+	strPath.Format(_T("%sTestLog.log"), LOG_PATH);
+	m_pTestLog = new CLogger(_T("TestLog"), strPath, FALSE);
+	theApp.m_pTestLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
 #endif
 
 	CCommandLineInfo cmdInfo;
@@ -598,432 +825,15 @@ int CAni_Data_Serever_PCApp::ExitInstance()
 		delete m_pMsgBoxAlarm;
 
 	// 关闭 Lighting 数据库连接
-	CloseLightingDatabase();
+	CLightingDB::Get().Close();
 
 	return CWinApp::ExitInstance();
 }
 
-LightingInspectionResult CAni_Data_Serever_PCApp::QueryInspectionResult(CString uniqueID)
-{
-	// 获取当前线程ID
-	DWORD threadId = GetCurrentThreadId();
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[DBG] QueryInspectionResult ENTER: ThreadID=%lu, uniqueID=%s"),
-		threadId, uniqueID));
 
-	// 优先使用线程局部连接（TLS），避免多线程共享连接
-	SQLHDBC pUseConn = SQL_NULL_HANDLE;
-	
-	// 尝试获取线程局部连接
-	if (IsTlsLightingDBConnected())
-	{
-		pUseConn = GetTlsLightingConnPtr();
-		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResult: Using TLS connection"));
-	}
-	else
-	{
-		// 如果线程局部连接未连接，尝试创建线程局部连接
-		if (GetTlsLightingConnection(
-			theApp.m_strLightingDBServer,
-			theApp.m_strLightingDBName,
-			theApp.m_strLightingDBUser,
-			theApp.m_strLightingDBPassword,
-			theApp.m_pLightingLog))
-		{
-			pUseConn = GetTlsLightingConnPtr();
-			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResult: TLS connection created successfully"));
-		}
-		else
-		{
-			// 线程局部连接创建失败，再次尝试创建TLS连接
-			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResult: TLS connection failed, retrying TLS connection"));
-			if (!GetTlsLightingConnection(
-				theApp.m_strLightingDBServer,
-				theApp.m_strLightingDBName,
-				theApp.m_strLightingDBUser,
-				theApp.m_strLightingDBPassword,
-				theApp.m_pLightingLog))
-			{
-				theApp.m_pLightingLog->LOG_INFO(_T("QueryInspectionResult: Failed to create TLS connection"));
-				LightingInspectionResult result;
-				result.m_bValid = FALSE;
-				return result;
-			}
-			pUseConn = GetTlsLightingConnPtr();
-			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResult: TLS connection created successfully"));
-		}
-	}
 
-	if (pUseConn == SQL_NULL_HANDLE)
-	{
-		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResult: No valid connection available"));
-		LightingInspectionResult result;
-		result.m_bValid = FALSE;
-		return result;
-	}
 
-	// 调用线程安全版本
-	return QueryInspectionResultThreadSafe(uniqueID, pUseConn);
-}
-
-// 线程安全的数据库查询版本（使用传入的连接）
-LightingInspectionResult CAni_Data_Serever_PCApp::QueryInspectionResultThreadSafe(CString uniqueID, SQLHDBC pConn)
-{
-	LightingInspectionResult result;
-	result.m_bValid = FALSE;
-
-	// 获取当前线程ID
-	DWORD threadId = GetCurrentThreadId();
-	OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryInspectionResultThreadSafe: ThreadID=%lu, uniqueID=%s, pConn=%p\n"), threadId, uniqueID, pConn));
-
-	// 优先使用线程局部连接（TLS），避免多线程共享连接
-	SQLHDBC pUseConn = pConn;
-	
-	// 如果传入了连接，优先使用传入的连接
-	if (pUseConn != SQL_NULL_HANDLE)
-	{
-		OutputDebugString(_T("[DBG] QueryInspectionResultThreadSafe: Using provided connection pConn\n"));
-	}
-	else
-	{
-		// 尝试获取线程局部连接
-		if (IsTlsLightingDBConnected())
-		{
-			pUseConn = GetTlsLightingConnPtr();
-			OutputDebugString(_T("[DBG] QueryInspectionResultThreadSafe: Using TLS connection\n"));
-		}
-		else
-		{
-			// 如果线程局部连接未连接，尝试创建线程局部连接
-			if (GetTlsLightingConnection(
-				theApp.m_strLightingDBServer,
-				theApp.m_strLightingDBName,
-				theApp.m_strLightingDBUser,
-				theApp.m_strLightingDBPassword,
-				theApp.m_pLightingLog))
-			{
-				pUseConn = GetTlsLightingConnPtr();
-				OutputDebugString(_T("[DBG] QueryInspectionResultThreadSafe: TLS connection created successfully\n"));
-			}
-			else
-			{
-				// 线程局部连接创建失败，再次尝试创建TLS连接
-				OutputDebugString(_T("[DBG] QueryInspectionResultThreadSafe: TLS connection failed, retrying TLS connection\n"));
-				if (!GetTlsLightingConnection(
-					theApp.m_strLightingDBServer,
-					theApp.m_strLightingDBName,
-					theApp.m_strLightingDBUser,
-					theApp.m_strLightingDBPassword,
-					theApp.m_pLightingLog))
-				{
-					OutputDebugString(_T("[DBG] QueryInspectionResultThreadSafe: TLS connection FAILED\n"));
-					theApp.m_pLightingLog->LOG_INFO(_T("QueryInspectionResultThreadSafe: Failed to create TLS connection"));
-					return result;
-				}
-				pUseConn = GetTlsLightingConnPtr();
-				OutputDebugString(_T("[DBG] QueryInspectionResultThreadSafe: TLS connection SUCCESS\n"));
-			}
-		}
-	}
-
-	if (pUseConn == SQL_NULL_HANDLE)
-	{
-		OutputDebugString(_T("[DBG] QueryInspectionResultThreadSafe: No valid connection available\n"));
-		theApp.m_pLightingLog->LOG_INFO(_T("QueryInspectionResultThreadSafe: No valid connection available"));
-		return result;
-	}
-
-	BOOL bRetry = FALSE;
-	try {
-		SQLHSTMT stmt = SQL_NULL_HANDLE;
-		SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
-		if (!SQL_SUCCEEDED(ret)) {
-			PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
-			throw 1;
-		}
-
-		CString strSQL;
-		strSQL.Format(_T("SELECT GUID, ScreenID, AOIResult, Code_AOI, Grade_AOI, StartTime, StopTime FROM ivs_lcd_inspectionresult WHERE UniqueID = '%s'"), uniqueID);
-
-		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-			_T("QueryInspectionResultThreadSafe: SQL=%s"), strSQL));
-
-		ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
-		if (SQL_SUCCEEDED(ret)) {
-			ret = SQLFetch(stmt);
-			if (SQL_SUCCEEDED(ret)) {
-				SQLCHAR guidBuf[101], screenIDBuf[101], aoiResultBuf[51], codeAOIBuf[51], gradeAOIBuf[51], startTimeBuf[51], stopTimeBuf[51];
-				SQLLEN lenGUID, lenScreenID, lenAOIResult, lenCodeAOI, lenGradeAOI, lenStartTime, lenStopTime;
-
-				SQLGetData(stmt, 1, SQL_C_CHAR, guidBuf, sizeof(guidBuf), &lenGUID);
-				SQLGetData(stmt, 2, SQL_C_CHAR, screenIDBuf, sizeof(screenIDBuf), &lenScreenID);
-				SQLGetData(stmt, 3, SQL_C_CHAR, aoiResultBuf, sizeof(aoiResultBuf), &lenAOIResult);
-				SQLGetData(stmt, 4, SQL_C_CHAR, codeAOIBuf, sizeof(codeAOIBuf), &lenCodeAOI);
-				SQLGetData(stmt, 5, SQL_C_CHAR, gradeAOIBuf, sizeof(gradeAOIBuf), &lenGradeAOI);
-				SQLGetData(stmt, 6, SQL_C_CHAR, startTimeBuf, sizeof(startTimeBuf), &lenStartTime);
-				SQLGetData(stmt, 7, SQL_C_CHAR, stopTimeBuf, sizeof(stopTimeBuf), &lenStopTime);
-
-				result.m_strGUID = (char*)guidBuf;
-				result.m_strScreenID = (char*)screenIDBuf;
-				result.m_strUniqueID = uniqueID;
-				result.m_strAOIResult = (char*)aoiResultBuf;
-				result.m_strCodeAOI = (char*)codeAOIBuf;
-				result.m_strGradeAOI = (char*)gradeAOIBuf;
-				result.m_strStartTime = (char*)startTimeBuf;
-				result.m_strStopTime = (char*)stopTimeBuf;
-				result.m_bValid = TRUE;
-
-				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-					_T("QueryInspectionResultThreadSafe: Found result for UniqueID=%s")
-					_T("\n  GUID=%s, ScreenID=%s, AOIResult=%s, Code_AOI=%s, Grade_AOI=%s")
-					_T("\n  StartTime=%s, StopTime=%s"),
-					uniqueID,
-					result.m_strGUID,
-					result.m_strScreenID,
-					result.m_strAOIResult,
-					result.m_strCodeAOI,
-					result.m_strGradeAOI,
-					result.m_strStartTime,
-					result.m_strStopTime));
-
-				CString temp;
-
-				// 同时输出到 Output 窗口确认
-				temp.Format(_T("[DBG] QueryInspectionResult: UniqueID=%s, AOIResult=%s, Code=%s, Grade=%s\n"),
-					uniqueID, result.m_strAOIResult, result.m_strCodeAOI, result.m_strGradeAOI);
-				OutputDebugString(temp);
-			}
-			else
-			{
-				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-					_T("QueryInspectionResultThreadSafe: No result found for UniqueID=%s"), uniqueID));
-			}
-		} else {
-			PrintOdbcError(stmt, SQL_HANDLE_STMT);
-			throw 1;
-		}
-		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-	}
-	catch (...) {
-		bRetry = TRUE;
-		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResultThreadSafe: SQL error, retrying..."));
-	}
-
-	if (bRetry) {
-		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResultThreadSafe: Starting retry logic..."));
-		
-		// 使用线程局部连接进行重试，避免影响全局连接
-		if (!IsTlsLightingDBConnected())
-		{
-			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResultThreadSafe: TLS connection not connected, trying to reconnect..."));
-			if (!GetTlsLightingConnection(
-				theApp.m_strLightingDBServer,
-				theApp.m_strLightingDBName,
-				theApp.m_strLightingDBUser,
-				theApp.m_strLightingDBPassword,
-				theApp.m_pLightingLog))
-			{
-				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResultThreadSafe: TLS reconnection failed"));
-				return result;
-			}
-			pUseConn = GetTlsLightingConnPtr();
-			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryInspectionResultThreadSafe: TLS reconnected successfully"));
-		}
-		
-		try {
-			SQLHSTMT stmt = SQL_NULL_HANDLE;
-			SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
-			if (!SQL_SUCCEEDED(ret)) {
-				PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
-				return result;
-			}
-
-			CString strSQL;
-			strSQL.Format(_T("SELECT GUID, ScreenID, AOIResult, Code_AOI, Grade_AOI, StartTime, StopTime FROM ivs_lcd_inspectionresult WHERE UniqueID = '%s'"), uniqueID);
-
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-				_T("QueryInspectionResultThreadSafe Retry: SQL=%s"), strSQL));
-
-			ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
-			if (SQL_SUCCEEDED(ret)) {
-				ret = SQLFetch(stmt);
-				if (SQL_SUCCEEDED(ret)) {
-					SQLCHAR guidBuf[101], screenIDBuf[101], aoiResultBuf[51], codeAOIBuf[51], gradeAOIBuf[51], startTimeBuf[51], stopTimeBuf[51];
-					SQLLEN lenGUID, lenScreenID, lenAOIResult, lenCodeAOI, lenGradeAOI, lenStartTime, lenStopTime;
-
-					SQLGetData(stmt, 1, SQL_C_CHAR, guidBuf, sizeof(guidBuf), &lenGUID);
-					SQLGetData(stmt, 2, SQL_C_CHAR, screenIDBuf, sizeof(screenIDBuf), &lenScreenID);
-					SQLGetData(stmt, 3, SQL_C_CHAR, aoiResultBuf, sizeof(aoiResultBuf), &lenAOIResult);
-					SQLGetData(stmt, 4, SQL_C_CHAR, codeAOIBuf, sizeof(codeAOIBuf), &lenCodeAOI);
-					SQLGetData(stmt, 5, SQL_C_CHAR, gradeAOIBuf, sizeof(gradeAOIBuf), &lenGradeAOI);
-					SQLGetData(stmt, 6, SQL_C_CHAR, startTimeBuf, sizeof(startTimeBuf), &lenStartTime);
-					SQLGetData(stmt, 7, SQL_C_CHAR, stopTimeBuf, sizeof(stopTimeBuf), &lenStopTime);
-
-					result.m_strGUID = (char*)guidBuf;
-					result.m_strScreenID = (char*)screenIDBuf;
-					result.m_strUniqueID = uniqueID;
-					result.m_strAOIResult = (char*)aoiResultBuf;
-					result.m_strCodeAOI = (char*)codeAOIBuf;
-					result.m_strGradeAOI = (char*)gradeAOIBuf;
-					result.m_strStartTime = (char*)startTimeBuf;
-					result.m_strStopTime = (char*)stopTimeBuf;
-					result.m_bValid = TRUE;
-
-					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-						_T("QueryInspectionResultThreadSafe Retry: Found result for UniqueID=%s")
-						_T("\n  GUID=%s, ScreenID=%s, AOIResult=%s, Code_AOI=%s, Grade_AOI=%s")
-						_T("\n  StartTime=%s, StopTime=%s"),
-						uniqueID,
-						result.m_strGUID,
-						result.m_strScreenID,
-						result.m_strAOIResult,
-						result.m_strCodeAOI,
-						result.m_strGradeAOI,
-						result.m_strStartTime,
-						result.m_strStopTime));
-				}
-				else
-				{
-					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-						_T("QueryInspectionResultThreadSafe Retry: No result found for UniqueID=%s"), uniqueID));
-				}
-			} else {
-				PrintOdbcError(stmt, SQL_HANDLE_STMT);
-			}
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-		}
-		catch (...) {
-			CString strErr;
-			strErr.Format(_T("[DBG] QueryInspectionResultThreadSafe Retry unknown EXCEPTION: uniqueID=%s"), uniqueID);
-			theApp.m_pLightingLog->LOG_INFO(strErr);
-			OutputDebugString(strErr + _T("\n"));
-			result.m_bValid = FALSE;
-		}
-	}
-
-	return result;
-}
-
-// 线程安全的 ID 映射查询（使用传入的连接）
-BOOL CAni_Data_Serever_PCApp::QueryIdMapByFixtureNoThreadSafe(int fixtureNo, CString& uniqueID, CString& screenID, CString& markID, SQLHDBC pConn)
-{
-	// 获取当前线程ID
-	DWORD threadId = GetCurrentThreadId();
-	OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryIdMapByFixtureNoThreadSafe: ThreadID=%lu, fixtureNo=%d, pConn=%p\n"), threadId, fixtureNo, pConn));
-
-	// 优先使用线程局部连接（TLS），避免多线程共享连接
-	SQLHDBC pUseConn = pConn;
-	
-	// 如果传入了连接，优先使用传入的连接
-	if (pUseConn != SQL_NULL_HANDLE)
-	{
-		OutputDebugString(_T("[DBG] QueryIdMapByFixtureNoThreadSafe: Using provided connection pConn\n"));
-	}
-	else
-	{
-		// 尝试获取线程局部连接
-		if (IsTlsLightingDBConnected())
-		{
-			pUseConn = GetTlsLightingConnPtr();
-			OutputDebugString(_T("[DBG] QueryIdMapByFixtureNoThreadSafe: Using TLS connection\n"));
-		}
-		else
-		{
-			// 如果线程局部连接未连接，尝试创建线程局部连接
-			OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryIdMapByFixtureNoThreadSafe: Trying to create TLS connection...\n")));
-			OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryIdMapByFixtureNoThreadSafe: Server=%s, DB=%s, User=%s\n"), 
-				theApp.m_strLightingDBServer, theApp.m_strLightingDBName, theApp.m_strLightingDBUser));
-			if (GetTlsLightingConnection(
-				theApp.m_strLightingDBServer,
-				theApp.m_strLightingDBName,
-				theApp.m_strLightingDBUser,
-				theApp.m_strLightingDBPassword,
-				theApp.m_pLightingLog))
-			{
-				pUseConn = GetTlsLightingConnPtr();
-				OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryIdMapByFixtureNoThreadSafe: TLS connection created successfully, pUseConn=%p\n"), pUseConn));
-			}
-			else
-			{
-				OutputDebugString(_T("[DBG] QueryIdMapByFixtureNoThreadSafe: TLS connection creation FAILED\n"));
-				// 线程局部连接创建失败，使用全局连接作为后备
-				OutputDebugString(_T("[DBG] QueryIdMapByFixtureNoThreadSafe: TLS connection failed, using global connection\n"));
-				if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
-				{
-					OutputDebugString(_T("[DBG] QueryIdMapByFixtureNoThreadSafe: DB not connected, trying to connect...\n"));
-					if (!ConnectLightingDatabase())
-					{
-						OutputDebugString(_T("[DBG] QueryIdMapByFixtureNoThreadSafe: ConnectLightingDatabase FAILED\n"));
-						return FALSE;
-					}
-					OutputDebugString(_T("[DBG] QueryIdMapByFixtureNoThreadSafe: ConnectLightingDatabase SUCCESS\n"));
-				}
-				pUseConn = theApp.m_pLightingConn;
-			}
-		}
-	}
-
-	if (pUseConn == SQL_NULL_HANDLE)
-	{
-		OutputDebugString(_T("[DBG] QueryIdMapByFixtureNoThreadSafe: No valid connection available\n"));
-		return FALSE;
-	}
-
-	BOOL bResult = FALSE;
-
-	try {
-		SQLHSTMT stmt = SQL_NULL_HANDLE;
-		SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
-		if (!SQL_SUCCEEDED(ret)) {
-			PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
-			return FALSE;
-		}
-
-		CString strSQL;
-		strSQL.Format(_T("SELECT UniqueID, Barcode, MainAoiFixID FROM ivs_lcd_idmap WHERE MainAoiFixID = '%d'"), fixtureNo);
-
-		OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryIdMapByFixtureNoThreadSafe: SQL=%s\n"), strSQL.GetBuffer()));
-		strSQL.ReleaseBuffer();
-
-		ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
-		if (SQL_SUCCEEDED(ret)) {
-			ret = SQLFetch(stmt);
-			if (SQL_SUCCEEDED(ret)) {
-				SQLCHAR uniqueIDBuf[101], screenIDBuf[101];
-				SQLLEN lenUniqueID, lenScreenID;
-				int mainAoiFixID = 0;
-
-				SQLGetData(stmt, 1, SQL_C_CHAR, uniqueIDBuf, sizeof(uniqueIDBuf), &lenUniqueID);
-				SQLGetData(stmt, 2, SQL_C_CHAR, screenIDBuf, sizeof(screenIDBuf), &lenScreenID);
-				SQLGetData(stmt, 3, SQL_C_SLONG, &mainAoiFixID, 0, NULL);
-
-				uniqueID = (char*)uniqueIDBuf;
-				screenID = (char*)screenIDBuf;
-				markID.Format(_T("%02d"), mainAoiFixID);
-
-				OutputDebugString(CStringSupport::FormatString(
-					_T("[DBG] QueryIdMapByFixtureNoThreadSafe: FixtureNo=%d, UniqueID=%s, ScreenID=%s, MarkID=%s\n"),
-					fixtureNo, uniqueID, screenID, markID));
-
-				bResult = TRUE;
-			} else {
-				OutputDebugString(CStringSupport::FormatString(
-					_T("[DBG] QueryIdMapByFixtureNoThreadSafe: No record found for FixtureNo=%d\n"), fixtureNo));
-			}
-		} else {
-			PrintOdbcError(stmt, SQL_HANDLE_STMT);
-		}
-		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-	}
-	catch (...) {
-		OutputDebugString(CStringSupport::FormatString(
-			_T("[DBG] QueryIdMapByFixtureNoThreadSafe unknown EXCEPTION: fixtureNo=%d\n"), fixtureNo));
-		bResult = FALSE;
-	}
-
-	return bResult;
-}
-
+// MySQL 数据库初始化
 void CAni_Data_Serever_PCApp::MakeDefaultDir()
 {
 	CString strPath;
@@ -1503,6 +1313,37 @@ void CAni_Data_Serever_PCApp::SetSaveResultCode(CString strPanelID, CString strF
 void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strFpcID)
 {
 	CString strFilePath, strShift, strCode, strGrade, strCodeGrade;
+
+	// 优先从数据库获取缺陷码
+	BOOL bGetFromDB = FALSE;
+	if (GetDBInterface().IsConnected())
+	{
+		CString strDBCode, strDBGrade;
+		if (GetDBInterface().QueryDefectCodeByBarcode(strPanelID, strDBCode, strDBGrade))
+		{
+			if (!strDBCode.IsEmpty())
+			{
+				m_pTestLog->Info(_T("SetLoadResultCode DB Success: FpcID=%s, Code=%s, Grade=%s"),
+					strFpcID, strDBCode, strDBGrade);
+				m_Send_Result_Code_Map.insert(make_pair(strDBCode, strDBGrade));
+				bGetFromDB = TRUE;
+			}
+		}
+		else
+		{
+			m_pTestLog->Info(_T("SetLoadResultCode DB Failed: %s"), GetDBInterface().GetLastError());
+		}
+	}
+
+	// 如果从数据库获取成功，则直接返回
+	if (bGetFromDB)
+	{
+		return;
+	}
+
+	// 数据库获取失败，fallback到文件读取
+	m_pTestLog->Info(_T("SetLoadResultCode: Fallback to file read"));
+
 	strShift = theApp.m_lastShiftIndex == 0 ? _T("DY") : _T("NT");
 	strFilePath.Format(_T("%s\\%s\\%s_%s\\%s.ini"), DATA_DEFECT_CODE_PATH, _T("AOI"), theApp.m_strCurrentToday, strShift, strFpcID);
 	EZIni ini(strFilePath);
@@ -1543,162 +1384,93 @@ void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strF
 	}
 }
 
-// 从数据库读取缺陷代码（AOI/Viewing）
-void CAni_Data_Serever_PCApp::SetLoadResultCodeFromDB(CString strPanelID, CString strFpcID)
-{
-	// 获取当前线程ID
-	DWORD threadId = GetCurrentThreadId();
-	theApp.m_pTraceLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[DBG] SetLoadResultCodeFromDB ENTER: ThreadID=%lu, PanelID=%s"),
-		threadId, strPanelID));
 
-	m_Send_Result_Code_Map.clear();
-
-	// 优先使用线程局部连接（TLS），避免多线程共享连接
-	SQLHDBC pUseConn = SQL_NULL_HANDLE;
-	
-	// 尝试获取线程局部连接
-	if (IsTlsLightingDBConnected())
-	{
-		pUseConn = GetTlsLightingConnPtr();
-		theApp.m_pTraceLog->LOG_INFO(_T("[DBG] SetLoadResultCodeFromDB: Using TLS connection"));
-	}
-	else
-	{
-		// 如果线程局部连接未连接，尝试创建线程局部连接
-		if (GetTlsLightingConnection(
-			theApp.m_strLightingDBServer,
-			theApp.m_strLightingDBName,
-			theApp.m_strLightingDBUser,
-			theApp.m_strLightingDBPassword,
-			theApp.m_pLightingLog))
-		{
-			pUseConn = GetTlsLightingConnPtr();
-			theApp.m_pTraceLog->LOG_INFO(_T("[DBG] SetLoadResultCodeFromDB: TLS connection created successfully"));
-		}
-		else
-		{
-			// 线程局部连接创建失败，使用全局连接作为后备
-			theApp.m_pTraceLog->LOG_INFO(_T("[DBG] SetLoadResultCodeFromDB: TLS connection failed, using global connection"));
-			if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
-			{
-				theApp.m_pTraceLog->LOG_INFO(_T("[DBG] SetLoadResultCodeFromDB: DB not connected, trying to connect..."));
-				if (!ConnectLightingDatabase())
-				{
-					theApp.m_pTraceLog->LOG_INFO(CStringSupport::FormatString(
-						_T("SetLoadResultCodeFromDB: Database connection failed")));
-					return;
-				}
-				theApp.m_pTraceLog->LOG_INFO(_T("[DBG] SetLoadResultCodeFromDB: Database connected successfully"));
-			}
-			pUseConn = theApp.m_pLightingConn;
-		}
-	}
-
-	if (pUseConn == SQL_NULL_HANDLE)
-	{
-		theApp.m_pTraceLog->LOG_INFO(_T("[DBG] SetLoadResultCodeFromDB: No valid connection available"));
-		return;
-	}
-
-	// 1. 根据 PanelID/Barcode 获取 UniqueID
-	CString strUniqueID;
-	SQLHSTMT stmt = SQL_NULL_HANDLE;
-	SQLRETURN ret;
-
-	try {
-		ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
-		if (!SQL_SUCCEEDED(ret)) {
-			PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
-			return;
-		}
-
-		CString strSQL;
-		strSQL.Format(_T("SELECT UniqueID FROM ivs_lcd_idmap WHERE Barcode = '%s' OR MarkID = '%s'"), 
-			strPanelID, strPanelID);
-
-		ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
-		if (SQL_SUCCEEDED(ret)) {
-			ret = SQLFetch(stmt);
-			if (SQL_SUCCEEDED(ret)) {
-				SQLCHAR uniqueIDBuf[101];
-				SQLLEN lenUniqueID;
-				SQLGetData(stmt, 1, SQL_C_CHAR, uniqueIDBuf, sizeof(uniqueIDBuf), &lenUniqueID);
-				strUniqueID = (char*)uniqueIDBuf;
-			}
-			else {
-				theApp.m_pTraceLog->LOG_INFO(CStringSupport::FormatString(
-					_T("SetLoadResultCodeFromDB: UniqueID not found for PanelID=%s"), strPanelID));
-				SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-				return;
-			}
-		}
-		else {
-			PrintOdbcError(stmt, SQL_HANDLE_STMT);
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			return;
-		}
-		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-	}
-	catch (...) {
-		theApp.m_pTraceLog->LOG_INFO(CStringSupport::FormatString(
-			_T("SetLoadResultCodeFromDB: SQL error (idmap)")));
-		if (stmt != SQL_NULL_HANDLE) SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-		return;
-	}
-
-	// 2. 查询 IVS_LCD_AOIResult 表获取缺陷列表
-	stmt = SQL_NULL_HANDLE;
-	try {
-		ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
-		if (!SQL_SUCCEEDED(ret)) {
-			PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
-			return;
-		}
-
-		CString strSQL;
-		strSQL.Format(_T("SELECT Code_AOI, Grade_AOI FROM ivs_lcd_aoidefect ")
-		_T("WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"), strUniqueID);
-
-		ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
-		if (SQL_SUCCEEDED(ret)) {
-			int iCount = 0;
-			CString strCode, strGrade;
-			while ((ret = SQLFetch(stmt)) == SQL_SUCCESS && iCount < m_iNumberSendToPlc)
-			{
-				SQLCHAR codeBuf[101], gradeBuf[101];
-				SQLLEN lenCode, lenGrade;
-				SQLGetData(stmt, 1, SQL_C_CHAR, codeBuf, sizeof(codeBuf), &lenCode);
-				SQLGetData(stmt, 2, SQL_C_CHAR, gradeBuf, sizeof(gradeBuf), &lenGrade);
-				strCode = (char*)codeBuf;
-				strGrade = (char*)gradeBuf;
-
-				if (!strCode.IsEmpty())
-				{
-					m_Send_Result_Code_Map.insert(make_pair(strCode, strGrade));
-					iCount++;
-				}
-			}
-
-			theApp.m_pTraceLog->LOG_INFO(CStringSupport::FormatString(
-				_T("SetLoadResultCodeFromDB: Loaded %d defects for PanelID=%s"), iCount, strPanelID));
-		}
-		else {
-			PrintOdbcError(stmt, SQL_HANDLE_STMT);
-		}
-		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-	}
-	catch (...) {
-		theApp.m_pTraceLog->LOG_INFO(CStringSupport::FormatString(
-			_T("SetLoadResultCodeFromDB: SQL error (defect)")));
-		if (stmt != SQL_NULL_HANDLE) SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-	}
-}
 
 CString CAni_Data_Serever_PCApp::SetTotalLoadResultCode(CString strPanelID, CString strFpcID, int iTypeNum)
 {
 	CString strFilePath, strShift, strCodeGrade;
 	strShift = theApp.m_lastShiftIndex == 0 ? _T("DY") : _T("NT");
+
+	// 优先从数据库查询缺陷码（4-Line 系统使用数据库）
+	if (iTypeNum == Machine_AOI && IsTlsLightingDBConnected())
+	{
+		// 使用现有的 TLSConnection 查询 IVS_LCD_InspectionResult
+		SQLHDBC conn = GetTlsLightingConnPtr();
+		if (conn != SQL_NULL_HANDLE)
+		{
+			SQLHSTMT stmt = SQL_NULL_HANDLE;
+			SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, conn, &stmt);
+			if (SQL_SUCCEEDED(ret))
+			{
+				CStringA strSQL;
+				strSQL.Format(
+					"SELECT Code_ManualReview, Grade_ManualReview, "
+					"       Code_AutoReview, Grade_AutoReview, "
+					"       Code_AOI, Grade_AOI "
+					"FROM IVS_LCD_InspectionResult "
+					"WHERE ScreenID = '%s' "
+					"ORDER BY StartTime DESC LIMIT 1",
+					(LPCSTR)CT2A(strPanelID));
+
+				ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)strSQL, SQL_NTS);
+				if (SQL_SUCCEEDED(ret))
+				{
+					ret = SQLFetch(stmt);
+					if (SQL_SUCCEEDED(ret))
+					{
+						char codeManual[101] = { 0 }, gradeManual[101] = { 0 };
+						char codeAuto[101] = { 0 }, gradeAuto[101] = { 0 };
+						char codeAoi[101] = { 0 }, gradeAoi[101] = { 0 };
+
+						SQLGetData(stmt, 1, SQL_C_CHAR, codeManual, sizeof(codeManual), NULL);
+						SQLGetData(stmt, 2, SQL_C_CHAR, gradeManual, sizeof(gradeManual), NULL);
+						SQLGetData(stmt, 3, SQL_C_CHAR, codeAuto, sizeof(codeAuto), NULL);
+						SQLGetData(stmt, 4, SQL_C_CHAR, gradeAuto, sizeof(gradeAuto), NULL);
+						SQLGetData(stmt, 5, SQL_C_CHAR, codeAoi, sizeof(codeAoi), NULL);
+						SQLGetData(stmt, 6, SQL_C_CHAR, gradeAoi, sizeof(gradeAoi), NULL);
+
+						CString strCode, strGrade;
+						if (strlen(codeManual) > 0)
+						{
+							strCode = CA2T(codeManual);
+							strGrade = CA2T(gradeManual);
+						}
+						else if (strlen(codeAuto) > 0)
+						{
+							strCode = CA2T(codeAuto);
+							strGrade = CA2T(gradeAuto);
+						}
+						else if (strlen(codeAoi) > 0)
+						{
+							strCode = CA2T(codeAoi);
+							strGrade = CA2T(gradeAoi);
+						}
+						else
+						{
+							// 所有 Code 都为空时，设置默认值
+							strCode = _T("XPOXSD");
+							strGrade = _T("Y5");
+						}
+
+						if (!strCode.IsEmpty())
+						{
+							strCodeGrade = CStringSupport::FormatString(_T("%s^%s"), strCode, strGrade);
+							theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetTotalLoadResultCode DB OK: %s"),
+								strPanelID, strFpcID, strCodeGrade);
+							SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+							return strCodeGrade;
+						}
+					}
+					else
+					{
+						theApp.m_PlcLog->Warn(_T("PanelID [%s] FpcID [%s] AOI SetTotalLoadResultCode DB: No inspection result found"),
+							strPanelID, strFpcID);
+					}
+				}
+				SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+			}
+		}
+	}
 
 	if (iTypeNum == Machine_AOI)
 		strFilePath.Format(_T("%s\\%s\\%s_%s\\%s.ini"), DATA_DEFECT_CODE_PATH, _T("AOI"), theApp.m_strCurrentToday, strShift, strFpcID);
@@ -4474,11 +4246,11 @@ void CAni_Data_Serever_PCApp::GetSystemData()
 	theApp.m_strARSPortNum = ini[_T("DATA")][_T("ARS_PORT")];
 	theApp.m_strFFUEndPoint = ini[_T("DATA")][_T("FFU_END")];
 	theApp.m_strPGName = ini[_T("PG")][_T("PGNAME")];
-	theApp.m_strLightingIP = ini[_T("LIGHTING")][_T("IP")];
-	theApp.m_strLightingPort = ini[_T("LIGHTING")][_T("PORT")];
+	theApp.m_strLightingIP = ini[_T("ICW")][_T("SERVER_IP")];
+	theApp.m_strLightingPort = ini[_T("ICW")][_T("SERVER_PORT")];
 	if (theApp.m_strLightingPort.IsEmpty())
 		theApp.m_strLightingPort = _T("6501");  // 默认端口
-	theApp.m_strLightingAutoTest = ini[_T("LIGHTING")][_T("AUTO_TEST")];
+	theApp.m_strLightingAutoTest = ini[_T("ICW")][_T("AUTO_TEST")];
 	if (theApp.m_strLightingAutoTest.IsEmpty())
 		theApp.m_strLightingAutoTest = _T("1");  // 默认启用自动测试
 
@@ -4909,14 +4681,12 @@ void CAni_Data_Serever_PCApp::ThreadCreateDelete(BOOL bdelete, int OldAlignCnt)
 	}
 }
 
-// ILightingEventHandler 接口实现
+//==============================================================================
+// ILightingEventHandler 虚函数实现
+//==============================================================================
 void CAni_Data_Serever_PCApp::OnLightingRunning()
 {
-	// 点灯检开始 Running
-	theApp.m_pLightingLog->LOG_INFO(_T("Lighting inspection started (Running)"));
-	m_csLightingFlow.Lock();
-	m_bLightingRunning = TRUE;
-	m_csLightingFlow.Unlock();
+	// 实际处理已移至 CVisionThread::OnLightingRunning()
 }
 
 void CAni_Data_Serever_PCApp::OnLightingSnapFN()
@@ -4925,7 +4695,6 @@ void CAni_Data_Serever_PCApp::OnLightingSnapFN()
 	theApp.m_pLightingLog->LOG_INFO(_T("Lighting snap completed (SnapFN), product can move"));
 
 	m_csLightingFlow.Lock();
-	m_bLightingSnapDone = TRUE;
 	BOOL active[4] = { m_bLightingActiveSlot[0], m_bLightingActiveSlot[1], m_bLightingActiveSlot[2], m_bLightingActiveSlot[3] };
 	m_csLightingFlow.Unlock();
 
@@ -4933,382 +4702,459 @@ void CAni_Data_Serever_PCApp::OnLightingSnapFN()
 	for (int i = 0; i < 4; ++i)
 	{
 		if (active[i])
-			//theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopGrabEnd1 + i, OffSet_0, TRUE);
 			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + i, OffSet_0, TRUE);
-			
 	}
 }
 
-void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4])
+//void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4])
+//{
+//	DWORD threadId = GetCurrentThreadId();
+//	
+//	// 使用 OutputDebugString 确保输出
+//	CString temp;
+//	temp.Format(_T("[Lighting] OnLightingResult called: [%02d][%02d][%02d][%02d], ThreadID=%lu\n"),
+//		resultCode[0], resultCode[1], resultCode[2], resultCode[3], threadId);
+//	OutputDebugString(temp);
+//
+//	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+//		_T("[Lighting] OnLightingResult called: [%02d][%02d][%02d][%02d], ThreadID=%lu"),
+//		resultCode[0], resultCode[1], resultCode[2], resultCode[3], threadId));
+//
+//	// 不使用全局连接，让各个数据库查询函数使用线程局部连接（TLS）
+//	// 避免多线程共享同一个连接导致的冲突
+//	SQLHDBC pLightingConn = SQL_NULL_HANDLE;
+//
+//	// TODO: 根据resultCode和治具号，从数据库读取检测结果
+//	// 并更新 IVS_LCD_InspectionResult 和 IVS_LCD_AOIResult 表
+//	// 同时写入PLC和DFS文件
+//	// 先补齐 PLC 流程闭环：FN$...@ 到达时，置 End，并写入一个“临时默认结果”
+//	// - FN$ 的数字为“完成的治具号”，不是 OK/NG；OK/NG 需要查 DB（后续可接入）
+//	// - 为保证 PLC 不被卡住：这里默认写 OK，并打日志提示（如果要更严谨，可改成 Timeout/NG 并报警）
+//	BOOL active[4] = { FALSE, FALSE, FALSE, FALSE };
+//	m_csLightingFlow.Lock();
+//	BOOL cycleInProgress = m_bLightingCycleInProgress;
+//	for (int i = 0; i < 4; ++i) active[i] = m_bLightingActiveSlot[i];
+//	m_csLightingFlow.Unlock();
+//
+//	// 记录 OnLightingResult 进入时的完整状态
+//	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+//		_T("[Lighting] OnLightingResult STATE: cycleInProgress=%d, running=%d, snapDone=%d, activeSlots=[%d][%d][%d][%d]"),
+//		cycleInProgress, running, snapDone, active[0], active[1], active[2], active[3]));
+//
+//	CString temp2;
+//	temp2.Format(_T("[Lighting] Active slots: [%d][%d][%d][%d]\n"),
+//		active[0], active[1], active[2], active[3]);
+//	OutputDebugString(temp2);
+//
+//	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+//		_T("[Lighting] Active slots: [%d][%d][%d][%d]"),
+//		active[0], active[1], active[2], active[3]));
+//
+//	for (int i = 0; i < 4; ++i)
+//	{
+//		const int fixtureNo = resultCode[i]; // 1..4, empty = 0
+//		if (fixtureNo <= 0)
+//			continue;
+//
+//		const int slotIdx = fixtureNo - 1;
+//		if (slotIdx < 0 || slotIdx >= 4)
+//			continue;
+//
+//		temp.Format(_T("[Lighting] ========== Processing Slot %d (FixtureNo=%d) ==========\n"), slotIdx, fixtureNo);
+//		OutputDebugString(temp);
+//
+//		if (!active[slotIdx])
+//		{
+//			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+//				_T("[Lighting] fixtureNo=%d but slot not active (ignored)"), fixtureNo));
+//			continue;
+//		}
+//		CString uniqueID, screenID, markID;
+//		BOOL bIdMapOK = FALSE;
+//		try {
+//			bIdMapOK = QueryIdMapByFixtureNoThreadSafe(fixtureNo, uniqueID, screenID, markID, pLightingConn);
+//			temp.Format(_T("[Lighting] QueryIdMapByFixtureNo returned: %d, uniqueID=%s, screenID=%s\n"), 
+//				bIdMapOK, uniqueID, screenID);
+//			OutputDebugString(temp);
+//		}
+//		catch (...) {
+//			temp.Format(_T("[Lighting] QueryIdMapByFixtureNo EXCEPTION! fixtureNo=%d\n"), fixtureNo);
+//			OutputDebugString(temp);
+//		}
+//
+//		if (bIdMapOK)
+//		{
+//			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+//				_T("[Lighting] QueryIdMap OK: FixtureNo=%d, UniqueID=%s, ScreenID=%s, MarkID=%s"),
+//				fixtureNo, uniqueID, screenID, markID));
+//
+//			BOOL bInspOK = FALSE;
+//			LightingInspectionResult inspResult;
+//			try {
+//				inspResult = QueryInspectionResultThreadSafe(uniqueID, pLightingConn);
+//				bInspOK = inspResult.m_bValid;
+//				temp.Format(_T("[Lighting] QueryInspectionResult returned: %d\n"), bInspOK);
+//				OutputDebugString(temp);
+//			}
+//			catch (...) {
+//				temp.Format(_T("[Lighting] QueryInspectionResult EXCEPTION!\n"));
+//				OutputDebugString(temp);
+//			}
+//
+//			if (bInspOK)
+//			{
+//				// 保存检测结果到缓存
+//				m_LightingInspResult[slotIdx] = inspResult;
+//				m_LightingInspResult[slotIdx].m_strUniqueID = uniqueID;
+//
+//				// 根据检测结果写入 PLC
+//				// AOIResult: OK=良品, NG=异常, BrightDot/BlackDot/Line/Mura/Block/BM=各类缺陷
+//				USHORT plcResult = 0;
+//				if (inspResult.m_strAOIResult.CompareNoCase(_T("OK")) == 0)
+//				{
+//					plcResult = m_codeOk;  // OK
+//				}
+//				else
+//				{
+//					plcResult = m_codeNg;  // NG
+//				}
+//
+//				// 写入检测结果到 PLC
+//				long plcAddr = 0;
+//				theApp.m_pEqIf->m_pMNetH->GetPLCAddressWord(-1, eWordType_VisionResult1 + slotIdx, &plcAddr);
+//				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+//					_T("[Lighting] Writing PLC Word: Type=%d, Addr=0x%X, Value=%d, Slot=%d, FixtureNo=%d"),
+//					eWordType_VisionResult1 + slotIdx, plcAddr, plcResult, slotIdx, fixtureNo));
+//				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + slotIdx, &plcResult);
+//
+//				// ========== 查询缺陷详情并写入 PLC 缺陷代码/等级 ==========
+//				// 参考老代码 AOI 流程：在 DFSDataStart 中调用 SendPlcDefectCode 写入缺陷代码
+//				// Lighting 也需要同样处理：查询 IVS_LCD_AOIResult 表，提取 Code 和 Grade 写入 PLC
+//				std::vector<SDFSDefectDataBegin> vecAOIDefects;
+//				if (QueryAOIDefectListThreadSafe(uniqueID, vecAOIDefects, pLightingConn))
+//				{
+//					// DBG: 检查查询结果
+//					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+//						_T("[DBG] QueryAOIDefectList returned TRUE, vecAOIDefects.size()=%d"), vecAOIDefects.size()));
+//
+//					// 从缺陷列表中提取第一个缺陷的 Code 和 Grade
+//					// 参考老代码 SendPlcDefectCode：strCode 最多取 m_iNumberSendToPlc 个
+//					CString strCode = _T("");
+//					CString strGrade = _T("");
+//					int iCount = 0;
+//
+//					for (size_t i = 0; i < vecAOIDefects.size(); i++)
+//					{
+//						// PlcSendNumber>0 时最多拼接 m_iNumberSendToPlc 条；为 0 或未配置时
+//						// 不按「0>=0 立刻 break」漏写 PLC（与老 AOI while 在 PlcSendNumber=0 时
+//						// 不读库不同，点灯检此处已查到 vecAOIDefects，应写入实际 Code/Grade）
+//						if (theApp.m_iNumberSendToPlc > 0 && iCount >= theApp.m_iNumberSendToPlc)
+//							break;
+//
+//						if (!vecAOIDefects[i].strDEFECT_CODE.IsEmpty())
+//						{
+//							if (iCount == 0)
+//								strGrade = vecAOIDefects[i].strDEFECT_GRADE;
+//
+//							strCode.Append(vecAOIDefects[i].strDEFECT_CODE);
+//							iCount++;
+//
+//							theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+//								_T("[DBG] DefectCode append: i=%d, strDEFECT_CODE=%s, strDEFECT_GRADE=%s, strCode=%s, strGrade=%s"),
+//								i, vecAOIDefects[i].strDEFECT_CODE, vecAOIDefects[i].strDEFECT_GRADE, strCode, strGrade));
+//						}
+//					}
+//
+//					// 写入 PLC 缺陷代码和等级
+//					DefectCodeRank pDefectCodeRank;
+//					DefectGradeRank pDefectGradeRank;
+//
+//					memset(pDefectCodeRank.m_DefectCode, 0x20, sizeof(pDefectCodeRank.m_DefectCode));
+//					CStringSupport::ToAString(strCode, pDefectCodeRank.m_DefectCode, sizeof(pDefectCodeRank.m_DefectCode));
+//					CStringSupport::ToAString(strGrade, pDefectGradeRank.m_DefectGrade, sizeof(pDefectGradeRank.m_DefectGrade));
+//
+//					theApp.m_pEqIf->m_pMNetH->SetDefectRankData(eWordType_DefectCodeResult1 + slotIdx, &pDefectCodeRank);
+//					theApp.m_pEqIf->m_pMNetH->SetDefectGradeRankData(eWordType_DefectGradeResult1 + slotIdx, &pDefectGradeRank);
+//					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_DefectCodeEnd1 + slotIdx, OffSet_0, TRUE);
+//
+//					temp.Format(_T("[Lighting] Write PLC: Slot=%d, FixtureNo=%d, AOIResult=%s, PLC_Result=%s, DefectCount=%d, Code=%s, Grade=%s\n"),
+//						slotIdx, fixtureNo, inspResult.m_strAOIResult,
+//						plcResult == m_codeOk ? _T("OK") : _T("NG"),
+//						vecAOIDefects.size(), strCode, strGrade);
+//					OutputDebugString(temp);
+//					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+//						_T("[Lighting] Write PLC DefectCode OK: Slot=%d, FixtureNo=%d, DefectCount=%d, Code=%s, Grade=%s"),
+//						slotIdx, fixtureNo, vecAOIDefects.size(), strCode, strGrade));
+//				}
+//				else
+//				{
+//					// 没有缺陷（良品），也写入空的缺陷代码，Grade 写 OK（G）
+//					DefectCodeRank pDefectCodeRank;
+//					DefectGradeRank pDefectGradeRank;
+//
+//					memset(pDefectCodeRank.m_DefectCode, 0x20, sizeof(pDefectCodeRank.m_DefectCode));
+//					// 参考老代码 SendPlcDefectCode：良品时用 m_strOkGrade（如 "G"）
+//					CStringSupport::ToAString(theApp.m_strOkGrade, pDefectGradeRank.m_DefectGrade, sizeof(pDefectGradeRank.m_DefectGrade));
+//
+//					theApp.m_pEqIf->m_pMNetH->SetDefectRankData(eWordType_DefectCodeResult1 + slotIdx, &pDefectCodeRank);
+//					theApp.m_pEqIf->m_pMNetH->SetDefectGradeRankData(eWordType_DefectGradeResult1 + slotIdx, &pDefectGradeRank);
+//					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_DefectCodeEnd1 + slotIdx, OffSet_0, TRUE);
+//
+//					temp.Format(_T("[Lighting] Write PLC: Slot=%d, FixtureNo=%d, AOIResult=%s, PLC_Result=OK (No defects), Grade=%s\n"),
+//						slotIdx, fixtureNo, inspResult.m_strAOIResult, theApp.m_strOkGrade);
+//					OutputDebugString(temp);
+//					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+//						_T("[Lighting] Write PLC DefectCode OK (No defects): Slot=%d, FixtureNo=%d, Grade=%s"),
+//						slotIdx, fixtureNo, theApp.m_strOkGrade));
+//				}
+//
+//				// ========== DFS 数据整合与上传 ==========
+//				DfsDataValue dfsData;
+//				dfsData.Reset();
+//				dfsData.m_FpcID = screenID;         // Barcode（产品码）
+//				dfsData.m_PanelID = screenID;       // PanelID 同 Barcode
+//				dfsData.m_StartTime = inspResult.m_strStartTime;
+//				dfsData.m_EndTime = inspResult.m_strStopTime;
+//				dfsData.m_ModelID = _T("");          // 配方名（如有需要可从 PLC 读取）
+//				dfsData.m_IndexNum = markID;         // 治具号 "01"~"04"
+//				dfsData.m_ChNum.Format(_T("%d"), slotIdx);
+//
+//				// 点灯结果：OK/NG/BrightDot/BlackDot/Line/Mura/Block/BM
+//				// 转换为 DFS 格式：OK=OK, 其他=NG
+//				CString strLumitopResult = inspResult.m_strAOIResult;
+//				if (strLumitopResult.CompareNoCase(_T("OK")) == 0)
+//					dfsData.m_Lumitop = _T("OK");
+//				else
+//					dfsData.m_Lumitop = _T("NG");
+//				dfsData.m_TypeNum = Machine_Lumitop;
+//				dfsData.m_StageNum = slotIdx + 1;
+//
+//				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+//					_T("[Lighting] DfsAddTransferFile: Slot=%d, FixtureNo=%d, PanelID=%s, UniqueID=%s, AOIResult=%s, DefectCount=%d"),
+//					slotIdx, fixtureNo, screenID, uniqueID, inspResult.m_strAOIResult, vecAOIDefects.size()));
+//
+//				theApp.m_pFTP->DfsAddTransferFile(dfsData);
+//
+//				// ========== 生成AOI CSV文件 ==========
+//				GenerateAOICsvFile(screenID, uniqueID, pLightingConn);
+//
+//				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+//					_T("[Lighting] Write PLC OK: Slot=%d, FixtureNo=%d, UniqueID=%s, AOIResult=%s, Code=%s, Grade=%s, DFS uploaded"),
+//					slotIdx, fixtureNo, uniqueID, inspResult.m_strAOIResult, inspResult.m_strCodeAOI, inspResult.m_strGradeAOI));
+//			}
+//			else
+//			{
+//				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+//					_T("[Lighting] QueryInspectionResult failed: UniqueID=%s, writing default result"), uniqueID));
+//
+//				USHORT tmpResult = m_codeOk;  // 默认写 OK，避免 PLC 卡住
+//				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + slotIdx, &tmpResult);
+//			}
+//		}
+//		else
+//		{
+//			// 查询不到映射关系，写入默认值
+//			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+//				_T("[Lighting] QueryIdMapByFixtureNo failed: FixtureNo=%d, writing default result"), fixtureNo));
+//			USHORT tmpResult = m_codeOk;  // 默认写 OK，避免 PLC 卡住
+//			theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + slotIdx, &tmpResult);
+//		}
+//	}
+//
+//	m_csLightingFlow.Lock();
+//	m_bLightingCycleInProgress = FALSE;
+//	for (int i = 0; i < 4; ++i) m_bLightingActiveSlot[i] = FALSE;
+//	m_dwLightingStartTick = 0;
+//	m_csLightingFlow.Unlock();
+//}
+
+//==============================================================================
+// 生成AOI CSV文件（在FN$回调中调用）
+// 格式与旧AOI程序生成的CSV一致
+//==============================================================================
+BOOL CAni_Data_Serever_PCApp::GenerateAOICsvFile(CString strPanelID, CString strUniqueID, SQLHDBC pConn)
 {
-	DWORD threadId = GetCurrentThreadId();
-	
-	// 使用 OutputDebugString 确保输出
-	CString temp;
-	temp.Format(_T("[Lighting] OnLightingResult called: [%02d][%02d][%02d][%02d], ThreadID=%lu\n"),
-		resultCode[0], resultCode[1], resultCode[2], resultCode[3], threadId);
-	OutputDebugString(temp);
-
 	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[Lighting] OnLightingResult called: [%02d][%02d][%02d][%02d], ThreadID=%lu"),
-		resultCode[0], resultCode[1], resultCode[2], resultCode[3], threadId));
+		_T("[AOI CSV] GenerateAOICsvFile START: PanelID=%s, UniqueID=%s"), strPanelID, strUniqueID));
 
-	// 不使用全局连接，让各个数据库查询函数使用线程局部连接（TLS）
-	// 避免多线程共享同一个连接导致的冲突
-	SQLHDBC pLightingConn = SQL_NULL_HANDLE;
-
-	// TODO: 根据resultCode和治具号，从数据库读取检测结果
-	// 并更新 IVS_LCD_InspectionResult 和 IVS_LCD_AOIResult 表
-	// 同时写入PLC和DFS文件
-	// 先补齐 PLC 流程闭环：FN$...@ 到达时，置 End，并写入一个“临时默认结果”
-	// - FN$ 的数字为“完成的治具号”，不是 OK/NG；OK/NG 需要查 DB（后续可接入）
-	// - 为保证 PLC 不被卡住：这里默认写 OK，并打日志提示（如果要更严谨，可改成 Timeout/NG 并报警）
-	BOOL active[4] = { FALSE, FALSE, FALSE, FALSE };
-	m_csLightingFlow.Lock();
-	BOOL cycleInProgress = m_bLightingCycleInProgress;
-	BOOL running = m_bLightingRunning;
-	BOOL snapDone = m_bLightingSnapDone;
-	for (int i = 0; i < 4; ++i) active[i] = m_bLightingActiveSlot[i];
-	m_csLightingFlow.Unlock();
-
-	// 记录 OnLightingResult 进入时的完整状态
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[Lighting] OnLightingResult STATE: cycleInProgress=%d, running=%d, snapDone=%d, activeSlots=[%d][%d][%d][%d]"),
-		cycleInProgress, running, snapDone, active[0], active[1], active[2], active[3]));
-
-	CString temp2;
-	temp2.Format(_T("[Lighting] Active slots: [%d][%d][%d][%d]\n"),
-		active[0], active[1], active[2], active[3]);
-	OutputDebugString(temp2);
-
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[Lighting] Active slots: [%d][%d][%d][%d]"),
-		active[0], active[1], active[2], active[3]));
-
-	for (int i = 0; i < 4; ++i)
+	if (strPanelID.IsEmpty() || strUniqueID.IsEmpty())
 	{
-		const int fixtureNo = resultCode[i]; // 1..4, empty = 0
-		if (fixtureNo <= 0)
-			continue;
+		theApp.m_pLightingLog->LOG_ERR(_T("[AOI CSV] PanelID or UniqueID is empty, skip"));
+		return FALSE;
+	}
 
-		const int slotIdx = fixtureNo - 1;
-		if (slotIdx < 0 || slotIdx >= 4)
-			continue;
+	// 1. 构建CSV文件路径
+	CString strDate = GetDateString2();
+	CString strCsvDir = DFS_AOI_CSV_PATH + strDate + _T("\\") + strPanelID + _T("\\AOI\\");
+	CreateFolders(strCsvDir);
+	CString strCsvPath = strCsvDir + strPanelID + _T(".csv");
 
-		temp.Format(_T("[Lighting] ========== Processing Slot %d (FixtureNo=%d) ==========\n"), slotIdx, fixtureNo);
-		OutputDebugString(temp);
+	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[AOI CSV] CSV path: %s"), strCsvPath));
 
-		if (!active[slotIdx])
+	// 2. 打开文件
+	CStdioFile sFile;
+	if (!sFile.Open(strCsvPath, CFile::modeCreate | CFile::modeWrite | CFile::shareDenyNone))
+	{
+		theApp.m_pLightingLog->LOG_ERR(CStringSupport::FormatString(
+			_T("[AOI CSV] Failed to open file: %s"), strCsvPath));
+		return FALSE;
+	}
+
+	CString strLine;
+
+	// 3. 写入 EQP_PANEL_DATA_BEGIN
+	strLine = _T("EQP_PANEL_DATA_BEGIN");
+	sFile.WriteString(strLine + _T("\n"));
+
+	// 标题行
+	strLine = _T("RECIPE_NO,AOI_RECIPE_NAME,PG_RECIPE_NAME,TP_RECIPE_NAME,START_TIME,END_TIME,LOAD_STAGE_NO,INSP_STAGE_NO,UNLOAD_STAGE_NO,PROBE_CONTACT_CNT,INDEX_PANEL_GRADE,INDEX_MAIN_CODE,FINAL_PANEL_GRADE,FINAL_MAIN_CODE,OPERATOR_ID");
+	sFile.WriteString(strLine + _T("\n"));
+
+	// 数据行 - 从数据库读取检测结果
+	CInspectionResult inspResult;
+	CString strRecipeNo = _T("");
+	CString strAoiRecipeName = _T("S86_AFT_ANI");  // 可从配置读取
+	CString strFinalGrade;
+	CString strFinalCode;
+	if (CLightingDB::Get().QueryByUniqueID(strUniqueID, inspResult))
+	{
+		strFinalGrade = inspResult.Grade_AOI;
+		strFinalCode = inspResult.Code_AOI;
+	}
+
+	// 构建数据行
+	strLine.Format(_T(",%s,,,,,,,,,,,%s,%s,,"),
+		strAoiRecipeName,
+		strFinalGrade,
+		strFinalCode);
+	sFile.WriteString(strLine + _T("\n"));
+
+	strLine = _T("EQP_PANEL_DATA_END");
+	sFile.WriteString(strLine + _T("\n"));
+
+	// 空行
+	sFile.WriteString(_T("\n"));
+
+	// 4. 写入 DEFECT_DATA_BEGIN
+	strLine = _T("DEFECT_DATA_BEGIN");
+	sFile.WriteString(strLine + _T("\n"));
+
+	// 标题行
+	strLine = _T("PANEL_ID,DEFECT_DATA_NUM,DEFECT_TYPE,DEFECT_PTRN,DEFECT_CODE,DEFECT_GRADE,IMAGE_DATA,X,Y,SIZE,CAM_INSPECT,Zone");
+	sFile.WriteString(strLine + _T("\n"));
+
+	// 查询缺陷详情
+	std::vector<SDFSDefectDataBegin> vecAOIDefects;
+	if (CLightingDB::Get().QueryAOIDefectListThreadSafe(strUniqueID, vecAOIDefects, pConn))
+	{
+		for (size_t i = 0; i < vecAOIDefects.size(); i++)
 		{
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-				_T("[Lighting] fixtureNo=%d but slot not active (ignored)"), fixtureNo));
-			continue;
-		}
-		CString uniqueID, screenID, markID;
-		BOOL bIdMapOK = FALSE;
-		try {
-			bIdMapOK = QueryIdMapByFixtureNoThreadSafe(fixtureNo, uniqueID, screenID, markID, pLightingConn);
-			temp.Format(_T("[Lighting] QueryIdMapByFixtureNo returned: %d, uniqueID=%s, screenID=%s\n"), 
-				bIdMapOK, uniqueID, screenID);
-			OutputDebugString(temp);
-		}
-		catch (...) {
-			temp.Format(_T("[Lighting] QueryIdMapByFixtureNo EXCEPTION! fixtureNo=%d\n"), fixtureNo);
-			OutputDebugString(temp);
-		}
+			SDFSDefectDataBegin& defect = vecAOIDefects[i];
 
-		if (bIdMapOK)
-		{
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-				_T("[Lighting] QueryIdMap OK: FixtureNo=%d, UniqueID=%s, ScreenID=%s, MarkID=%s"),
-				fixtureNo, uniqueID, screenID, markID));
-
-			BOOL bInspOK = FALSE;
-			LightingInspectionResult inspResult;
-			try {
-				inspResult = QueryInspectionResultThreadSafe(uniqueID, pLightingConn);
-				bInspOK = inspResult.m_bValid;
-				temp.Format(_T("[Lighting] QueryInspectionResult returned: %d\n"), bInspOK);
-				OutputDebugString(temp);
-			}
-			catch (...) {
-				temp.Format(_T("[Lighting] QueryInspectionResult EXCEPTION!\n"));
-				OutputDebugString(temp);
-			}
-
-			if (bInspOK)
+			// 拼接完整的图片路径
+			CString strImgPath = defect.strIMAGE_DATA;
+			if (!strImgPath.IsEmpty())
 			{
-				// 保存检测结果到缓存
-				m_LightingInspResult[slotIdx] = inspResult;
-				m_LightingInspResult[slotIdx].m_strUniqueID = uniqueID;
+				// 从配置读取根路径
+				EZIni ini(DATA_SYSTEM_DATA_PATH);
+				CString strAoiRootPath = ini[AOI_INI_SECTION][_T("MainAOIImageRoot")];
+				if (strAoiRootPath.IsEmpty())
+					strAoiRootPath = DFS_AOI_IMAGE_ROOT_DEFAULT;
 
-				// 根据检测结果写入 PLC
-				// AOIResult: OK=良品, NG=异常, BrightDot/BlackDot/Line/Mura/Block/BM=各类缺陷
-				USHORT plcResult = 0;
-				if (inspResult.m_strAOIResult.CompareNoCase(_T("OK")) == 0)
+				// 如果路径不是以根路径开头，则拼接
+				if (strImgPath.Left(strAoiRootPath.GetLength()).CompareNoCase(strAoiRootPath) != 0)
 				{
-					plcResult = m_codeOk;  // OK
-				}
-				else
-				{
-					plcResult = m_codeNg;  // NG
+					strImgPath = strAoiRootPath + strImgPath;
 				}
 
-				// 写入检测结果到 PLC
-				long plcAddr = 0;
-				theApp.m_pEqIf->m_pMNetH->GetPLCAddressWord(-1, eWordType_VisionResult1 + slotIdx, &plcAddr);
-				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-					_T("[Lighting] Writing PLC Word: Type=%d, Addr=0x%X, Value=%d, Slot=%d, FixtureNo=%d"),
-					eWordType_VisionResult1 + slotIdx, plcAddr, plcResult, slotIdx, fixtureNo));
-				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + slotIdx, &plcResult);
-
-				// ========== 查询缺陷详情并写入 PLC 缺陷代码/等级 ==========
-				// 参考老代码 AOI 流程：在 DFSDataStart 中调用 SendPlcDefectCode 写入缺陷代码
-				// Lighting 也需要同样处理：查询 IVS_LCD_AOIResult 表，提取 Code 和 Grade 写入 PLC
-				std::vector<SDFSDefectDataBegin> vecAOIDefects;
-				if (QueryAOIDefectListThreadSafe(uniqueID, vecAOIDefects, pLightingConn))
-				{
-					// DBG: 检查查询结果
-					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-						_T("[DBG] QueryAOIDefectList returned TRUE, vecAOIDefects.size()=%d"), vecAOIDefects.size()));
-
-					// 从缺陷列表中提取第一个缺陷的 Code 和 Grade
-					// 参考老代码 SendPlcDefectCode：strCode 最多取 m_iNumberSendToPlc 个
-					CString strCode = _T("");
-					CString strGrade = _T("");
-					int iCount = 0;
-
-					for (size_t i = 0; i < vecAOIDefects.size(); i++)
-					{
-						// PlcSendNumber>0 时最多拼接 m_iNumberSendToPlc 条；为 0 或未配置时
-						// 不按「0>=0 立刻 break」漏写 PLC（与老 AOI while 在 PlcSendNumber=0 时
-						// 不读库不同，点灯检此处已查到 vecAOIDefects，应写入实际 Code/Grade）
-						if (theApp.m_iNumberSendToPlc > 0 && iCount >= theApp.m_iNumberSendToPlc)
-							break;
-
-						if (!vecAOIDefects[i].strDEFECT_CODE.IsEmpty())
-						{
-							if (iCount == 0)
-								strGrade = vecAOIDefects[i].strDEFECT_GRADE;
-
-							strCode.Append(vecAOIDefects[i].strDEFECT_CODE);
-							iCount++;
-
-							theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-								_T("[DBG] DefectCode append: i=%d, strDEFECT_CODE=%s, strDEFECT_GRADE=%s, strCode=%s, strGrade=%s"),
-								i, vecAOIDefects[i].strDEFECT_CODE, vecAOIDefects[i].strDEFECT_GRADE, strCode, strGrade));
-						}
-					}
-
-					// 写入 PLC 缺陷代码和等级
-					DefectCodeRank pDefectCodeRank;
-					DefectGradeRank pDefectGradeRank;
-
-					memset(pDefectCodeRank.m_DefectCode, 0x20, sizeof(pDefectCodeRank.m_DefectCode));
-					CStringSupport::ToAString(strCode, pDefectCodeRank.m_DefectCode, sizeof(pDefectCodeRank.m_DefectCode));
-					CStringSupport::ToAString(strGrade, pDefectGradeRank.m_DefectGrade, sizeof(pDefectGradeRank.m_DefectGrade));
-
-					theApp.m_pEqIf->m_pMNetH->SetDefectRankData(eWordType_DefectCodeResult1 + slotIdx, &pDefectCodeRank);
-					theApp.m_pEqIf->m_pMNetH->SetDefectGradeRankData(eWordType_DefectGradeResult1 + slotIdx, &pDefectGradeRank);
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_DefectCodeEnd1 + slotIdx, OffSet_0, TRUE);
-
-					temp.Format(_T("[Lighting] Write PLC: Slot=%d, FixtureNo=%d, AOIResult=%s, PLC_Result=%s, DefectCount=%d, Code=%s, Grade=%s\n"),
-						slotIdx, fixtureNo, inspResult.m_strAOIResult,
-						plcResult == m_codeOk ? _T("OK") : _T("NG"),
-						vecAOIDefects.size(), strCode, strGrade);
-					OutputDebugString(temp);
-					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-						_T("[Lighting] Write PLC DefectCode OK: Slot=%d, FixtureNo=%d, DefectCount=%d, Code=%s, Grade=%s"),
-						slotIdx, fixtureNo, vecAOIDefects.size(), strCode, strGrade));
-				}
-				else
-				{
-					// 没有缺陷（良品），也写入空的缺陷代码，Grade 写 OK（G）
-					DefectCodeRank pDefectCodeRank;
-					DefectGradeRank pDefectGradeRank;
-
-					memset(pDefectCodeRank.m_DefectCode, 0x20, sizeof(pDefectCodeRank.m_DefectCode));
-					// 参考老代码 SendPlcDefectCode：良品时用 m_strOkGrade（如 "G"）
-					CStringSupport::ToAString(theApp.m_strOkGrade, pDefectGradeRank.m_DefectGrade, sizeof(pDefectGradeRank.m_DefectGrade));
-
-					theApp.m_pEqIf->m_pMNetH->SetDefectRankData(eWordType_DefectCodeResult1 + slotIdx, &pDefectCodeRank);
-					theApp.m_pEqIf->m_pMNetH->SetDefectGradeRankData(eWordType_DefectGradeResult1 + slotIdx, &pDefectGradeRank);
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_DefectCodeEnd1 + slotIdx, OffSet_0, TRUE);
-
-					temp.Format(_T("[Lighting] Write PLC: Slot=%d, FixtureNo=%d, AOIResult=%s, PLC_Result=OK (No defects), Grade=%s\n"),
-						slotIdx, fixtureNo, inspResult.m_strAOIResult, theApp.m_strOkGrade);
-					OutputDebugString(temp);
-					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-						_T("[Lighting] Write PLC DefectCode OK (No defects): Slot=%d, FixtureNo=%d, Grade=%s"),
-						slotIdx, fixtureNo, theApp.m_strOkGrade));
-				}
-
-				// ========== DFS 数据整合与上传 ==========
-				DfsDataValue dfsData;
-				dfsData.Reset();
-				dfsData.m_FpcID = screenID;         // Barcode（产品码）
-				dfsData.m_PanelID = screenID;       // PanelID 同 Barcode
-				dfsData.m_StartTime = inspResult.m_strStartTime;
-				dfsData.m_EndTime = inspResult.m_strStopTime;
-				dfsData.m_ModelID = _T("");          // 配方名（如有需要可从 PLC 读取）
-				dfsData.m_IndexNum = markID;         // 治具号 "01"~"04"
-				dfsData.m_ChNum.Format(_T("%d"), slotIdx);
-
-				// 点灯结果：OK/NG/BrightDot/BlackDot/Line/Mura/Block/BM
-				// 转换为 DFS 格式：OK=OK, 其他=NG
-				CString strLumitopResult = inspResult.m_strAOIResult;
-				if (strLumitopResult.CompareNoCase(_T("OK")) == 0)
-					dfsData.m_Lumitop = _T("OK");
-				else
-					dfsData.m_Lumitop = _T("NG");
-				dfsData.m_TypeNum = Machine_Lumitop;
-				dfsData.m_StageNum = slotIdx + 1;
-
-				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-					_T("[Lighting] DfsAddTransferFile: Slot=%d, FixtureNo=%d, PanelID=%s, UniqueID=%s, AOIResult=%s, DefectCount=%d"),
-					slotIdx, fixtureNo, screenID, uniqueID, inspResult.m_strAOIResult, vecAOIDefects.size()));
-
-				theApp.m_pFTP->DfsAddTransferFile(dfsData);
-				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-					_T("[Lighting] Write PLC OK: Slot=%d, FixtureNo=%d, UniqueID=%s, AOIResult=%s, Code=%s, Grade=%s, DFS uploaded"),
-					slotIdx, fixtureNo, uniqueID, inspResult.m_strAOIResult, inspResult.m_strCodeAOI, inspResult.m_strGradeAOI));
+				// 提取文件名作为IMAGE_DATA
+				int nPos = strImgPath.ReverseFind('\\');
+				if (nPos >= 0)
+					strImgPath = strImgPath.Mid(nPos + 1);
 			}
-			else
+
+			// 写入缺陷数据行
+			strLine.Format(_T("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"),
+				strPanelID,
+				defect.strDEFECT_DATA_NUM,
+				defect.strDEFECT_TYPE,
+				defect.strDEFECT_PTRN,
+				defect.strDEFECT_CODE,
+				defect.strDEFECT_GRADE,
+				strImgPath,
+				defect.strX,
+				defect.strY,
+				defect.strSIZE,
+				defect.strCAM_INSPECT,
+				defect.strZone);
+			sFile.WriteString(strLine + _T("\n"));
+		}
+	}
+
+	strLine = _T("DEFECT_DATA_END");
+	sFile.WriteString(strLine + _T("\n"));
+
+	// 空行
+	sFile.WriteString(_T("\n"));
+
+	// 5. 写入 OPV_DATA_BEGIN
+	strLine = _T("OPV_DATA_BEGIN");
+	sFile.WriteString(strLine + _T("\n"));
+
+	// 标题行
+	strLine = _T("PANEL_ID,FPC_ID,DEFECT_GRADE,TP_FUNCTION,DEFECT_CODE,DEFECT_PTN,DATA_X1,GATE_Y1,DATA_X2,GATE_Y2,DATA_X3,GATE_Y3,IMAGE,GLASS_COORDINATE_X1,GLASS_COORDINATE_Y1,GLASS_COORDINATE_X2,GLASS_COORDINATE_Y2,GLASS_COORDINATE_X3,GLASS_COORDINATE_Y3");
+	sFile.WriteString(strLine + _T("\n"));
+
+	// 写入OPV数据（与缺陷数据相同，只是格式不同，复用上面的查询结果）
+	if (!vecAOIDefects.empty())
+	{
+		for (size_t i = 0; i < vecAOIDefects.size(); i++)
+		{
+			SDFSDefectDataBegin& defect = vecAOIDefects[i];
+
+			// 拼接完整的图片路径
+			CString strImgPath = defect.strIMAGE_DATA;
+			if (!strImgPath.IsEmpty())
 			{
-				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-					_T("[Lighting] QueryInspectionResult failed: UniqueID=%s, writing default result"), uniqueID));
+				EZIni ini(DATA_SYSTEM_DATA_PATH);
+				CString strAoiRootPath = ini[AOI_INI_SECTION][_T("MainAOIImageRoot")];
+				if (strAoiRootPath.IsEmpty())
+					strAoiRootPath = DFS_AOI_IMAGE_ROOT_DEFAULT;
 
-				USHORT tmpResult = m_codeOk;  // 默认写 OK，避免 PLC 卡住
-				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + slotIdx, &tmpResult);
+				if (strImgPath.Left(strAoiRootPath.GetLength()).CompareNoCase(strAoiRootPath) != 0)
+				{
+					strImgPath = strAoiRootPath + strImgPath;
+				}
+
+				int nPos = strImgPath.ReverseFind('\\');
+				if (nPos >= 0)
+					strImgPath = strImgPath.Mid(nPos + 1);
 			}
-		}
-		else
-		{
-			// 查询不到映射关系，写入默认值
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-				_T("[Lighting] QueryIdMapByFixtureNo failed: FixtureNo=%d, writing default result"), fixtureNo));
-			USHORT tmpResult = m_codeOk;  // 默认写 OK，避免 PLC 卡住
-			theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + slotIdx, &tmpResult);
-		}
-	}
 
-	m_csLightingFlow.Lock();
-	m_bLightingCycleInProgress = FALSE;
-	m_bLightingRunning = FALSE;
-	m_bLightingSnapDone = FALSE;
-	for (int i = 0; i < 4; ++i) m_bLightingActiveSlot[i] = FALSE;
-	m_dwLightingStartTick = 0;
-	m_csLightingFlow.Unlock();
-}
-
-BOOL CAni_Data_Serever_PCApp::TryStartLightingFromPlc(const BOOL startFlags[4])
-{
-	// 入口日志：记录 startFlags 值，方便分析问题
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[Lighting] TryStartLightingFromPlc ENTRY: startFlags=[%d][%d][%d][%d], m_LightingThreadOpenFlag=%d, m_LightingConectStatus=%d"),
-		startFlags[0], startFlags[1], startFlags[2], startFlags[3],
-		m_LightingThreadOpenFlag, m_LightingConectStatus));
-
-	if (!m_LightingThreadOpenFlag || !m_LightingConectStatus)
-	{
-		theApp.m_pLightingLog->LOG_INFO(_T("[Lighting] TryStartLightingFromPlc: Lighting not ready, skipping"));
-		return FALSE;
-	}
-
-	m_csLightingFlow.Lock();
-	if (m_bLightingCycleInProgress)
-	{
-		m_csLightingFlow.Unlock();
-		theApp.m_pLightingLog->LOG_INFO(_T("Lighting Start requested but previous cycle still in progress (ignored)"));
-		return FALSE;
-	}
-
-	BOOL any = FALSE;
-	for (int i = 0; i < 4; ++i)
-	{
-		m_bLightingActiveSlot[i] = (startFlags[i] == TRUE);
-		if (m_bLightingActiveSlot[i]) any = TRUE;
-	}
-
-	// 记录活跃槽位检查结果
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[Lighting] TryStartLightingFromPlc: any=%d, activeSlots=[%d][%d][%d][%d]"),
-		any, m_bLightingActiveSlot[0], m_bLightingActiveSlot[1], m_bLightingActiveSlot[2], m_bLightingActiveSlot[3]));
-
-	if (!any)
-	{
-		m_csLightingFlow.Unlock();
-		theApp.m_pLightingLog->LOG_INFO(_T("[Lighting] TryStartLightingFromPlc: no active slots, skipping"));
-		return FALSE;
-	}
-
-	m_bLightingCycleInProgress = TRUE;
-	m_bLightingRunning = FALSE;
-	m_bLightingSnapDone = FALSE;
-	m_dwLightingStartTick = ::GetTickCount();
-	m_csLightingFlow.Unlock();
-
-	// 发送开始检测前，更新 ivs_lcd_idmap 对应治具号记录，供检测软件使用
-	if (IsTlsLightingDBConnected() || GetTlsLightingConnection(
-		theApp.m_strLightingDBServer,
-		theApp.m_strLightingDBName,
-		theApp.m_strLightingDBUser,
-		theApp.m_strLightingDBPassword,
-		theApp.m_pLightingLog))
-	{
-		PanelData pPanelData;
-		FpcIDData pFpcData;
-
-		for (int i = 0; i < 4; ++i)
-		{
-			if (!startFlags[i])
-				continue;
-
-			int fixtureNo = i + 1;  // 治具号 1~4
-			theApp.m_pEqIf->m_pMNetH->GetPanelData(eWordType_PreGammaPanel1 + i, &pPanelData);
-			theApp.m_pEqIf->m_pMNetH->GetFpcIdData(eWordType_PreGammaFpcID1 + i, &pFpcData);
-
-			CString strPanelID = CStringSupport::ToWString(pPanelData.m_PanelData, sizeof(pPanelData.m_PanelData));
-			CString strFpcID = CStringSupport::ToWString(pFpcData.m_FpcIDData, sizeof(pFpcData.m_FpcIDData));
-			strPanelID.Trim();
-			strFpcID.Trim();
-			if (strPanelID.IsEmpty())
-				strPanelID = strFpcID;
-			if (strFpcID.IsEmpty())
-				strFpcID = strPanelID;
-
-			// UniqueID 使用 GUID 保证全局唯一性
-			CString strUniqueID;
-			CStringSupport::GetGuid(strUniqueID);
-
-			// Barcode=产品码（使用 FpcID 或 PanelID），MarkID=治具号 "01"~"04"
-			CString strMarkID;
-			strMarkID.Format(_T("%02d"), fixtureNo);
-			CString strBarcode = strFpcID.IsEmpty() ? strPanelID : strFpcID;
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-				_T("[DBG] About to update ivs_lcd_idmap: fixtureNo=%d, UniqueID=%s, Barcode=%s, MarkID=%s"),
-				fixtureNo, strUniqueID, strBarcode, strMarkID));
-			BOOL updateResult = UpdateLightingIdMap(fixtureNo, strUniqueID, strBarcode, strMarkID);
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-				_T("[DBG] UpdateLightingIdMap result: %s (fixtureNo=%d)"),
-				updateResult ? _T("SUCCESS") : _T("FAILED"), fixtureNo));
+			// 写入OPV数据行
+			strLine.Format(_T("%s,%s,%s,***,%s,%s,%s,%s,%s,%s,***,***,%s,***,***,***,***,***,***"),
+				strPanelID,
+				strPanelID,  // FPC_ID 同 PanelID
+				defect.strDEFECT_GRADE,
+				defect.strDEFECT_CODE,
+				defect.strDEFECT_PTRN,
+				defect.strX,
+				defect.strY,
+				defect.strX,
+				defect.strY,
+				strImgPath);
+			sFile.WriteString(strLine + _T("\n"));
 		}
 	}
-	else
-	{
-		theApp.m_pLightingLog->LOG_INFO(_T("TryStartLightingFromPlc: DB not connected, skip idmap update"));
-	}
 
-	// Start$xxxxxxxx$xxxxxxxx@
-	int usedSlots[4] = { 0,0,0,0 };
-	int maxSlots[4] = { 1,2,3,4 };
-	for (int i = 0; i < 4; ++i)
-		usedSlots[i] = startFlags[i] ? (i + 1) : 0;
+	strLine = _T("OPV_DATA_END");
+	sFile.WriteString(strLine + _T("\n"));
 
-	theApp.m_LightingSocketManager.SendStart(usedSlots, maxSlots);
+	sFile.Close();
+
 	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-		_T("Lighting Start sent (slots=%02d%02d%02d%02d)"),
-		usedSlots[0], usedSlots[1], usedSlots[2], usedSlots[3]));
+		_T("[AOI CSV] GenerateAOICsvFile SUCCESS: %s"), strCsvPath));
 
 	return TRUE;
 }
@@ -5344,448 +5190,19 @@ void CAni_Data_Serever_PCApp::LightingFlowTimeoutCheck()
 		if (!active[i])
 			continue;
 		USHORT tmpResult = m_codeTimeOut;
-		theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_PreGammaResult1 + i, &tmpResult);
-		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopGrabEnd1 + i, OffSet_0, TRUE);
-		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopEnd1 + i, OffSet_0, TRUE);
+		theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + i, &tmpResult);
+		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + i, OffSet_0, TRUE);
+		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + i, OffSet_0, TRUE);
 	}
 
 	m_csLightingFlow.Lock();
 	m_bLightingCycleInProgress = FALSE;
-	m_bLightingRunning = FALSE;
-	m_bLightingSnapDone = FALSE;
 	for (int i = 0; i < 4; ++i) m_bLightingActiveSlot[i] = FALSE;
 	m_dwLightingStartTick = 0;
 	m_csLightingFlow.Unlock();
 }
 
-// 点灯检数据库操作函数 - 使用 ODBC
-BOOL CAni_Data_Serever_PCApp::UpdateLightingIdMap(int fixtureNo, CString uniqueID, CString screenID, CString markID)
-{
-	// 获取当前线程ID
-	DWORD threadId = GetCurrentThreadId();
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[DBG] UpdateLightingIdMap ENTER: ThreadID=%lu, fixtureNo=%d, uniqueID=%s, screenID=%s, markID=%s"),
-		threadId, fixtureNo, uniqueID, screenID, markID));
 
-	// 优先使用线程局部连接（TLS），避免多线程共享连接
-	SQLHDBC pUseConn = SQL_NULL_HANDLE;
-	
-	// 尝试获取线程局部连接
-	if (IsTlsLightingDBConnected())
-	{
-		pUseConn = GetTlsLightingConnPtr();
-		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Using TLS connection"));
-	}
-	else
-	{
-		// 如果线程局部连接未连接，尝试创建线程局部连接
-		if (GetTlsLightingConnection(
-			theApp.m_strLightingDBServer,
-			theApp.m_strLightingDBName,
-			theApp.m_strLightingDBUser,
-			theApp.m_strLightingDBPassword,
-			theApp.m_pLightingLog))
-		{
-			pUseConn = GetTlsLightingConnPtr();
-			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: TLS connection created successfully"));
-		}
-		else
-		{
-			// 线程局部连接创建失败，使用全局连接作为后备
-			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: TLS connection failed, using global connection"));
-			if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
-			{
-				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: DB not connected, trying to connect..."));
-				if (!ConnectLightingDatabase())
-				{
-					theApp.m_pLightingLog->LOG_INFO(_T("UpdateLightingIdMap: Database not connected"));
-					return FALSE;
-				}
-				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Database connected successfully"));
-			}
-			pUseConn = theApp.m_pLightingConn;
-		}
-	}
-
-	if (pUseConn == SQL_NULL_HANDLE)
-	{
-		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: No valid connection available"));
-		return FALSE;
-	}
-
-	// 确保 Barcode 列存在（兼容旧数据库 - 不支持 ADD COLUMN IF NOT EXISTS）
-	theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Checking/adding Barcode column..."));
-	SQLHSTMT stmt = SQL_NULL_HANDLE;
-	SQLRETURN ret;
-
-	theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Using existing table structure"));
-
-	// ivs_lcd_idmap 表结构：MainAoiFixID=治具号(1,2,3,4), UniqueID=唯一ID, Barcode=产品码
-	// 转义 SQL 字符串中的单引号（避免注入与语法错误）
-	CString strUniqueID = uniqueID;
-	strUniqueID.Replace(_T("'"), _T("''"));
-	CString strBarcode = screenID;
-	strBarcode.Replace(_T("'"), _T("''"));
-	CString strMarkID = markID;
-	strMarkID.Replace(_T("'"), _T("''"));
-
-	// 先查询记录是否存在
-	CString strCheckSQL;
-	strCheckSQL.Format(_T("SELECT COUNT(*) FROM ivs_lcd_idmap WHERE MainAoiFixID='%d'"), fixtureNo);
-	SQLHSTMT checkStmt = SQL_NULL_HANDLE;
-	ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &checkStmt);
-	if (!SQL_SUCCEEDED(ret)) {
-		PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
-		SQLFreeHandle(SQL_HANDLE_STMT, checkStmt);
-		throw 1;
-	}
-	
-	ret = SQLExecDirectA(checkStmt, (SQLCHAR*)(LPCSTR)CT2A(strCheckSQL), SQL_NTS);
-	if (!SQL_SUCCEEDED(ret)) {
-		PrintOdbcError(checkStmt, SQL_HANDLE_STMT);
-		SQLFreeHandle(SQL_HANDLE_STMT, checkStmt);
-		throw 1;
-	}
-	
-	ret = SQLFetch(checkStmt);
-	int count = 0;
-	if (SQL_SUCCEEDED(ret)) {
-		SQLGetData(checkStmt, 1, SQL_C_SLONG, &count, 0, NULL);
-	}
-	SQLFreeHandle(SQL_HANDLE_STMT, checkStmt);
-	checkStmt = SQL_NULL_HANDLE;
-	
-	CString strSQL;
-	if (count > 0) {
-		// 记录存在，执行更新
-		strSQL.Format(_T("UPDATE ivs_lcd_idmap SET UniqueID='%s', Barcode='%s' WHERE MainAoiFixID='%d'"),
-			strUniqueID, strBarcode, fixtureNo);
-		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("[DBG] UpdateLightingIdMap: Record exists, executing UPDATE")));
-	} else {
-		// 记录不存在，执行插入
-		strSQL.Format(_T("INSERT INTO ivs_lcd_idmap (MarkID, UniqueID, Barcode, MainAoiFixID) VALUES ('%s', '%s', '%s', '%d')"),
-			strMarkID, strUniqueID, strBarcode, fixtureNo);
-		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("[DBG] UpdateLightingIdMap: Record does not exist, executing INSERT")));
-	}
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[DBG] UpdateLightingIdMap: SQL=%s"), strSQL));
-
-	BOOL bRetry = FALSE;
-	theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Creating statement for UPDATE..."));
-	try {
-		// 按 MainAoiFixID 更新对应治具号记录，供检测软件使用
-		ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
-		if (!SQL_SUCCEEDED(ret)) {
-			PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
-			throw 1;
-		}
-
-		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Executing UPDATE statement..."));
-		ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
-		if (SQL_SUCCEEDED(ret)) {
-			SQLLEN affected = 0;
-			ret = SQLRowCount(stmt, &affected);
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-				_T("[DBG] UpdateLightingIdMap: SQLRowCount returned affected=%d"), (int)affected));
-
-			if (affected >= 0)
-			{
-				if (affected > 0)
-				{
-					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-						_T("SUCCESS: Updated %d rows in ivs_lcd_idmap - MainAoiFixID=%d, UniqueID=%s, ScreenID=%s"),
-						(int)affected, fixtureNo, uniqueID, screenID));
-				}
-				else
-				{
-					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-						_T("WARNING: No rows affected when updating ivs_lcd_idmap (MainAoiFixID=%d). Check if record exists."), 
-						fixtureNo));
-				}
-				SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-				return TRUE;
-			}
-			else
-			{
-				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-					_T("FAILED: SQLRowCount returned error for ivs_lcd_idmap update (MainAoiFixID=%d)"), fixtureNo));
-				SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-				return FALSE;
-			}
-		}
-		else {
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-				_T("[DBG] UpdateLightingIdMap: SQLExecDirectA failed with SQL=%s"), strSQL));
-			PrintOdbcError(stmt, SQL_HANDLE_STMT);
-			throw 1;
-		}
-		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-		stmt = SQL_NULL_HANDLE;
-	}
-	catch (...) {
-		if (stmt != SQL_NULL_HANDLE) {
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			stmt = SQL_NULL_HANDLE;
-		}
-		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: SQL error, retrying..."));
-		bRetry = TRUE;
-	}
-
-	if (bRetry) {
-		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: Starting retry logic..."));
-		
-		// 使用线程局部连接进行重试，避免影响全局连接
-		if (!IsTlsLightingDBConnected())
-		{
-			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: TLS connection not connected, trying to reconnect..."));
-			if (!GetTlsLightingConnection(
-				theApp.m_strLightingDBServer,
-				theApp.m_strLightingDBName,
-				theApp.m_strLightingDBUser,
-				theApp.m_strLightingDBPassword,
-				theApp.m_pLightingLog))
-			{
-				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: TLS reconnection failed"));
-				return FALSE;
-			}
-			pUseConn = GetTlsLightingConnPtr();
-			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap: TLS reconnected successfully"));
-		}
-		
-		try {
-			// 重新连接后，确保 Barcode 列存在（兼容旧数据库）
-			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap Retry: Checking if Barcode column exists..."));
-			CString strCheckSQL;
-			strCheckSQL.Format(_T("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ivs_lcd_idmap' AND COLUMN_NAME = 'Barcode'"));
-			
-			ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
-			if (!SQL_SUCCEEDED(ret)) {
-				PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
-				throw 1;
-			}
-
-			ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strCheckSQL), SQL_NTS);
-			if (SQL_SUCCEEDED(ret)) {
-				ret = SQLFetch(stmt);
-				if (SQL_SUCCEEDED(ret)) {
-					int count = 0;
-					SQLGetData(stmt, 1, SQL_C_SLONG, &count, 0, NULL);
-					if (count > 0) {
-						theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap Retry: Barcode column already exists"));
-					} else {
-						theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap Retry: Adding Barcode column..."));
-						SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-						stmt = SQL_NULL_HANDLE;
-
-						ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
-						if (!SQL_SUCCEEDED(ret)) {
-							PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
-							throw 1;
-						}
-
-						ret = SQLExecDirectA(stmt, (SQLCHAR*)"ALTER TABLE ivs_lcd_idmap ADD COLUMN Barcode VARCHAR(100)", SQL_NTS);
-						if (SQL_SUCCEEDED(ret)) {
-							theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap Retry: ALTER TABLE executed"));
-						}
-					}
-				}
-			}
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			stmt = SQL_NULL_HANDLE;
-
-			// 先查询记录是否存在
-			CString strCheckSQLRetry;
-			strCheckSQLRetry.Format(_T("SELECT COUNT(*) FROM ivs_lcd_idmap WHERE MainAoiFixID='%d'"), fixtureNo);
-			SQLHSTMT checkStmt = SQL_NULL_HANDLE;
-			ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &checkStmt);
-			if (!SQL_SUCCEEDED(ret)) {
-				PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
-				SQLFreeHandle(SQL_HANDLE_STMT, checkStmt);
-				throw 1;
-			}
-			
-			ret = SQLExecDirectA(checkStmt, (SQLCHAR*)(LPCSTR)CT2A(strCheckSQLRetry), SQL_NTS);
-			if (!SQL_SUCCEEDED(ret)) {
-				PrintOdbcError(checkStmt, SQL_HANDLE_STMT);
-				SQLFreeHandle(SQL_HANDLE_STMT, checkStmt);
-				throw 1;
-			}
-			
-			ret = SQLFetch(checkStmt);
-			int count = 0;
-			if (SQL_SUCCEEDED(ret)) {
-				SQLGetData(checkStmt, 1, SQL_C_SLONG, &count, 0, NULL);
-			}
-			SQLFreeHandle(SQL_HANDLE_STMT, checkStmt);
-			checkStmt = SQL_NULL_HANDLE;
-			
-			CString strSQL;
-			if (count > 0) {
-				// 记录存在，执行更新
-				strSQL.Format(_T("UPDATE ivs_lcd_idmap SET UniqueID='%s', Barcode='%s' WHERE MainAoiFixID='%d'"),
-					strUniqueID, strBarcode, fixtureNo);
-				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("[DBG] UpdateLightingIdMap Retry: Record exists, executing UPDATE")));
-			} else {
-				// 记录不存在，执行插入
-				strSQL.Format(_T("INSERT INTO ivs_lcd_idmap (MarkID, UniqueID, Barcode, MainAoiFixID) VALUES ('%s', '%s', '%s', '%d')"),
-					strMarkID, strUniqueID, strBarcode, fixtureNo);
-				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("[DBG] UpdateLightingIdMap Retry: Record does not exist, executing INSERT")));
-			}
-
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-				_T("[DBG] UpdateLightingIdMap Retry: SQL=%s"), strSQL));
-			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap Retry: Creating statement for UPDATE..."));
-
-			ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
-			if (!SQL_SUCCEEDED(ret)) {
-				PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
-				throw 1;
-			}
-
-			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap Retry: Executing UPDATE..."));
-			ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
-			if (SQL_SUCCEEDED(ret)) {
-				SQLLEN affected = 0;
-				ret = SQLRowCount(stmt, &affected);
-				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-					_T("[DBG] UpdateLightingIdMap Retry: SQLRowCount returned affected=%d"), (int)affected));
-
-				if (affected >= 0)
-				{
-					if (affected > 0)
-					{
-						theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-							_T("RETRY SUCCESS: Updated %d rows in ivs_lcd_idmap - MainAoiFixID=%d, UniqueID=%s, ScreenID=%s"),
-							(int)affected, fixtureNo, uniqueID, screenID));
-					}
-					else
-					{
-						theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-							_T("RETRY WARNING: No rows affected (MainAoiFixID=%d). Record may not exist in table."), 
-							fixtureNo));
-					}
-					SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-					return TRUE;
-				}
-			}
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			stmt = SQL_NULL_HANDLE;
-		}
-		catch (...) {
-			if (stmt != SQL_NULL_HANDLE) {
-				SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			}
-			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap Retry: SQL error"));
-		}
-	}
-
-	theApp.m_pLightingLog->LOG_INFO(_T("[DBG] UpdateLightingIdMap EXIT: returning FALSE"));
-	return FALSE;
-}
-
-BOOL CAni_Data_Serever_PCApp::LoadLightingInspectionResult(CString uniqueID)
-{
-	// 获取当前线程ID
-	DWORD threadId = GetCurrentThreadId();
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[DBG] LoadLightingInspectionResult ENTER: ThreadID=%lu, uniqueID=%s"),
-		threadId, uniqueID));
-
-	// 优先使用线程局部连接（TLS），避免多线程共享连接
-	SQLHDBC pUseConn = SQL_NULL_HANDLE;
-	
-	// 尝试获取线程局部连接
-	if (IsTlsLightingDBConnected())
-	{
-		pUseConn = GetTlsLightingConnPtr();
-		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] LoadLightingInspectionResult: Using TLS connection"));
-	}
-	else
-	{
-		// 如果线程局部连接未连接，尝试创建线程局部连接
-		if (GetTlsLightingConnection(
-			theApp.m_strLightingDBServer,
-			theApp.m_strLightingDBName,
-			theApp.m_strLightingDBUser,
-			theApp.m_strLightingDBPassword,
-			theApp.m_pLightingLog))
-		{
-			pUseConn = GetTlsLightingConnPtr();
-			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] LoadLightingInspectionResult: TLS connection created successfully"));
-		}
-		else
-		{
-			// 线程局部连接创建失败，使用全局连接作为后备
-			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] LoadLightingInspectionResult: TLS connection failed, using global connection"));
-			if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
-			{
-				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] LoadLightingInspectionResult: DB not connected, trying to connect..."));
-				if (!ConnectLightingDatabase())
-				{
-					theApp.m_pLightingLog->LOG_INFO(_T("LoadLightingInspectionResult: Database not connected"));
-					return FALSE;
-				}
-				theApp.m_pLightingLog->LOG_INFO(_T("[DBG] LoadLightingInspectionResult: Database connected successfully"));
-			}
-			pUseConn = theApp.m_pLightingConn;
-		}
-	}
-
-	if (pUseConn == SQL_NULL_HANDLE)
-	{
-		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] LoadLightingInspectionResult: No valid connection available"));
-		return FALSE;
-	}
-
-	LightingInspectionResult result = QueryInspectionResultThreadSafe(uniqueID, pUseConn);
-
-	if (result.m_bValid)
-	{
-		// 找到对应的治具号并保存结果
-		// 这里需要根据 uniqueID 找到对应的治具号
-		// 暂时遍历所有治具进行匹配
-		for (int i = 0; i < 4; i++)
-		{
-			if (m_LightingInspResult[i].m_strUniqueID == uniqueID)
-			{
-				m_LightingInspResult[i] = result;
-				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-					_T("Loaded inspection result: UniqueID=%s, Result=%s, Code=%s, Grade=%s"),
-					uniqueID, result.m_strAOIResult, result.m_strCodeAOI, result.m_strGradeAOI));
-				return TRUE;
-			}
-		}
-		// 如果没找到对应的治具，保存到第一个空槽位
-		for (int i = 0; i < 4; i++)
-		{
-			if (!m_LightingInspResult[i].m_bValid)
-			{
-				m_LightingInspResult[i] = result;
-				m_LightingInspResult[i].m_strUniqueID = uniqueID;
-				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-					_T("Loaded inspection result to slot %d: UniqueID=%s, Result=%s, Code=%s, Grade=%s"),
-					i, uniqueID, result.m_strAOIResult, result.m_strCodeAOI, result.m_strGradeAOI));
-				return TRUE;
-			}
-		}
-	}
-	else
-	{
-		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-			_T("No inspection result found for UniqueID=%s"), uniqueID));
-	}
-
-	return FALSE;
-}
-
-BOOL CAni_Data_Serever_PCApp::UpdateLightingInspectionResult(CString uniqueID)
-{
-	// 更新检测结果的状态（如果需要）
-	// 根据业务需求决定是否需要更新数据库
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-		_T("UpdateLightingInspectionResult: UniqueID=%s"), uniqueID));
-	return TRUE;
-}
 
 // MySQL 数据库初始化
 BOOL CAni_Data_Serever_PCApp::InitLightingDatabase()
@@ -5797,7 +5214,7 @@ BOOL CAni_Data_Serever_PCApp::InitLightingDatabase()
 	// 读取数据库配置（从 [DATABASE] 节读取）
 	CString sTemp;
 	theApp.m_strLightingDBServer = ini[_T("DATABASE")][_T("HOST")]; sTemp = _T("127.0.0.1"); theApp.m_strLightingDBServer = (theApp.m_strLightingDBServer.IsEmpty()) ? sTemp : theApp.m_strLightingDBServer;
-	theApp.m_strLightingDBName = ini[_T("DATABASE")][_T("NAME")]; sTemp = _T("IVS_LCD"); theApp.m_strLightingDBName = (theApp.m_strLightingDBName.IsEmpty()) ? sTemp : theApp.m_strLightingDBName;
+	theApp.m_strLightingDBName = ini[_T("DATABASE")][_T("NAME")]; sTemp = _T("ivs_lcd"); theApp.m_strLightingDBName = (theApp.m_strLightingDBName.IsEmpty()) ? sTemp : theApp.m_strLightingDBName;
 	theApp.m_strLightingDBUser = ini[_T("DATABASE")][_T("USER")]; sTemp = _T("root"); theApp.m_strLightingDBUser = (theApp.m_strLightingDBUser.IsEmpty()) ? sTemp : theApp.m_strLightingDBUser;
 	theApp.m_strLightingDBPassword = ini[_T("DATABASE")][_T("PASSWORD")]; sTemp = _T("password"); theApp.m_strLightingDBPassword = (theApp.m_strLightingDBPassword.IsEmpty()) ? sTemp : theApp.m_strLightingDBPassword;
 
@@ -5806,1171 +5223,6 @@ BOOL CAni_Data_Serever_PCApp::InitLightingDatabase()
 
 	theApp.m_pLightingLog->LOG_INFO(_T("Lighting database environment initialized"));
 
-	// 尝试连接数据库，失败时不阻止程序启动
-	return ConnectLightingDatabase();
-}
-
-BOOL CAni_Data_Serever_PCApp::ConnectLightingDatabase()
-{
-	// 获取当前线程ID
-	DWORD threadId = GetCurrentThreadId();
-	OutputDebugString(CStringSupport::FormatString(_T("[DBG] ConnectLightingDatabase: ThreadID=%lu, called\n"), threadId));
-	
-	// 如果已连接，直接返回
-	if (theApp.m_bLightingDBConnected && theApp.m_pLightingConn != SQL_NULL_HANDLE) {
-		OutputDebugString(CStringSupport::FormatString(_T("[DBG] ConnectLightingDatabase: ThreadID=%lu, already connected\n"), threadId));
-		return TRUE;
-	}
-
-	// 线程同步：避免在其他线程使用连接时关闭连接
-	CSingleLock lock(&theApp.m_csLightingFlow, TRUE);
-	
-	// 再次检查连接状态（双重检查）
-	if (theApp.m_bLightingDBConnected && theApp.m_pLightingConn != SQL_NULL_HANDLE) {
-		OutputDebugString(CStringSupport::FormatString(_T("[DBG] ConnectLightingDatabase: ThreadID=%lu, already connected (after lock)\n"), threadId));
-		return TRUE;
-	}
-
-	// 先关闭旧连接（如果有）
-	if (theApp.m_pLightingConn != SQL_NULL_HANDLE)
-	{
-		OutputDebugString(CStringSupport::FormatString(_T("[DBG] ConnectLightingDatabase: ThreadID=%lu, Closing old connection\n"), threadId));
-		SQLDisconnect(theApp.m_pLightingConn);
-		SQLFreeHandle(SQL_HANDLE_DBC, theApp.m_pLightingConn);
-		theApp.m_pLightingConn = SQL_NULL_HANDLE;
-		theApp.m_bLightingDBConnected = FALSE;
-	}
-
-	// 初始化ODBC环境（如果未初始化）
-	if (theApp.m_odbcEnv == SQL_NULL_HANDLE) {
-		SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_ENV, SQL_NULL_HANDLE, &theApp.m_odbcEnv);
-		if (!SQL_SUCCEEDED(ret)) {
-			theApp.m_pLightingLog->LOG_INFO(_T("Failed to allocate ODBC environment handle"));
-			return FALSE;
-		}
-		SQLSetEnvAttr(theApp.m_odbcEnv, SQL_ATTR_ODBC_VERSION, (void*)SQL_OV_ODBC3, 0);
-	}
-
-	// 多驱动尝试连接
-	const char* driverNames[] = {
-		"MySQL ODBC 5.3 ANSI Driver",
-		"MySQL ODBC 5.3 Unicode Driver",
-		"MySQL ODBC 5.3 Driver"
-	};
-
-	SQLHDBC conn = SQL_NULL_HANDLE;
-	SQLRETURN ret;
-	BOOL connected = FALSE;
-
-	for (int i = 0; i < sizeof(driverNames)/sizeof(driverNames[0]); i++) {
-		if (conn != SQL_NULL_HANDLE) {
-			SQLDisconnect(conn);
-			SQLFreeHandle(SQL_HANDLE_DBC, conn);
-		}
-
-		ret = SQLAllocHandle(SQL_HANDLE_DBC, theApp.m_odbcEnv, &conn);
-		if (!SQL_SUCCEEDED(ret)) {
-			theApp.m_pLightingLog->LOG_INFO(_T("Failed to allocate ODBC connection handle"));
-			continue;
-		}
-
-		//char* pLightingDBServer = CT2A(theApp.m_strLightingDBServer);
-
-		// 转换
-		string pLightingDBServer = UnicodeToMultiByte(theApp.m_strLightingDBServer.GetString()).c_str();
-		string pLightingDBName = UnicodeToMultiByte(theApp.m_strLightingDBName.GetString()).c_str();
-		string pLightingDBUser = UnicodeToMultiByte(theApp.m_strLightingDBUser.GetString()).c_str();
-		string pLightingDBPassword = UnicodeToMultiByte(theApp.m_strLightingDBPassword.GetString()).c_str();
-		//char* pLightingDBName = CT2A(theApp.m_strLightingDBName);
-		//char* pLightingDBUser = CT2A(theApp.m_strLightingDBUser);
-		//char* pLightingDBPassword = CT2A(theApp.m_strLightingDBPassword);
-
-		char connStr[512];
-		sprintf_s(connStr, sizeof(connStr), 
-				"DRIVER={%s};SERVER=%s;PORT=%d;DATABASE=%s;UID=%s;PWD=%s;OPTION=3;",
-				driverNames[i], pLightingDBServer.c_str(), 3306,
-				pLightingDBName.c_str(),
-				pLightingDBUser.c_str(),
-				pLightingDBPassword.c_str());
-
-		CString dbgMsg;
-		dbgMsg.Format(_T("[DBG] ConnectLightingDatabase: ThreadID=%lu, Connecting with driver: %s"), threadId, CString(driverNames[i]));
-		theApp.m_pLightingLog->LOG_INFO(dbgMsg);
-		OutputDebugString(dbgMsg + _T("\n"));
-
-		ret = SQLDriverConnectA(conn, NULL, (SQLCHAR*)connStr, SQL_NTS, NULL, 0, NULL, SQL_DRIVER_NOPROMPT);
-
-		if (SQL_SUCCEEDED(ret)) {
-			OutputDebugString(CStringSupport::FormatString(_T("[DBG] ConnectLightingDatabase: ThreadID=%lu, Successfully connected with driver: %s\n"), threadId, CString(driverNames[i])));
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-				_T("[DBG] Successfully connected with driver: %s"), CString(driverNames[i])));
-			connected = TRUE;
-			break;
-		} else {
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-				_T("[DBG] Driver %s failed, trying next..."), CString(driverNames[i])));
-			PrintOdbcError(conn, SQL_HANDLE_DBC);
-		}
-	}
-
-	if (!connected) {
-		OutputDebugString(CStringSupport::FormatString(_T("[DBG] ConnectLightingDatabase: ThreadID=%lu, Failed to connect to MySQL database with all drivers\n"), threadId));
-		theApp.m_pLightingLog->LOG_INFO(_T("Failed to connect to MySQL database with all drivers"));
-		if (conn != SQL_NULL_HANDLE) {
-			SQLFreeHandle(SQL_HANDLE_DBC, conn);
-		}
-		return FALSE;
-	}
-
-	theApp.m_pLightingConn = conn;
-	theApp.m_bLightingDBConnected = TRUE;
-	OutputDebugString(CStringSupport::FormatString(_T("[DBG] ConnectLightingDatabase: ThreadID=%lu, MySQL connect SUCCESS\n"), threadId));
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[DBG] MySQL connect SUCCESS: Server=%s, DB=%s, User=%s"),
-		theApp.m_strLightingDBServer, theApp.m_strLightingDBName, theApp.m_strLightingDBUser));
+	// 连接已由 CLightingDB::Get().Connect() 在 InitInstance 中调用
 	return TRUE;
-}
-
-// 关闭数据库连接
-void CAni_Data_Serever_PCApp::CloseLightingDatabase()
-{
-	if (theApp.m_pLightingConn != SQL_NULL_HANDLE)
-	{
-		SQLDisconnect(theApp.m_pLightingConn);
-		SQLFreeHandle(SQL_HANDLE_DBC, theApp.m_pLightingConn);
-		theApp.m_pLightingConn = SQL_NULL_HANDLE;
-	}
-
-	theApp.m_bLightingDBConnected = FALSE;
-	theApp.m_pLightingLog->LOG_INFO(_T("Lighting database connection closed"));
-}
-
-// DFS 模块专用的数据库连接
-BOOL CAni_Data_Serever_PCApp::ConnectDfsLightingDatabase()
-{
-	// 如果已连接，直接返回
-	if (theApp.m_bDfsLightingDBConnected && theApp.m_pDfsLightingConn != SQL_NULL_HANDLE)
-		return TRUE;
-
-	// 先关闭旧连接（如果有）
-	if (theApp.m_pDfsLightingConn != SQL_NULL_HANDLE)
-	{
-		SQLDisconnect(theApp.m_pDfsLightingConn);
-		SQLFreeHandle(SQL_HANDLE_DBC, theApp.m_pDfsLightingConn);
-		theApp.m_pDfsLightingConn = SQL_NULL_HANDLE;
-		theApp.m_bDfsLightingDBConnected = FALSE;
-	}
-
-	// 初始化ODBC环境（如果未初始化）
-	if (theApp.m_odbcEnv == SQL_NULL_HANDLE) {
-		SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_ENV, SQL_NULL_HANDLE, &theApp.m_odbcEnv);
-		if (!SQL_SUCCEEDED(ret)) {
-			theApp.m_pFTPLog->LOG_INFO(_T("ConnectDfsLightingDatabase: Failed to allocate ODBC environment handle"));
-			return FALSE;
-		}
-		SQLSetEnvAttr(theApp.m_odbcEnv, SQL_ATTR_ODBC_VERSION, (void*)SQL_OV_ODBC3, 0);
-	}
-
-	// 多驱动尝试连接
-	const char* driverNames[] = {
-		"MySQL ODBC 5.3 ANSI Driver",
-		"MySQL ODBC 5.3 Unicode Driver",
-		"MySQL ODBC 5.3 Driver"
-	};
-
-	SQLHDBC conn = SQL_NULL_HANDLE;
-	SQLRETURN ret;
-	BOOL connected = FALSE;
-
-	for (int i = 0; i < sizeof(driverNames)/sizeof(driverNames[0]); i++) {
-		if (conn != SQL_NULL_HANDLE) {
-			SQLDisconnect(conn);
-			SQLFreeHandle(SQL_HANDLE_DBC, conn);
-		}
-
-		ret = SQLAllocHandle(SQL_HANDLE_DBC, theApp.m_odbcEnv, &conn);
-		if (!SQL_SUCCEEDED(ret)) {
-			theApp.m_pFTPLog->LOG_INFO(_T("ConnectDfsLightingDatabase: Failed to allocate ODBC connection handle"));
-			continue;
-		}
-
-		//char* pLightingDBServer = CT2A(theApp.m_strLightingDBServer);
-		//char* pLightingDBName = CT2A(theApp.m_strLightingDBName);
-		//char* pLightingDBUser = CT2A(theApp.m_strLightingDBUser);
-		//char* pLightingDBPassword = CT2A(theApp.m_strLightingDBPassword);
-
-		string pLightingDBServer = UnicodeToMultiByte(theApp.m_strLightingDBServer.GetString()).c_str();
-		string pLightingDBName = UnicodeToMultiByte(theApp.m_strLightingDBName.GetString()).c_str();
-		string pLightingDBUser = UnicodeToMultiByte(theApp.m_strLightingDBUser.GetString()).c_str();
-		string pLightingDBPassword = UnicodeToMultiByte(theApp.m_strLightingDBPassword.GetString()).c_str();
-
-		char connStr[512];
-		sprintf_s(connStr, sizeof(connStr), 
-				"DRIVER={%s};SERVER=%s;PORT=%d;DATABASE=%s;UID=%s;PWD=%s;OPTION=3;",
-				driverNames[i], pLightingDBServer.c_str(), 3306,
-			pLightingDBName.c_str(),
-			pLightingDBUser.c_str(),
-			pLightingDBPassword.c_str());
-
-		CString dbgMsg;
-		dbgMsg.Format(_T("[DFS] Connecting with driver: %s"), CString(driverNames[i]));
-		theApp.m_pFTPLog->LOG_INFO(dbgMsg);
-		OutputDebugString(dbgMsg + _T("\n"));
-
-		ret = SQLDriverConnectA(conn, NULL, (SQLCHAR*)connStr, SQL_NTS, NULL, 0, NULL, SQL_DRIVER_NOPROMPT);
-
-		if (SQL_SUCCEEDED(ret)) {
-			theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
-				_T("ConnectDfsLightingDatabase: Successfully connected with driver: %s"), CString(driverNames[i])));
-			connected = TRUE;
-			break;
-		} else {
-			theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
-				_T("[DFS] Driver %s failed, trying next..."), CString(driverNames[i])));
-			PrintOdbcError(conn, SQL_HANDLE_DBC);
-		}
-	}
-
-	if (!connected) {
-		theApp.m_pFTPLog->LOG_INFO(_T("ConnectDfsLightingDatabase: Failed to connect to MySQL database with all drivers"));
-		if (conn != SQL_NULL_HANDLE) {
-			SQLFreeHandle(SQL_HANDLE_DBC, conn);
-		}
-		return FALSE;
-	}
-
-	theApp.m_pDfsLightingConn = conn;
-	theApp.m_bDfsLightingDBConnected = TRUE;
-	theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
-		_T("ConnectDfsLightingDatabase: Connected to %s/%s"), theApp.m_strLightingDBServer, theApp.m_strLightingDBName));
-	return TRUE;
-}
-
-// 关闭 DFS 数据库连接
-void CAni_Data_Serever_PCApp::CloseDfsLightingDatabase()
-{
-	if (theApp.m_pDfsLightingConn != SQL_NULL_HANDLE)
-	{
-		SQLDisconnect(theApp.m_pDfsLightingConn);
-		SQLFreeHandle(SQL_HANDLE_DBC, theApp.m_pDfsLightingConn);
-		theApp.m_pDfsLightingConn = SQL_NULL_HANDLE;
-	}
-
-	theApp.m_bDfsLightingDBConnected = FALSE;
-	theApp.m_pFTPLog->LOG_INFO(_T("CloseDfsLightingDatabase: DFS Lighting database connection closed"));
-}
-
-// 获取 DFS 模块专用的数据库连接（如果未连接则先连接）
-SQLHDBC CAni_Data_Serever_PCApp::GetDfsLightingConnection()
-{
-	if (!theApp.m_bDfsLightingDBConnected || theApp.m_pDfsLightingConn == SQL_NULL_HANDLE)
-	{
-		if (!ConnectDfsLightingDatabase())
-		{
-			theApp.m_pFTPLog->LOG_INFO(_T("GetDfsLightingConnection: Failed to connect"));
-			return SQL_NULL_HANDLE;
-		}
-	}
-	return theApp.m_pDfsLightingConn;
-}
-
-LightingInspectionResult CAni_Data_Serever_PCApp::GetLightingResultByUniqueID(CString uniqueID)
-{
-	return QueryInspectionResult(uniqueID);
-}
-
-void CAni_Data_Serever_PCApp::GetLightingResultByBarcode(CString strBarcode, CString& strAOIResult, CString& strCodeAOI, CString& strGradeAOI, BOOL& bValid)
-{
-	strAOIResult = _T("");
-	strCodeAOI = _T("");
-	strGradeAOI = _T("");
-	bValid = FALSE;
-
-	// 获取当前线程ID用于调试
-	DWORD threadId = GetCurrentThreadId();
-	OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingResultByBarcode: ThreadID=%lu, Barcode=%s\n"), threadId, strBarcode));
-
-	if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
-	{
-		if (!ConnectLightingDatabase())
-		{
-			theApp.m_pFTPLog->LOG_INFO(_T("GetLightingResultByBarcode: Database not connected"));
-			return;
-		}
-	}
-
-	// 先根据 Barcode 从 ivs_lcd_idmap 表找到 UniqueID
-	CString strUniqueID;
-
-	BOOL bRetry = FALSE;
-	SQLHSTMT stmt = SQL_NULL_HANDLE;
-	SQLRETURN ret;
-	try {
-		CString strSQL;
-		strSQL.Format(_T("SELECT UniqueID FROM ivs_lcd_idmap WHERE Barcode = '%s'"), strBarcode);
-		OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingResultByBarcode: ThreadID=%lu, SQL=%s\n"), threadId, strSQL));
-
-		ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
-		if (!SQL_SUCCEEDED(ret)) {
-			PrintOdbcError(theApp.m_pLightingConn, SQL_HANDLE_DBC);
-			bRetry = TRUE;
-			throw 1;
-		}
-
-		ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
-		if (!SQL_SUCCEEDED(ret)) {
-			PrintOdbcError(stmt, SQL_HANDLE_STMT);
-			bRetry = TRUE;
-			throw 1;
-		}
-
-		ret = SQLFetch(stmt);
-		if (SQL_SUCCEEDED(ret))
-		{
-			SQLCHAR uniqueIDBuf[256];
-			SQLLEN len;
-			SQLGetData(stmt, 1, SQL_C_CHAR, uniqueIDBuf, sizeof(uniqueIDBuf), &len);
-			strUniqueID = CA2W((char*)uniqueIDBuf);
-			OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingResultByBarcode: ThreadID=%lu, Found UniqueID=%s for Barcode=%s\n"), threadId, strUniqueID, strBarcode));
-			theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
-				_T("GetLightingResultByBarcode: Found UniqueID=%s for Barcode=%s"), strUniqueID, strBarcode));
-		}
-		else
-		{
-			OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingResultByBarcode: ThreadID=%lu, No UniqueID found for Barcode=%s\n"), threadId, strBarcode));
-			theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
-				_T("GetLightingResultByBarcode: No UniqueID found for Barcode=%s"), strBarcode));
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			return;
-		}
-		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-		stmt = SQL_NULL_HANDLE;
-	}
-	catch (...) {
-		if (stmt != SQL_NULL_HANDLE) {
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			stmt = SQL_NULL_HANDLE;
-		}
-		bRetry = TRUE;
-	}
-
-	if (bRetry) {
-		theApp.m_bLightingDBConnected = FALSE;
-		if (!ConnectLightingDatabase())
-		{
-			theApp.m_pFTPLog->LOG_INFO(_T("GetLightingResultByBarcode: Reconnect failed"));
-			return;
-		}
-		try {
-			CString strSQL;
-			strSQL.Format(_T("SELECT UniqueID FROM ivs_lcd_idmap WHERE Barcode = '%s'"), strBarcode);
-
-			ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
-			if (!SQL_SUCCEEDED(ret)) {
-				PrintOdbcError(theApp.m_pLightingConn, SQL_HANDLE_DBC);
-				throw 1;
-			}
-
-			ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
-			if (!SQL_SUCCEEDED(ret)) {
-				PrintOdbcError(stmt, SQL_HANDLE_STMT);
-				throw 1;
-			}
-
-			ret = SQLFetch(stmt);
-			if (SQL_SUCCEEDED(ret))
-			{
-				SQLCHAR uniqueIDBuf[256];
-				SQLLEN len;
-				SQLGetData(stmt, 1, SQL_C_CHAR, uniqueIDBuf, sizeof(uniqueIDBuf), &len);
-				strUniqueID = CA2W((char*)uniqueIDBuf);
-				theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
-					_T("GetLightingResultByBarcode: Retry success - Found UniqueID=%s for Barcode=%s"), strUniqueID, strBarcode));
-			}
-			else
-			{
-				theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
-					_T("GetLightingResultByBarcode: Retry - No UniqueID found for Barcode=%s"), strBarcode));
-				SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-				return;
-			}
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			stmt = SQL_NULL_HANDLE;
-		}
-		catch (...) {
-			if (stmt != SQL_NULL_HANDLE) {
-				SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			}
-			theApp.m_pFTPLog->LOG_INFO(_T("GetLightingResultByBarcode: Retry SQL error"));
-			return;
-		}
-	}
-
-	// 再根据 UniqueID 查询 IVS_LCD_InspectionResult 表
-	LightingInspectionResult result = QueryInspectionResult(strUniqueID);
-	if (result.m_bValid)
-	{
-		strAOIResult = result.m_strAOIResult;
-		strCodeAOI = result.m_strCodeAOI;
-		strGradeAOI = result.m_strGradeAOI;
-		bValid = TRUE;
-	}
-}
-
-// DFS 模块调用：根据 UniqueID 查询点灯缺陷详情列表（AOI 缺陷详情）
-BOOL CAni_Data_Serever_PCApp::QueryLightingDefectList(CString strUniqueID, std::vector<LUMITOP_SDFSDefectDataBegin>& vecDefects)
-{
-	vecDefects.clear();
-
-	if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
-	{
-		if (!ConnectLightingDatabase())
-		{
-			theApp.m_pLightingLog->LOG_INFO(_T("QueryLightingDefectList: Database not connected"));
-			return FALSE;
-		}
-	}
-
-	BOOL bRetry = FALSE;
-	SQLHSTMT stmt = SQL_NULL_HANDLE;
-	SQLRETURN ret;
-	try {
-		// 查询 IVS_LCD_AOIResult 表
-		CString strSQL;
-		strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, ")
-			_T("TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI ")
-			_T("FROM ivs_lcd_aoidefect WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
-			strUniqueID);
-
-		ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
-		if (!SQL_SUCCEEDED(ret)) {
-			PrintOdbcError(theApp.m_pLightingConn, SQL_HANDLE_DBC);
-			bRetry = TRUE;
-			throw 1;
-		}
-
-		ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
-		if (!SQL_SUCCEEDED(ret)) {
-			PrintOdbcError(stmt, SQL_HANDLE_STMT);
-			bRetry = TRUE;
-			throw 1;
-		}
-
-		int iDefectCount = 0;
-		while ((ret = SQLFetch(stmt)) == SQL_SUCCESS)
-		{
-			LUMITOP_SDFSDefectDataBegin defect;
-
-			defect.strPANEL_ID = strUniqueID;
-			
-			SQLCHAR defectIndexBuf[51], patternIDBuf[101], patternNameBuf[101],
-				posXBuf[51], posYBuf[51], grayScaleBuf[51];
-			SQLLEN lenDefectIndex, lenPatternID, lenPatternName, lenPosX, lenPosY, lenGrayScale;
-			
-			SQLGetData(stmt, 1, SQL_C_CHAR, defectIndexBuf, sizeof(defectIndexBuf), &lenDefectIndex);
-			defect.strPOINT = CA2W((char*)defectIndexBuf);
-			
-			SQLGetData(stmt, 3, SQL_C_CHAR, patternIDBuf, sizeof(patternIDBuf), &lenPatternID);
-			CString strPatternID = CA2W((char*)patternIDBuf);
-			
-			SQLGetData(stmt, 4, SQL_C_CHAR, patternNameBuf, sizeof(patternNameBuf), &lenPatternName);
-			CString strPatternName = CA2W((char*)patternNameBuf);
-			
-			defect.strLUMITOP_PTRN = strPatternName.IsEmpty() ? strPatternID : strPatternName;
-			
-			SQLGetData(stmt, 5, SQL_C_CHAR, posXBuf, sizeof(posXBuf), &lenPosX);
-			defect.strX = CA2W((char*)posXBuf);
-			
-			SQLGetData(stmt, 6, SQL_C_CHAR, posYBuf, sizeof(posYBuf), &lenPosY);
-			defect.strY = CA2W((char*)posYBuf);
-			
-			SQLGetData(stmt, 11, SQL_C_CHAR, grayScaleBuf, sizeof(grayScaleBuf), &lenGrayScale);
-			defect.strLV = CA2W((char*)grayScaleBuf);
-
-			// CIE 坐标暂时用 0 填充（如有相关字段可补充）
-			defect.strCIE_X = _T("0");
-			defect.strCIE_Y = _T("0");
-
-			// CCT 相关字段暂时用 0 填充
-			defect.strCCT = _T("0");
-			defect.strMPCD = _T("0");
-			defect.strMPCD_MIN = _T("0");
-			defect.strMPCD_MAX = _T("0");
-			defect.strMPCD_DIFF = _T("0");
-			defect.strMPCD_CENTER = _T("0");
-			defect.strCCT_CENTER = _T("0");
-
-			vecDefects.push_back(defect);
-			iDefectCount++;
-		}
-
-		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-			_T("QueryLightingDefectList: Found %d defects for UniqueID=%s"),
-			iDefectCount, strUniqueID));
-
-		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-		return TRUE;
-	}
-	catch (...) {
-		if (stmt != SQL_NULL_HANDLE) {
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-		}
-		bRetry = TRUE;
-	}
-
-	if (bRetry) {
-		theApp.m_bLightingDBConnected = FALSE;
-		if (!ConnectLightingDatabase())
-		{
-			theApp.m_pLightingLog->LOG_INFO(_T("QueryLightingDefectList: Reconnect failed"));
-			return FALSE;
-		}
-		try {
-			CString strSQL;
-			strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, ")
-				_T("TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI ")
-				_T("FROM IVS_LCD_AOIResult WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
-				strUniqueID);
-
-			ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
-			if (!SQL_SUCCEEDED(ret)) {
-				PrintOdbcError(theApp.m_pLightingConn, SQL_HANDLE_DBC);
-				throw 1;
-			}
-
-			ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
-			if (!SQL_SUCCEEDED(ret)) {
-				PrintOdbcError(stmt, SQL_HANDLE_STMT);
-				throw 1;
-			}
-
-			int iDefectCount = 0;
-			while ((ret = SQLFetch(stmt)) == SQL_SUCCESS)
-			{
-				LUMITOP_SDFSDefectDataBegin defect;
-
-				defect.strPANEL_ID = strUniqueID;
-				
-				SQLCHAR defectIndexBuf[51], patternIDBuf[101], patternNameBuf[101],
-					posXBuf[51], posYBuf[51], grayScaleBuf[51];
-				SQLLEN lenDefectIndex, lenPatternID, lenPatternName, lenPosX, lenPosY, lenGrayScale;
-				
-				SQLGetData(stmt, 1, SQL_C_CHAR, defectIndexBuf, sizeof(defectIndexBuf), &lenDefectIndex);
-				defect.strPOINT = CA2W((char*)defectIndexBuf);
-				
-				SQLGetData(stmt, 3, SQL_C_CHAR, patternIDBuf, sizeof(patternIDBuf), &lenPatternID);
-				CString strPatternID = CA2W((char*)patternIDBuf);
-				
-				SQLGetData(stmt, 4, SQL_C_CHAR, patternNameBuf, sizeof(patternNameBuf), &lenPatternName);
-				CString strPatternName = CA2W((char*)patternNameBuf);
-				
-				defect.strLUMITOP_PTRN = strPatternName.IsEmpty() ? strPatternID : strPatternName;
-				
-				SQLGetData(stmt, 5, SQL_C_CHAR, posXBuf, sizeof(posXBuf), &lenPosX);
-				defect.strX = CA2W((char*)posXBuf);
-				
-				SQLGetData(stmt, 6, SQL_C_CHAR, posYBuf, sizeof(posYBuf), &lenPosY);
-				defect.strY = CA2W((char*)posYBuf);
-				
-				SQLGetData(stmt, 11, SQL_C_CHAR, grayScaleBuf, sizeof(grayScaleBuf), &lenGrayScale);
-				defect.strLV = CA2W((char*)grayScaleBuf);
-
-				defect.strCIE_X = _T("0");
-				defect.strCIE_Y = _T("0");
-				defect.strCCT = _T("0");
-				defect.strMPCD = _T("0");
-				defect.strMPCD_MIN = _T("0");
-				defect.strMPCD_MAX = _T("0");
-				defect.strMPCD_DIFF = _T("0");
-				defect.strMPCD_CENTER = _T("0");
-				defect.strCCT_CENTER = _T("0");
-
-				vecDefects.push_back(defect);
-				iDefectCount++;
-			}
-
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-				_T("QueryLightingDefectList: Retry success - Found %d defects for UniqueID=%s"),
-				iDefectCount, strUniqueID));
-
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			return TRUE;
-		}
-		catch (...) {
-			if (stmt != SQL_NULL_HANDLE) {
-				SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			}
-			theApp.m_pLightingLog->LOG_INFO(_T("QueryLightingDefectList: Retry SQL error"));
-		}
-	}
-
-	return FALSE;
-}
-
-// DFS 模块调用：根据 UniqueID 查询 AOI 缺陷详情列表（点灯缺陷）
-BOOL CAni_Data_Serever_PCApp::QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, SQLHDBC pConn)
-{
-	CString strFilePath;
-	vecDefects.clear();
-
-	// 获取当前线程ID
-	DWORD threadId = GetCurrentThreadId();
-	OutputDebugString(_T("[DBG] QueryAOIDefectList: Entered function\n"));
-	OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: ThreadID=%lu, strUniqueID=%s, pConn=%p\n"), threadId, strUniqueID, pConn));
-
-	// 优先使用线程局部连接（TLS），避免多线程共享连接
-	SQLHDBC pUseConn = pConn;
-	
-	// 如果传入了连接，优先使用传入的连接
-	if (pUseConn != SQL_NULL_HANDLE)
-	{
-		OutputDebugString(_T("[DBG] QueryAOIDefectList: Using provided connection pConn\n"));
-	}
-	else
-	{
-		// 尝试获取线程局部连接
-		if (IsTlsLightingDBConnected())
-		{
-			pUseConn = GetTlsLightingConnPtr();
-			OutputDebugString(_T("[DBG] QueryAOIDefectList: Using TLS connection\n"));
-		}
-		else
-		{
-			// 如果线程局部连接未连接，尝试创建线程局部连接
-			if (GetTlsLightingConnection(
-				theApp.m_strLightingDBServer,
-				theApp.m_strLightingDBName,
-				theApp.m_strLightingDBUser,
-				theApp.m_strLightingDBPassword,
-				theApp.m_pLightingLog))
-			{
-				pUseConn = GetTlsLightingConnPtr();
-				OutputDebugString(_T("[DBG] QueryAOIDefectList: TLS connection created successfully\n"));
-			}
-			else
-			{
-				// 线程局部连接创建失败，使用全局连接作为后备
-				OutputDebugString(_T("[DBG] QueryAOIDefectList: TLS connection failed, using global connection\n"));
-				if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
-				{
-					OutputDebugString(_T("[DBG] QueryAOIDefectList: DB not connected, trying to connect...\n"));
-					if (!ConnectLightingDatabase())
-					{
-						OutputDebugString(_T("[DBG] QueryAOIDefectList: ConnectLightingDatabase FAILED\n"));
-						theApp.m_pLightingLog->LOG_INFO(_T("QueryAOIDefectList: Database not connected"));
-						return FALSE;
-					}
-					OutputDebugString(_T("[DBG] QueryAOIDefectList: ConnectLightingDatabase SUCCESS\n"));
-				}
-				pUseConn = theApp.m_pLightingConn;
-			}
-		}
-	}
-
-		BOOL bRetry = FALSE;
-	SQLHSTMT stmt = SQL_NULL_HANDLE;
-	SQLRETURN ret;
-
-	try {
-		// 查询 IVS_LCD_AOIResult 表（包含 ImagePath）
-		CString strSQL;
-		strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, ")
-			_T("TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI, ImagePath ")
-			_T("FROM ivs_lcd_aoidefect WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
-			strUniqueID);
-
-		OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: SQL=%s\n"), strSQL));
-
-		OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: ThreadID=%lu, Creating Statement... pUseConn=%p, stmt=%p\n"), threadId, pUseConn, stmt));
-		ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
-		if (!SQL_SUCCEEDED(ret)) {
-			PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
-			bRetry = TRUE;
-			OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: ThreadID=%lu, SQLAllocHandle failed, ret=%d\n"), threadId, ret));
-			throw 1;
-		}
-		OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: ThreadID=%lu, Creating Statement completed, stmt=%p\n"), threadId, stmt));
-
-		// 诊断：检查 stmt 和 pUseConn 是否有效
-		OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: stmt=%p, pUseConn=%p\n"), stmt, pUseConn));
-		
-		// 诊断：检查字符串转换
-		CT2A strSQLA(strSQL);
-		OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: SQL length=%d\n"), strlen((LPCSTR)strSQLA)));
-
-		OutputDebugString(_T("[DBG] QueryAOIDefectList: Calling SQLExecDirectA...\n"));
-		ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)strSQLA, SQL_NTS);
-		if (!SQL_SUCCEEDED(ret)) {
-			PrintOdbcError(stmt, SQL_HANDLE_STMT);
-			bRetry = TRUE;
-			throw 1;
-		}
-		OutputDebugString(_T("[DBG] QueryAOIDefectList: SQLExecDirectA completed, now fetching results...\n"));
-
-		int iDefectCount = 0;
-		ret = SQLFetch(stmt);
-		OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: First SQLFetch ret=%d\n"), ret));
-		
-		while (ret == SQL_SUCCESS || ret == SQL_SUCCESS_WITH_INFO)
-		{
-			OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: Processing row %d...\n"), iDefectCount + 1));
-			
-			SDFSDefectDataBegin defect;
-			SQLCHAR defectIndexBuf[51], typeBuf[51], patternIDBuf[101], patternNameBuf[101], 
-				posXBuf[51], posYBuf[51], posWidthBuf[51], posHeightBuf[51], 
-				trueSizeBuf[51], grayScaleBuf[51], grayScaleBKBuf[51], grayScaleDiffBuf[51], 
-				codeAOIBuf[51], gradeAOIBuf[51], imagePathBuf[512];
-			SQLLEN lenDefectIndex, lenType, lenPatternID, lenPatternName, 
-				lenPosX, lenPosY, lenPosWidth, lenPosHeight, 
-				lenTrueSize, lenGrayScale, lenGrayScaleBK, lenGrayScaleDiff, 
-				lenCodeAOI, lenGradeAOI, lenImagePath;
-
-			defect.strPANEL_ID = strUniqueID;
-			
-			SQLGetData(stmt, 1, SQL_C_CHAR, defectIndexBuf, sizeof(defectIndexBuf), &lenDefectIndex);
-			OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: GetData col1 done, len=%d\n"), lenDefectIndex));
-			SQLGetData(stmt, 2, SQL_C_CHAR, typeBuf, sizeof(typeBuf), &lenType);
-			SQLGetData(stmt, 3, SQL_C_CHAR, patternIDBuf, sizeof(patternIDBuf), &lenPatternID);
-			SQLGetData(stmt, 4, SQL_C_CHAR, patternNameBuf, sizeof(patternNameBuf), &lenPatternName);
-			SQLGetData(stmt, 5, SQL_C_CHAR, posXBuf, sizeof(posXBuf), &lenPosX);
-			SQLGetData(stmt, 6, SQL_C_CHAR, posYBuf, sizeof(posYBuf), &lenPosY);
-			SQLGetData(stmt, 7, SQL_C_CHAR, posWidthBuf, sizeof(posWidthBuf), &lenPosWidth);
-			SQLGetData(stmt, 8, SQL_C_CHAR, posHeightBuf, sizeof(posHeightBuf), &lenPosHeight);
-			SQLGetData(stmt, 9, SQL_C_CHAR, trueSizeBuf, sizeof(trueSizeBuf), &lenTrueSize);
-			SQLGetData(stmt, 10, SQL_C_CHAR, grayScaleBuf, sizeof(grayScaleBuf), &lenGrayScale);
-			SQLGetData(stmt, 11, SQL_C_CHAR, grayScaleBKBuf, sizeof(grayScaleBKBuf), &lenGrayScaleBK);
-			SQLGetData(stmt, 12, SQL_C_CHAR, grayScaleDiffBuf, sizeof(grayScaleDiffBuf), &lenGrayScaleDiff);
-			SQLGetData(stmt, 13, SQL_C_CHAR, codeAOIBuf, sizeof(codeAOIBuf), &lenCodeAOI);
-			SQLGetData(stmt, 14, SQL_C_CHAR, gradeAOIBuf, sizeof(gradeAOIBuf), &lenGradeAOI);
-			SQLGetData(stmt, 15, SQL_C_CHAR, imagePathBuf, sizeof(imagePathBuf), &lenImagePath);
-			OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: GetData all cols done, imagePathLen=%d\n"), lenImagePath));
-
-			defect.strDEFECT_DATA_NUM = (char*)defectIndexBuf;
-			defect.strDEFECT_TYPE = (char*)typeBuf;
-
-			// PatternID 和 PatternName 组合
-			CString strPatternID = CA2T((char*)patternIDBuf);
-			CString strPatternName = CA2T((char*)patternNameBuf);
-			defect.strDEFECT_PTRN = strPatternName.IsEmpty() ? strPatternID : strPatternName;
-
-			defect.strDEFECT_CODE = (char*)codeAOIBuf;
-			defect.strDEFECT_GRADE = (char*)gradeAOIBuf;
-			defect.strX = (char*)posXBuf;
-			defect.strY = (char*)posYBuf;
-			defect.strSIZE = (char*)trueSizeBuf;
-
-			// 从 IVS_LCD_AOIResult 表读取缺陷图像路径（绝对路径）
-			defect.strIMAGE_DATA = (char*)imagePathBuf;
-
-			// 调试日志：打印每条缺陷的详细信息
-			OutputDebugString(CStringSupport::FormatString(
-				_T("[DBG] QueryAOIDefectList: Row %d - DefectIndex=%s, Type=%s, Pattern=%s, Code=%s, Grade=%s, X=%s, Y=%s, Size=%s, ImagePath=%s\n"),
-				iDefectCount + 1,
-				defect.strDEFECT_DATA_NUM, 
-				defect.strDEFECT_TYPE,
-				defect.strDEFECT_PTRN,
-				defect.strDEFECT_CODE,
-				defect.strDEFECT_GRADE,
-				defect.strX,
-				defect.strY,
-				defect.strSIZE,
-				defect.strIMAGE_DATA));
-
-			defect.strCAM_INSPECT = _T("");
-			defect.strZone = _T("");
-			defect.strInspName = _T("");
-
-			vecDefects.push_back(defect);
-			iDefectCount++;
-			OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: push_back done, count=%d\n"), iDefectCount));
-			
-			// 获取下一行数据
-			ret = SQLFetch(stmt);
-			OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: Next SQLFetch ret=%d\n"), ret));
-		}
-		OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: Fetch loop ended, ret=%d\n"), ret));
-		
-		// Free statement before logging to avoid any potential issues
-		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-		stmt = SQL_NULL_HANDLE;
-		OutputDebugString(_T("[DBG] QueryAOIDefectList: SQLFreeHandle done\n"));
-
-		CString strLog;
-		strLog.Format(_T("QueryAOIDefectList: Found %d defects for UniqueID=%s"), iDefectCount, strUniqueID);
-		theApp.m_pLightingLog->LOG_INFO(strLog);
-		OutputDebugString(CStringSupport::FormatString(_T("[DBG] %s\n"), strLog));
-
-		return TRUE;
-	}
-	catch (...) {
-		DWORD lastError = GetLastError();
-		OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: EXCEPTION CAUGHT! LastError=%lu, ThreadID=%lu\n"), lastError, threadId));
-		if (stmt != SQL_NULL_HANDLE) {
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			stmt = SQL_NULL_HANDLE;
-		}
-		theApp.m_pLightingLog->LOG_INFO(_T("QueryAOIDefectList: SQL error, reconnecting..."));
-		OutputDebugString(_T("[DBG] QueryAOIDefectList SQL EXCEPTION\n"));
-		bRetry = TRUE;
-	}
-
-	if (bRetry) {
-		// 诊断：检查为什么进入重试逻辑
-		OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList: ThreadID=%lu, Entering retry logic, bRetry=%d, pConn=%p\n"), threadId, bRetry, pConn));
-		
-		// 即使传入了连接参数，如果 TLS 连接失败也需要重试
-		// 先尝试重新建立 TLS 连接
-		OutputDebugString(_T("[DBG] QueryAOIDefectList: Retrying with new TLS connection...\n"));
-		
-		// 强制重新创建 TLS 连接（不使用现有的可能已损坏的连接）
-		CloseTlsLightingConnection();
-		
-		if (!GetTlsLightingConnection(
-			theApp.m_strLightingDBServer,
-			theApp.m_strLightingDBName,
-			theApp.m_strLightingDBUser,
-			theApp.m_strLightingDBPassword,
-			theApp.m_pLightingLog))
-		{
-			OutputDebugString(_T("[DBG] QueryAOIDefectList: TLS reconnection FAILED\n"));
-			theApp.m_pLightingLog->LOG_INFO(_T("QueryAOIDefectList: TLS reconnection failed"));
-			return FALSE;
-		}
-		OutputDebugString(_T("[DBG] QueryAOIDefectList: TLS reconnection SUCCESS\n"));
-		pUseConn = GetTlsLightingConnPtr();
-		try {
-			CString strSQL;
-			strSQL.Format(_T("SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, ")
-				_T("TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI, ImagePath ")
-				_T("FROM ivs_lcd_aoidefect WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
-				strUniqueID);
-
-			OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList Retry: SQL=%s\n"), strSQL));
-
-			ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
-			if (!SQL_SUCCEEDED(ret)) {
-				PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
-				throw 1;
-			}
-			
-			// 使用与主逻辑相同的字符串转换方式
-			CT2A strSQLA(strSQL);
-			OutputDebugString(CStringSupport::FormatString(_T("[DBG] QueryAOIDefectList Retry: SQL length=%d\n"), strlen((LPCSTR)strSQLA)));
-			
-			ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)strSQLA, SQL_NTS);
-			if (!SQL_SUCCEEDED(ret)) {
-				PrintOdbcError(stmt, SQL_HANDLE_STMT);
-				throw 1;
-			}
-
-			int iDefectCount = 0;
-			ret = SQLFetch(stmt);
-			while (ret == SQL_SUCCESS || ret == SQL_SUCCESS_WITH_INFO)
-			{
-				SDFSDefectDataBegin defect;
-				SQLCHAR defectIndexBuf[51], typeBuf[51], patternIDBuf[101], patternNameBuf[101], 
-					posXBuf[51], posYBuf[51], trueSizeBuf[51], 
-					codeAOIBuf[51], gradeAOIBuf[51], imagePathBuf[512];
-				SQLLEN lenDefectIndex, lenType, lenPatternID, lenPatternName, 
-					lenPosX, lenPosY, lenTrueSize, 
-					lenCodeAOI, lenGradeAOI, lenImagePath;
-
-				defect.strPANEL_ID = strUniqueID;
-				
-				SQLGetData(stmt, 1, SQL_C_CHAR, defectIndexBuf, sizeof(defectIndexBuf), &lenDefectIndex);
-				SQLGetData(stmt, 2, SQL_C_CHAR, typeBuf, sizeof(typeBuf), &lenType);
-				SQLGetData(stmt, 3, SQL_C_CHAR, patternIDBuf, sizeof(patternIDBuf), &lenPatternID);
-				SQLGetData(stmt, 4, SQL_C_CHAR, patternNameBuf, sizeof(patternNameBuf), &lenPatternName);
-				SQLGetData(stmt, 5, SQL_C_CHAR, posXBuf, sizeof(posXBuf), &lenPosX);
-				SQLGetData(stmt, 6, SQL_C_CHAR, posYBuf, sizeof(posYBuf), &lenPosY);
-				SQLGetData(stmt, 9, SQL_C_CHAR, trueSizeBuf, sizeof(trueSizeBuf), &lenTrueSize);
-				SQLGetData(stmt, 13, SQL_C_CHAR, codeAOIBuf, sizeof(codeAOIBuf), &lenCodeAOI);
-				SQLGetData(stmt, 14, SQL_C_CHAR, gradeAOIBuf, sizeof(gradeAOIBuf), &lenGradeAOI);
-				SQLGetData(stmt, 15, SQL_C_CHAR, imagePathBuf, sizeof(imagePathBuf), &lenImagePath);
-
-				defect.strDEFECT_DATA_NUM = (char*)defectIndexBuf;
-				defect.strDEFECT_TYPE = (char*)typeBuf;
-
-				CString strPatternID = CA2T((char*)patternIDBuf);
-				CString strPatternName = CA2T((char*)patternNameBuf);
-				defect.strDEFECT_PTRN = strPatternName.IsEmpty() ? strPatternID : strPatternName;
-
-				defect.strDEFECT_CODE = (char*)codeAOIBuf;
-				defect.strDEFECT_GRADE = (char*)gradeAOIBuf;
-				defect.strX = (char*)posXBuf;
-				defect.strY = (char*)posYBuf;
-				defect.strSIZE = (char*)trueSizeBuf;
-
-				defect.strIMAGE_DATA = (char*)imagePathBuf;
-
-				defect.strCAM_INSPECT = _T("");
-				defect.strZone = _T("");
-				defect.strInspName = _T("");
-
-				vecDefects.push_back(defect);
-				iDefectCount++;
-				
-				// 获取下一行数据
-				ret = SQLFetch(stmt);
-			}
-
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			stmt = SQL_NULL_HANDLE;
-
-			CString strLog;
-			strLog.Format(_T("QueryAOIDefectList: Retry success - Found %d defects for UniqueID=%s"), iDefectCount, strUniqueID);
-			theApp.m_pLightingLog->LOG_INFO(strLog);
-			OutputDebugString(CStringSupport::FormatString(_T("[DBG] %s\n"), strLog));
-
-			return TRUE;
-		}
-		catch (...) {
-			if (stmt != SQL_NULL_HANDLE) {
-				SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			}
-			theApp.m_pLightingLog->LOG_INFO(_T("QueryAOIDefectList: Retry SQL error"));
-			OutputDebugString(_T("[DBG] QueryAOIDefectList Retry SQL EXCEPTION\n"));
-		}
-	}
-
-	return FALSE;
-}
-
-// 线程安全的 AOI 缺陷列表查询（包装 QueryAOIDefectList）
-BOOL CAni_Data_Serever_PCApp::QueryAOIDefectListThreadSafe(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, SQLHDBC pConn)
-{
-	return QueryAOIDefectList(strUniqueID, vecDefects, pConn);
-}
-
-// DFS 模块调用：根据 Barcode 查询 UniqueID
-CString CAni_Data_Serever_PCApp::GetLightingUniqueIDByBarcode(CString strBarcode)
-{
-	CString strUniqueID = _T("");
-
-	// 获取当前线程ID用于调试
-	DWORD threadId = GetCurrentThreadId();
-	OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingUniqueIDByBarcode: ThreadID=%lu, Barcode=%s\n"), threadId, strBarcode));
-
-	if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
-	{
-		if (!ConnectLightingDatabase())
-		{
-			theApp.m_pFTPLog->LOG_INFO(_T("GetLightingUniqueIDByBarcode: Database not connected"));
-			return strUniqueID;
-		}
-	}
-
-	SQLHSTMT stmt = SQL_NULL_HANDLE;
-	SQLRETURN ret;
-	BOOL bRetry = FALSE;
-
-	try {
-		CString strSQL;
-		strSQL.Format(_T("SELECT UniqueID FROM ivs_lcd_idmap WHERE Barcode = '%s'"), strBarcode);
-		OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingUniqueIDByBarcode: ThreadID=%lu, SQL=%s\n"), threadId, strSQL));
-
-		ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
-		if (!SQL_SUCCEEDED(ret)) {
-			PrintOdbcError(theApp.m_pLightingConn, SQL_HANDLE_DBC);
-			bRetry = TRUE;
-			throw 1;
-		}
-
-		ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
-		if (SQL_SUCCEEDED(ret)) {
-			ret = SQLFetch(stmt);
-			if (SQL_SUCCEEDED(ret)) {
-				SQLCHAR uniqueIDBuf[101];
-				SQLLEN lenUniqueID;
-				SQLGetData(stmt, 1, SQL_C_CHAR, uniqueIDBuf, sizeof(uniqueIDBuf), &lenUniqueID);
-				strUniqueID = (char*)uniqueIDBuf;
-				OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingUniqueIDByBarcode: ThreadID=%lu, Found UniqueID=%s\n"), threadId, strUniqueID));
-			} else {
-				OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingUniqueIDByBarcode: ThreadID=%lu, No UniqueID found for Barcode=%s\n"), threadId, strBarcode));
-			}
-		}
-		else {
-			PrintOdbcError(stmt, SQL_HANDLE_STMT);
-			bRetry = TRUE;
-			throw 1;
-		}
-		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-		stmt = SQL_NULL_HANDLE;
-	}
-	catch (...) {
-		if (stmt != SQL_NULL_HANDLE) {
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			stmt = SQL_NULL_HANDLE;
-		}
-		bRetry = TRUE;
-	}
-
-	if (bRetry) {
-		theApp.m_pFTPLog->LOG_INFO(_T("GetLightingUniqueIDByBarcode: SQL error, reconnecting..."));
-		theApp.m_bLightingDBConnected = FALSE;
-		if (!ConnectLightingDatabase())
-		{
-			return strUniqueID;
-		}
-		try {
-			CString strSQL;
-			strSQL.Format(_T("SELECT UniqueID FROM ivs_lcd_idmap WHERE Barcode = '%s'"), strBarcode);
-
-			ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
-			if (!SQL_SUCCEEDED(ret)) {
-				PrintOdbcError(theApp.m_pLightingConn, SQL_HANDLE_DBC);
-				throw 1;
-			}
-
-			ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
-			if (SQL_SUCCEEDED(ret)) {
-				ret = SQLFetch(stmt);
-				if (SQL_SUCCEEDED(ret)) {
-					SQLCHAR uniqueIDBuf[101];
-					SQLLEN lenUniqueID;
-					SQLGetData(stmt, 1, SQL_C_CHAR, uniqueIDBuf, sizeof(uniqueIDBuf), &lenUniqueID);
-					strUniqueID = (char*)uniqueIDBuf;
-				}
-			}
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			stmt = SQL_NULL_HANDLE;
-		}
-		catch (...) {
-			if (stmt != SQL_NULL_HANDLE) {
-				SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			}
-			theApp.m_pFTPLog->LOG_INFO(_T("GetLightingUniqueIDByBarcode: Retry SQL error"));
-		}
-	}
-
-	OutputDebugString(CStringSupport::FormatString(_T("[DBG] GetLightingUniqueIDByBarcode: ThreadID=%lu, Returning UniqueID=%s\n"), threadId, strUniqueID));
-	return strUniqueID;
-}
-
-// 根据治具号查询 ID 映射
-BOOL CAni_Data_Serever_PCApp::QueryIdMapByFixtureNo(int fixtureNo, CString& uniqueID, CString& screenID, CString& markID)
-{
-	if (!theApp.m_bLightingDBConnected || theApp.m_pLightingConn == SQL_NULL_HANDLE)
-	{
-		if (!ConnectLightingDatabase())
-		{
-			theApp.m_pLightingLog->LOG_INFO(_T("QueryIdMapByFixtureNo: Database not connected"));
-			return FALSE;
-		}
-	}
-
-	BOOL bRetry = FALSE;
-	SQLHSTMT stmt = SQL_NULL_HANDLE;
-	SQLRETURN ret;
-
-	try {
-		// 查询 ivs_lcd_idmap 表：MainAoiFixID=治具号, Barcode=产品码
-		CString strSQL;
-		strSQL.Format(_T("SELECT UniqueID, Barcode, MainAoiFixID FROM ivs_lcd_idmap WHERE MainAoiFixID = '%d'"), fixtureNo);
-
-		ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
-		if (!SQL_SUCCEEDED(ret)) {
-			PrintOdbcError(theApp.m_pLightingConn, SQL_HANDLE_DBC);
-			bRetry = TRUE;
-			throw 1;
-		}
-
-		ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
-		if (SQL_SUCCEEDED(ret)) {
-			ret = SQLFetch(stmt);
-			if (SQL_SUCCEEDED(ret)) {
-				SQLCHAR uniqueIDBuf[101], screenIDBuf[101];
-				SQLLEN lenUniqueID, lenScreenID;
-				int mainAoiFixID = 0;
-
-				SQLGetData(stmt, 1, SQL_C_CHAR, uniqueIDBuf, sizeof(uniqueIDBuf), &lenUniqueID);
-				SQLGetData(stmt, 2, SQL_C_CHAR, screenIDBuf, sizeof(screenIDBuf), &lenScreenID);
-				SQLGetData(stmt, 3, SQL_C_SLONG, &mainAoiFixID, 0, NULL);
-
-				uniqueID = (char*)uniqueIDBuf;
-				screenID = (char*)screenIDBuf;
-				markID.Format(_T("%02d"), mainAoiFixID);
-
-				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-					_T("QueryIdMapByFixtureNo: FixtureNo=%d, UniqueID=%s, ScreenID=%s, MarkID=%s"),
-					fixtureNo, uniqueID, screenID, markID));
-
-				SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-				stmt = SQL_NULL_HANDLE;
-				return TRUE;
-			}
-		}
-		else {
-			PrintOdbcError(stmt, SQL_HANDLE_STMT);
-			bRetry = TRUE;
-			throw 1;
-		}
-		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-		stmt = SQL_NULL_HANDLE;
-	}
-	catch (...) {
-		if (stmt != SQL_NULL_HANDLE) {
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			stmt = SQL_NULL_HANDLE;
-		}
-		theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryIdMapByFixtureNo SQL error, reconnecting..."));
-		OutputDebugString(_T("[DBG] QueryIdMapByFixtureNo SQL error\n"));
-		bRetry = TRUE;
-	}
-
-	if (bRetry) {
-		theApp.m_bLightingDBConnected = FALSE;
-		if (!ConnectLightingDatabase())
-		{
-			theApp.m_pLightingLog->LOG_INFO(_T("QueryIdMapByFixtureNo: Reconnect failed"));
-			return FALSE;
-		}
-		try {
-			CString strSQL;
-			strSQL.Format(_T("SELECT UniqueID, Barcode, MainAoiFixID FROM ivs_lcd_idmap WHERE MainAoiFixID = '%d'"), fixtureNo);
-
-			ret = SQLAllocHandle(SQL_HANDLE_STMT, theApp.m_pLightingConn, &stmt);
-			if (!SQL_SUCCEEDED(ret)) {
-				PrintOdbcError(theApp.m_pLightingConn, SQL_HANDLE_DBC);
-				throw 1;
-			}
-
-			ret = SQLExecDirectA(stmt, (SQLCHAR*)(LPCSTR)CT2A(strSQL), SQL_NTS);
-			if (SQL_SUCCEEDED(ret)) {
-				ret = SQLFetch(stmt);
-				if (SQL_SUCCEEDED(ret)) {
-					SQLCHAR uniqueIDBuf[101], screenIDBuf[101];
-					SQLLEN lenUniqueID, lenScreenID;
-					int mainAoiFixID = 0;
-
-					SQLGetData(stmt, 1, SQL_C_CHAR, uniqueIDBuf, sizeof(uniqueIDBuf), &lenUniqueID);
-					SQLGetData(stmt, 2, SQL_C_CHAR, screenIDBuf, sizeof(screenIDBuf), &lenScreenID);
-					SQLGetData(stmt, 3, SQL_C_SLONG, &mainAoiFixID, 0, NULL);
-
-					uniqueID = (char*)uniqueIDBuf;
-					screenID = (char*)screenIDBuf;
-					markID.Format(_T("%02d"), mainAoiFixID);
-
-					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-						_T("QueryIdMapByFixtureNo: Retry success - FixtureNo=%d, UniqueID=%s, ScreenID=%s, MarkID=%s"),
-						fixtureNo, uniqueID, screenID, markID));
-
-					SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-					stmt = SQL_NULL_HANDLE;
-					return TRUE;
-				}
-			}
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			stmt = SQL_NULL_HANDLE;
-		}
-		catch (...) {
-			if (stmt != SQL_NULL_HANDLE) {
-				SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			}
-			theApp.m_pLightingLog->LOG_INFO(_T("[DBG] QueryIdMapByFixtureNo Retry SQL error"));
-			OutputDebugString(_T("[DBG] QueryIdMapByFixtureNo Retry SQL error\n"));
-		}
-	}
-
-	return FALSE;
 }
