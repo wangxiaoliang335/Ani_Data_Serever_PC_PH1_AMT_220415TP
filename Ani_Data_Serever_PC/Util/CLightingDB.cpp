@@ -547,33 +547,35 @@ LightingInspectionResult CLightingDB::QueryInspectionResultThreadSafe(CString un
 		return result;
 	}
 
-	string sqlStr = "SELECT GUID, ScreenID, AOIResult, Code_AOI, Grade_AOI, StartTime, StopTime "
+	string sqlStr = "SELECT GUID, ScreenID, AOIResult, Code_AOI, Grade_AOI, StartTime, StopTime, LocalIP "
 		"FROM ivs_lcd_inspectionresult WHERE UniqueID = '" + UnicodeToMultiByte(uniqueID.GetString()) + "'";
 
 	ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlStr.c_str(), SQL_NTS);
 	if (SQL_SUCCEEDED(ret)) {
 		ret = SQLFetch(stmt);
 		if (SQL_SUCCEEDED(ret)) {
-			SQLCHAR guidBuf[101] = {0}, screenIDBuf[101] = {0}, aoiResultBuf[51] = {0},
-				codeAOIBuf[51] = {0}, gradeAOIBuf[51] = {0}, startTimeBuf[51] = {0}, stopTimeBuf[51] = {0};
-			SQLLEN lenGUID = 0, lenScreenID = 0, lenAOIResult = 0, lenCodeAOI = 0, lenGradeAOI = 0, lenStartTime = 0, lenStopTime = 0;
+		SQLCHAR guidBuf[101] = {0}, screenIDBuf[101] = {0}, aoiResultBuf[51] = {0},
+			codeAOIBuf[51] = {0}, gradeAOIBuf[51] = {0}, startTimeBuf[51] = {0}, stopTimeBuf[51] = {0}, localIPBuf[101] = {0};
+		SQLLEN lenGUID = 0, lenScreenID = 0, lenAOIResult = 0, lenCodeAOI = 0, lenGradeAOI = 0, lenStartTime = 0, lenStopTime = 0, lenLocalIP = 0;
 
-			SQLGetData(stmt, 1, SQL_C_CHAR, guidBuf, sizeof(guidBuf), &lenGUID);
-			SQLGetData(stmt, 2, SQL_C_CHAR, screenIDBuf, sizeof(screenIDBuf), &lenScreenID);
-			SQLGetData(stmt, 3, SQL_C_CHAR, aoiResultBuf, sizeof(aoiResultBuf), &lenAOIResult);
-			SQLGetData(stmt, 4, SQL_C_CHAR, codeAOIBuf, sizeof(codeAOIBuf), &lenCodeAOI);
-			SQLGetData(stmt, 5, SQL_C_CHAR, gradeAOIBuf, sizeof(gradeAOIBuf), &lenGradeAOI);
-			SQLGetData(stmt, 6, SQL_C_CHAR, startTimeBuf, sizeof(startTimeBuf), &lenStartTime);
-			SQLGetData(stmt, 7, SQL_C_CHAR, stopTimeBuf, sizeof(stopTimeBuf), &lenStopTime);
+		SQLGetData(stmt, 1, SQL_C_CHAR, guidBuf, sizeof(guidBuf), &lenGUID);
+		SQLGetData(stmt, 2, SQL_C_CHAR, screenIDBuf, sizeof(screenIDBuf), &lenScreenID);
+		SQLGetData(stmt, 3, SQL_C_CHAR, aoiResultBuf, sizeof(aoiResultBuf), &lenAOIResult);
+		SQLGetData(stmt, 4, SQL_C_CHAR, codeAOIBuf, sizeof(codeAOIBuf), &lenCodeAOI);
+		SQLGetData(stmt, 5, SQL_C_CHAR, gradeAOIBuf, sizeof(gradeAOIBuf), &lenGradeAOI);
+		SQLGetData(stmt, 6, SQL_C_CHAR, startTimeBuf, sizeof(startTimeBuf), &lenStartTime);
+		SQLGetData(stmt, 7, SQL_C_CHAR, stopTimeBuf, sizeof(stopTimeBuf), &lenStopTime);
+		SQLGetData(stmt, 8, SQL_C_CHAR, localIPBuf, sizeof(localIPBuf), &lenLocalIP);  // 8: LocalIP
 
-			result.m_strGUID = CA2W((char*)guidBuf);
-			result.m_strScreenID = CA2W((char*)screenIDBuf);
-			result.m_strUniqueID = uniqueID;
-			result.m_strAOIResult = CA2W((char*)aoiResultBuf);
-			result.m_strCodeAOI = CA2W((char*)codeAOIBuf);
-			result.m_strGradeAOI = CA2W((char*)gradeAOIBuf);
-			result.m_strStartTime = CA2W((char*)startTimeBuf);
-			result.m_strStopTime = CA2W((char*)stopTimeBuf);
+		result.m_strGUID = CA2W((char*)guidBuf);
+		result.m_strScreenID = CA2W((char*)screenIDBuf);
+		result.m_strUniqueID = uniqueID;
+		result.m_strAOIResult = CA2W((char*)aoiResultBuf);
+		result.m_strCodeAOI = CA2W((char*)codeAOIBuf);
+		result.m_strGradeAOI = CA2W((char*)gradeAOIBuf);
+		result.m_strStartTime = CA2W((char*)startTimeBuf);
+		result.m_strStopTime = CA2W((char*)stopTimeBuf);
+		result.m_strLocalIP = CA2W((char*)localIPBuf);
 			result.m_bValid = TRUE;
 
 			OutputDebugString(CStringSupport::FormatString(
@@ -622,7 +624,7 @@ BOOL CLightingDB::QueryByUniqueID(const CString& strUniqueID, CInspectionResult&
 	}
 
 	string sqlStr = "SELECT SysID, GUID, ScreenID, PlatformID, AOIResult, UniqueID, Code_AOI, Grade_AOI, "
-		"StartTime, StopTime, GridImageXLen, GridImageYLen, PanelPhysicalXLen, PanelPhysicalYLen "
+		"StartTime, StopTime, GridImageXLen, GridImageYLen, PanelPhysicalXLen, PanelPhysicalYLen, LocalIP "
 		"FROM IVS_LCD_InspectionResult WHERE UniqueID = '" + UnicodeToMultiByte(strUniqueID.GetString()) + "' "
 		"ORDER BY SysID DESC LIMIT 1";
 
@@ -680,11 +682,15 @@ BOOL CLightingDB::QueryByUniqueID(const CString& strUniqueID, CInspectionResult&
 	SQLGetData(stmt, 13, SQL_C_DOUBLE, &result.PanelPhysicalXLen, 0, NULL); // 13: PanelPhysicalXLen
 	SQLGetData(stmt, 14, SQL_C_DOUBLE, &result.PanelPhysicalYLen, 0, NULL);  // 14: PanelPhysicalYLen
 
+	// 15: LocalIP（AOI设备IP地址，用于策略3拼图路径）
+	SQLGetData(stmt, 15, SQL_C_CHAR, buf, sizeof(buf), &len);
+	result.LocalIP = CA2W((char*)buf);
+
 	SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 
-	OutputDebugString(CStringSupport::FormatString(
-		_T("[CLightingDB] QueryByUniqueID: UniqueID=%s, AOIResult=%s, Code=%s, Grade=%s\n"),
-		result.UniqueID, result.AOIResult, result.Code_AOI, result.Grade_AOI));
+	//OutputDebugString(CStringSupport::FormatString(
+	//	_T("[CLightingDB] QueryByUniqueID: UniqueID=%s, AOIResult=%s, Code=%s, Grade=%s\n"),
+	//	result.UniqueID, result.AOIResult, result.Code_AOI, result.Grade_AOI));
 
 	return TRUE;
 }

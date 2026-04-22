@@ -649,6 +649,7 @@ void CDFSClient::RunDfsUploadThread()
 					// 从 MySQL 数据库查询点灯检测结果（AOI 点灯检结果，直接从数据库读取）
 					CString strAOIResult, strCodeAOI, strGradeAOI;
 					BOOL bValid = FALSE;
+					BOOL bAnyImageCopied = FALSE;  // 策略1 图片复制成功标记
 					CString strUniqueID = CLightingDB::Get().GetLightingUniqueIDByBarcode(strPanelID);
 					CLightingDB::Get().GetLightingResultByBarcode(strPanelID, strAOIResult, strCodeAOI, strGradeAOI, bValid);
 					if (bValid)
@@ -720,6 +721,7 @@ void CDFSClient::RunDfsUploadThread()
 											{
 												theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
 													_T("DFS: Copied defect image [%s] -> %s"), strImgPath, strDestFile));
+												bAnyImageCopied = TRUE;
 											}
 											else
 											{
@@ -805,6 +807,116 @@ void CDFSClient::RunDfsUploadThread()
 						{
 							theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
 								_T("DFS: No lighting result found in MySQL for PanelID=%s"), strPanelID));
+						}
+
+						///////////////////////////////////////////////////////////////////////////////
+						// 策略 3：当策略 1（ImagePath 直接复制）未能复制任何图片时，
+						//        通过 LocalIP + PlatformID + StartTime 拼出备用 AOI 图片目录
+						///////////////////////////////////////////////////////////////////////////////
+						if (!bAnyImageCopied && !strUniqueID.IsEmpty())
+						{
+							theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+								_T("[DFS Strategy 3] No AOI image copied for PanelID=%s, UniqueID=%s, trying fallback path..."),
+								strPanelID, strUniqueID));
+
+							// 查询检测结果获取 LocalIP、PlatformID、StartTime
+							CInspectionResult inspResult;
+							inspResult.Reset();
+							if (CLightingDB::Get().QueryByUniqueID(strUniqueID, inspResult))
+							{
+								if (!inspResult.LocalIP.IsEmpty() && inspResult.PlatformID >= 0)
+								{
+									// 拼出备用路径：D:\MEMS_DFS_Data\MainAOI\<LocalIP>\<PlatformID+1>\<YYYY-MM-DD>\<PanelID>
+									CString strIndexDir;
+									strIndexDir.Format(_T("%d"), inspResult.PlatformID + 1);  // 0-based → 1-based
+
+									CString strDateDir;
+									if (inspResult.StartTime.GetStatus() == COleDateTime::valid)
+										strDateDir = inspResult.StartTime.Format(_T("%Y-%m-%d"));
+									else
+										strDateDir = GetDateString2();  // fallback
+
+									CString strAoiImageDir;
+									strAoiImageDir.Format(_T("%sMainAOI\\%s\\%s\\%s\\%s"),
+										(LPCTSTR)m_strAOIRootPath,   // D:\MEMS_DFS_Data\
+										(LPCTSTR)inspResult.LocalIP, // 192.168.1.100
+										(LPCTSTR)strIndexDir,        // 1
+										(LPCTSTR)strDateDir,        // 2026-04-03
+										(LPCTSTR)strPanelID);       // PanelID
+
+									theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+										_T("[DFS Strategy 3] Built AOI image dir: %s"), strAoiImageDir));
+
+									if (PathIsDirectory(strAoiImageDir))
+									{
+										theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+											_T("[DFS Strategy 3] AOI image dir EXISTS, starting copy...")));
+
+										// 轮拷贝 1：复制等级标记图 L*.bmp（如 L255.bmp）
+										CString strSearchPattern = strAoiImageDir + _T("\\L*.bmp");
+										CFileFind fileFind;
+										BOOL bFind = fileFind.FindFile(strSearchPattern);
+										while (bFind)
+										{
+											bFind = fileFind.FindNextFile();
+											if (!fileFind.IsDots() && !fileFind.IsDirectory())
+											{
+												CString strSrcFile = fileFind.GetFilePath();
+												CString strDestFile = strAoiImagePath + _T("\\") + fileFind.GetFileName();
+												if (::CopyFile(strSrcFile, strDestFile, FALSE))
+												{
+													theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+														_T("[DFS Strategy 3] Copied grade image [%s] -> %s"), strSrcFile, strDestFile));
+												}
+												else
+												{
+													theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+														_T("[DFS Strategy 3] Failed to copy [%s] -> %s"), strSrcFile, strDestFile));
+												}
+											}
+										}
+										fileFind.Close();
+
+										// 轮拷贝 2：复制 MarkImg.jpg 并重命名为 AddsrcImageADD.jpg
+										CString strMarkSrc = strAoiImageDir + _T("\\MarkImg.jpg");
+										CString strMarkDest = strAoiImagePath + _T("\\AddsrcImageADD.jpg");
+										if (FileExists(strMarkSrc))
+										{
+											if (::CopyFile(strMarkSrc, strMarkDest, FALSE))
+											{
+												theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+													_T("[DFS Strategy 3] Copied MarkImg [%s] -> %s"), strMarkSrc, strMarkDest));
+											}
+											else
+											{
+												theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+													_T("[DFS Strategy 3] Failed to copy MarkImg [%s] -> %s"), strMarkSrc, strMarkDest));
+											}
+										}
+										else
+										{
+											theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+												_T("[DFS Strategy 3] MarkImg not found: %s"), strMarkSrc));
+										}
+									}
+									else
+									{
+										theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+											_T("[DFS Strategy 3] AOI image dir NOT EXIST: %s"), strAoiImageDir));
+									}
+								}
+								else
+								{
+									theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+										_T("[DFS Strategy 3] LocalIP or PlatformID invalid: LocalIP=[%s], PlatformID=%d"),
+										(LPCTSTR)inspResult.LocalIP, inspResult.PlatformID));
+								}
+							}
+							else
+							{
+								theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+									_T("[DFS Strategy 3] QueryByUniqueID failed for UniqueID=%s"), strUniqueID));
+							}
 						}
 
 						if (_ttoi(result.m_ChNum) > 2)
@@ -1294,7 +1406,91 @@ void CDFSClient::RunFtpUploadThread()
 					strTemp1 = strTemp1 + _T("\\") + strPanelID + _T(".txt");
 					OpvInfo.SetSaveFile(strTemp1);
 
-					::CopyFile(strOpvSrc, strOpvDest, FALSE); //image 업로드
+					// ===== 阶段二：AddsrcImageADD.jpg 拷贝到 OPV 目录 =====
+					// 第一优先级：从 DFS 共享目录获取（阶段一已处理）
+					if (FileExists(strOpvSrc))
+					{
+						::CopyFile(strOpvSrc, strOpvDest, FALSE);
+						theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+							_T("[OPV Image] Stage2 Priority1: Copied AddsrcImageADD from AOI\\Image [%s] -> %s"),
+							strOpvSrc, strOpvDest));
+					}
+					else
+					{
+						// 第二优先级：从 AOI 服务器通过 LocalIP+PlatformID+StartTime 构建路径获取 MarkImg.jpg
+						if (!dfsData.m_strUniqueID.IsEmpty() && CLightingDB::Get().IsConnected())
+						{
+							CInspectionResult inspResult;
+							inspResult.Reset();
+							if (CLightingDB::Get().QueryByUniqueID(dfsData.m_strUniqueID, inspResult))
+							{
+								if (!inspResult.LocalIP.IsEmpty() && inspResult.PlatformID >= 0)
+								{
+									CString strIdx;
+									strIdx.Format(_T("%d"), inspResult.PlatformID + 1);
+
+									CString strDate;
+									if (inspResult.StartTime.GetStatus() == COleDateTime::valid)
+										strDate = inspResult.StartTime.Format(_T("%Y-%m-%d"));
+									else
+										strDate = GetDateString2();
+
+									CString strAoiImageDir;
+									strAoiImageDir.Format(_T("%sMainAOI\\%s\\%s\\%s\\%s"),
+										(LPCTSTR)m_strAOIRootPath,
+										(LPCTSTR)inspResult.LocalIP,
+										(LPCTSTR)strIdx,
+										(LPCTSTR)strDate,
+										(LPCTSTR)strPanelID);
+
+									CString strMarkSrc = strAoiImageDir + _T("\\MarkImg.jpg");
+
+									theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+										_T("[OPV Image] Stage2 Priority2: Trying AOI server [%s]"), strMarkSrc));
+
+									if (FileExists(strMarkSrc))
+									{
+										if (::CopyFile(strMarkSrc, strOpvDest, FALSE))
+										{
+											theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
+												_T("[OPV Image] Stage2 Priority2: Copied MarkImg from AOI server [%s] -> %s"),
+												strMarkSrc, strOpvDest));
+										}
+										else
+										{
+											theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+												_T("[OPV Image] Stage2 Priority2: Copy failed [%s] -> %s"),
+												strMarkSrc, strOpvDest));
+										}
+									}
+									else
+									{
+										theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+											_T("[OPV Image] Stage2 Priority2: MarkImg not found on AOI server [%s]"), strMarkSrc));
+									}
+								}
+								else
+								{
+									theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+										_T("[OPV Image] Stage2 Priority2: LocalIP or PlatformID invalid for UniqueID=%s, LocalIP=[%s], PlatformID=%d"),
+										(LPCTSTR)dfsData.m_strUniqueID, (LPCTSTR)inspResult.LocalIP, inspResult.PlatformID));
+								}
+							}
+							else
+							{
+								theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+									_T("[OPV Image] Stage2 Priority2: QueryByUniqueID failed for UniqueID=%s"),
+									(LPCTSTR)dfsData.m_strUniqueID));
+							}
+						}
+						else
+						{
+							theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
+								_T("[OPV Image] Stage2 Priority2: UniqueID is empty or DB disconnected, cannot fallback. PanelID=%s"),
+								(LPCTSTR)strPanelID));
+						}
+					}
+
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionSameDefectAlarmStart, OffSet_0, FALSE);
 				}
 

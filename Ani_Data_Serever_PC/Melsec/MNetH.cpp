@@ -30,7 +30,7 @@ static char THIS_FILE[]=__FILE__;
 
 MNetH::MNetH(CString sIniFile)
 {
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] Constructor Start, IniFile=%s"), sIniFile);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] Constructor Start, IniFile=%s"), sIniFile);
 
 	//	Create Mutex
 	//m_hMutex = ::CreateMutex(NULL, FALSE, NULL); //130629 JSPark
@@ -62,9 +62,9 @@ MNetH::MNetH(CString sIniFile)
 	m_bShow = false;
 	m_bUseInterface = false; //151213 JSLee
 	//	Reading configuration file
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] Calling ReadConfig()"));
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] Calling ReadConfig()"));
 	ReadConfig();
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] ReadConfig() Completed, m_nChannel=%d, m_nCurLocal=%d, m_lNetwork=%d"), m_nChannel, m_nCurLocal, m_lNetwork);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] ReadConfig() Completed, m_nChannel=%d, m_nCurLocal=%d, m_lNetwork=%d"), m_nChannel, m_nCurLocal, m_lNetwork);
 	//Prev Dialog Delete
 	//if ( m_pDlg ){ m_pDlg->DestroyWindow(); delete m_pDlg; m_pDlg=NULL; }
 
@@ -80,9 +80,9 @@ MNetH::MNetH(CString sIniFile)
 	//	else { m_pDlg->ShowWindow(SW_HIDE); }
 	//}
 
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] Calling Start()"));
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] Calling Start()"));
 	Start();
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] Constructor End"));
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] Constructor End"));
 }
 
 MNetH::~MNetH()
@@ -466,7 +466,7 @@ long MNetH::ReadLW(unsigned short nAddr, unsigned short nPoints, unsigned short 
 	
 #ifdef _USE_MELSEC_
 	nRet = mdRandR(m_lPath, m_nStation, nDev, pnRBuf, nBufSize);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::ReadLW] Dev=W addr=0x%03X pts=%d ret=%d"), nAddr, nPoints, nRet);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::ReadLW] Dev=W addr=0x%03X pts=%d ret=%d"), nAddr, nPoints, nRet);
 #endif
 	MLS_CS_MELSEC_UNLOCK;
 	return nRet;
@@ -512,8 +512,8 @@ long MNetH::ReadLWEx(long lAddr, long m_lNetwork, long m_lStation, long lPoints,
 		lRet = mdRandREx(m_lPath, 0, 255, lDev, pnRBuf, nBufSize);
 	else
 		lRet = mdRandREx(m_lPath, m_lNetwork, m_lStation, lDev, pnRBuf, nBufSize);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::ReadLWEx] Dev=W addr=0x%05X net=%d stn=%d pts=%d ret=%d"),
-		lAddr, m_lNetwork, m_lStation, lPoints, lRet);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::ReadLWEx] Dev=W addr=0x%05X net=%d stn=%d pts=%d ret=%d"),
+	//	lAddr, m_lNetwork, m_lStation, lPoints, lRet);
 #endif
 
 	//>>151207 JSLee
@@ -558,8 +558,8 @@ long MNetH::ReadZREx(long lAddr, long m_lNetwork, long m_lStation, long lPoints,
 
 #ifdef _USE_MELSEC_
 	lRet = mdRandREx(m_lPath, m_lNetwork, m_lStation, lDev, pnRBuf, nBufSize);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::ReadZREx] Dev=ZR addr=0x%06X net=%d stn=%d pts=%d ret=%d"),
-		lAddr, m_lNetwork, m_lStation, lPoints, lRet);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::ReadZREx] Dev=ZR addr=0x%06X net=%d stn=%d pts=%d ret=%d"),
+	//	lAddr, m_lNetwork, m_lStation, lPoints, lRet);
 #endif
 
 	return lRet;
@@ -745,7 +745,7 @@ long MNetH::WriteLW(unsigned short nAddr, unsigned short nPoints, unsigned short
 
 #ifdef _USE_MELSEC_
 	nRet = mdRandW(m_lPath, m_nStation, nDev, pnWBuf, nBufSize);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::WriteLW] Dev=W addr=0x%03X pts=%d ret=%d"), nAddr, nPoints, nRet);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::WriteLW] Dev=W addr=0x%03X pts=%d ret=%d"), nAddr, nPoints, nRet);
 #endif
 	MLS_CS_MELSEC_UNLOCK;
 
@@ -771,7 +771,7 @@ long MNetH::TrayWriteLW(unsigned short nAddr,unsigned short nPoints,unsigned sho
 	MLS_CS_MELSEC_LOCK;
 #ifdef _USE_MELSEC_
 	nRet = mdRandW(m_lPath, m_nStation, nDev, pnWBuf, nBufSize);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::TrayWriteLW] Dev=W addr=0x%03X pts=%d ret=%d"), nAddr, nPoints, nRet);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::TrayWriteLW] Dev=W addr=0x%03X pts=%d ret=%d"), nAddr, nPoints, nRet);
 #endif
 	MLS_CS_MELSEC_UNLOCK;
 	
@@ -803,8 +803,8 @@ long MNetH::WriteLWEx(long lAddr, long m_lNetwork, long m_lStation, long lPoints
 		lRet = mdRandWEx(m_lPath, 0, 255, lDev, nRBuf, NULL);
 	else
 		lRet = mdRandWEx(m_lPath, m_lNetwork, m_lStation, lDev, nRBuf, NULL);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::WriteLWEx] Dev=W addr=0x%05X net=%d stn=%d pts=%d ret=%d"),
-		lAddr, m_lNetwork, m_lStation, lPoints, lRet);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::WriteLWEx] Dev=W addr=0x%05X net=%d stn=%d pts=%d ret=%d"),
+	//	lAddr, m_lNetwork, m_lStation, lPoints, lRet);
 #endif
 //	lRet = mdRandREx(m_lPath,m_lNetwork,m_lStation,lDev,pnRBuf,nBufSize);
 //	lRet = mdRandWEx(m_lPath,m_lNetwork, m_nStation, lDev, nRBuf, nBufSize);
@@ -836,8 +836,8 @@ long MNetH::WriteZREx(long lAddr, long m_lNetwork, long m_lStation, long lPoints
 
 #ifdef _USE_MELSEC_
 	lRet = mdRandWEx(m_lPath, m_lNetwork, m_nStation, lDev, nRBuf, NULL);     //>>130830.kty
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::WriteZREx] Dev=ZR addr=0x%06X net=%d stn=%d pts=%d ret=%d"),
-		lAddr, m_lNetwork, m_nStation, lPoints, lRet);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::WriteZREx] Dev=ZR addr=0x%06X net=%d stn=%d pts=%d ret=%d"),
+	//	lAddr, m_lNetwork, m_nStation, lPoints, lRet);
 #endif
 	MLS_CS_MELSEC_UNLOCK;
 
@@ -856,19 +856,19 @@ unsigned short MNetH::MelsecClose()
 {
 	unsigned short nRet = 0;
 
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecClose] Start, m_fActive=%s, m_lPath=%d"), m_fActive ? _T("TRUE") : _T("FALSE"), m_lPath);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecClose] Start, m_fActive=%s, m_lPath=%d"), m_fActive ? _T("TRUE") : _T("FALSE"), m_lPath);
 
 	if (m_fActive == FALSE) { 
-		theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecClose] Already inactive, return SUCCESS"));
+		//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecClose] Already inactive, return SUCCESS"));
 		return RV_SUCCESS; 
 	}
 #ifdef _USE_MELSEC_
 	nRet = mdClose(m_lPath);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecClose] mdClose result=%d"), nRet);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecClose] mdClose result=%d"), nRet);
 #endif
 	if (nRet == RV_SUCCESS) { 
 		m_fActive = FALSE;
-		theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecClose] SUCCESS, m_fActive=FALSE"));
+		//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecClose] SUCCESS, m_fActive=FALSE"));
 	}
 	return nRet;
 }
@@ -887,24 +887,24 @@ unsigned short MNetH::MelsecOpen()
 {
 	unsigned short nRet = 0;
 
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecOpen] Start, Channel=%d, Station=%d"), m_nChannel, m_nStation);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecOpen] Start, Channel=%d, Station=%d"), m_nChannel, m_nStation);
 
 	if (m_fActive != TRUE) 
 	{
-		theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecOpen] Not active, calling MelsecClose()"));
+		//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecOpen] Not active, calling MelsecClose()"));
 		MelsecClose(); 
 	}
 
 #ifdef _USE_MELSEC_
 	nRet = mdOpen(m_nChannel, -1, &m_lPath);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecOpen] mdOpen result=%d, Path=%d"), nRet, m_lPath);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecOpen] mdOpen result=%d, Path=%d"), nRet, m_lPath);
 #endif
 	if (nRet == RV_SUCCESS) { 
 		m_fActive = TRUE;
-		theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecOpen] Connection SUCCESS, m_fActive=TRUE"));
+		//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecOpen] Connection SUCCESS, m_fActive=TRUE"));
 	}
 	else {
-		theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecOpen] Connection FAILED, m_fActive=FALSE"));
+		//theApp.m_PlcLog->LOG_INFO(_T("[MNetH::MelsecOpen] Connection FAILED, m_fActive=FALSE"));
 	}
 	return nRet;
 }
@@ -923,52 +923,52 @@ int MNetH::ReadConfig() //151208 JSLee
 	CString strNode(_T("")), strKey(_T(""));
 
 	// ????????????????
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH ReadConfig] ConfigFile=%s"), m_sIniFile);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH ReadConfig] ConfigFile=%s"), m_sIniFile);
 
 	// Basic information
 	strNode.Format(_T("BASIC"));
 	// Chanel
 	m_nChannel = cDataIf.GetInt(strNode, _T("Chanel"), 151);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] Chanel=%d"), m_nChannel);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] Chanel=%d"), m_nChannel);
 
 	// Local
 	m_nCurLocal = cDataIf.GetInt(strNode, _T("Local"), 3);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] Local=%d"), m_nCurLocal);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] Local=%d"), m_nCurLocal);
 
 	// Network
 	m_lNetwork = cDataIf.GetInt(strNode, _T("Network"), 0);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] Network=%d"), m_lNetwork);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] Network=%d"), m_lNetwork);
 
 	// Unit
 	m_nCurUnit = cDataIf.GetInt(strNode, _T("Unit"), 1);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] Unit=%d"), m_nCurUnit);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] Unit=%d"), m_nCurUnit);
 
 	// Previous Local
 	m_nPrevLocal = cDataIf.GetInt(strNode, _T("PrevLocal"), 0);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] PrevLocal=%d"), m_nPrevLocal);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] PrevLocal=%d"), m_nPrevLocal);
 
 	// Next Local
 	m_nNextLocal = cDataIf.GetInt(strNode, _T("NextLocal"), 0);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] NextLocal=%d"), m_nNextLocal);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] NextLocal=%d"), m_nNextLocal);
 
 	// UseDialog
 	bflag = cDataIf.GetInt(strNode, _T("UseDialog"), TRUE);
 	if (bflag){ m_bUseDialog = true; }
 	else { m_bUseDialog = false; }
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] UseDialog=%s"), bflag ? _T("TRUE") : _T("FALSE"));
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] UseDialog=%s"), bflag ? _T("TRUE") : _T("FALSE"));
 
 	// ShowDialog
 	bflag = cDataIf.GetInt(strNode, _T("ShowDialog"), TRUE);
 	if (bflag){ m_bShow = true; }
 	else { m_bShow = false; }
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] ShowDialog=%s"), bflag ? _T("TRUE") : _T("FALSE"));
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] ShowDialog=%s"), bflag ? _T("TRUE") : _T("FALSE"));
 
 	//>> 151213 JSLee
 	// UseInterface
 	bflag = cDataIf.GetInt(strNode, _T("UseInterface"), FALSE);
 	if (bflag){ m_bUseInterface = true; }
 	else { m_bUseInterface = false; }
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] UseInterface=%s"), bflag ? _T("TRUE") : _T("FALSE"));
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [BASIC] UseInterface=%s"), bflag ? _T("TRUE") : _T("FALSE"));
 	//<<
 
 	//////////////////////////////////////////////////////////////////////////////////////////
@@ -977,14 +977,14 @@ int MNetH::ReadConfig() //151208 JSLee
 
 	// Name Count.
 	nListQty = cDataIf.GetInt(strNode, _T("Local_Qty"), 1);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [LOCAL_TITLE] Local_Qty=%d"), nListQty);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [LOCAL_TITLE] Local_Qty=%d"), nListQty);
 
 	for (int i = 0; i < nListQty; i++)
 	{
 		// Protocol
 		str.Format(_T("Local_%02d"), i + 1);
 		m_asLocalName.Add(cDataIf.GetString(strNode, str, _T("")));
-		theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [LOCAL_TITLE] %s=%s"), str, m_asLocalName[i]);
+		//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [LOCAL_TITLE] %s=%s"), str, m_asLocalName[i]);
 	}
 
 	//////////////////////////////////////////////////////////////////////////////////////////
@@ -993,17 +993,17 @@ int MNetH::ReadConfig() //151208 JSLee
 
 	// Name Count.
 	nListQty = cDataIf.GetInt(strNode, _T("Unit_Qty"), 1);
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [UNIT_TITLE] Unit_Qty=%d"), nListQty);
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [UNIT_TITLE] Unit_Qty=%d"), nListQty);
 
 	for (int i = 0; i < nListQty; i++)
 	{
 		// Protocol
 		str.Format(_T("Unit_%02d"), i + 1);
 		m_asUnitName.Add(cDataIf.GetString(strNode, str, _T("")));
-		theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [UNIT_TITLE] %s=%s"), str, m_asUnitName[i]);
+		//theApp.m_PlcLog->LOG_INFO(_T("[MNetH] [UNIT_TITLE] %s=%s"), str, m_asUnitName[i]);
 	}
 
-	theApp.m_PlcLog->LOG_INFO(_T("[MNetH ReadConfig] Completed"));
+	//theApp.m_PlcLog->LOG_INFO(_T("[MNetH ReadConfig] Completed"));
 	return 0;
 }
 
@@ -2732,9 +2732,9 @@ void MNetH::SetPlcWordData(int type, void *result)
 	unsigned short* pValue = (unsigned short*)result;
 	DWORD threadId = GetCurrentThreadId();
 	
-	theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[MNetH::SetPlcWordData] Type=%d, Addr=0x%X, Value=%d, ThreadID=%lu"),
-		type, plcAddr, *pValue, threadId));
+	//theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+	//	_T("[MNetH::SetPlcWordData] Type=%d, Addr=0x%X, Value=%d, ThreadID=%lu"),
+	//	type, plcAddr, *pValue, threadId));
 	
 	SetWordData(m_nCurLocal, type, result, sizeof(unsigned short));
 } 
@@ -2749,9 +2749,9 @@ void MNetH::SetTrayCheckResult(int type, TrayCheckResult* pTrayCheckResult)
 	GetPLCAddressWord(m_nCurLocal, type, &plcAddr);
 	DWORD threadId = GetCurrentThreadId();
 	
-	theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[MNetH::SetTrayCheckResult] Type=%d, Addr=0x%X, Result=%d, ThreadID=%lu"),
-		type, plcAddr, pTrayCheckResult->result[0], threadId));
+	//theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+	//	_T("[MNetH::SetTrayCheckResult] Type=%d, Addr=0x%X, Result=%d, ThreadID=%lu"),
+	//	type, plcAddr, pTrayCheckResult->result[0], threadId));
 	
 	SetWordData(m_nCurLocal, type, pTrayCheckResult, sizeof(TrayCheckResult));
 }
@@ -2762,9 +2762,9 @@ void MNetH::SetAlignResult(int type, AlignResult* pAlignResult)
 	GetPLCAddressWord(m_nCurLocal, type, &plcAddr);
 	DWORD threadId = GetCurrentThreadId();
 	
-	theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[MNetH::SetAlignResult] Type=%d, Addr=0x%X, Value=%d, X=%d, Y=%d, T=%d, ThreadID=%lu"),
-		type, plcAddr, pAlignResult->resultValue, pAlignResult->resultX, pAlignResult->resultY, pAlignResult->resultT, threadId));
+	//theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+	//	_T("[MNetH::SetAlignResult] Type=%d, Addr=0x%X, Value=%d, X=%d, Y=%d, T=%d, ThreadID=%lu"),
+	//	type, plcAddr, pAlignResult->resultValue, pAlignResult->resultX, pAlignResult->resultY, pAlignResult->resultT, threadId));
 	
 	SetWordData(m_nCurLocal, type, pAlignResult, sizeof(AlignResult));
 }

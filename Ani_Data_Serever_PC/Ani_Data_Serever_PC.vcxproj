@@ -368,6 +368,7 @@
     <ClInclude Include="Communication\SerialCom.h" />
     <ClInclude Include="Communication\SerialRS485.h" />
     <ClInclude Include="Communication\SocketComm.h" />
+    <ClInclude Include="Communication\SocketServerBase.h" />
     <ClInclude Include="Communication\TpManager.h" />
     <ClInclude Include="Comm\DataInfo.h" />
     <ClInclude Include="Comm\DefectInfo.h" />
@@ -476,6 +477,7 @@
     <ClCompile Include="Communication\SerialCom.cpp" />
     <ClCompile Include="Communication\SerialRS485.cpp" />
     <ClCompile Include="Communication\SocketComm.cpp" />
+    <ClCompile Include="Communication\SocketServerBase.cpp" />
     <ClCompile Include="Communication\TpManager.cpp" />
     <ClCompile Include="Comm\DataInfo.cpp" />
     <ClCompile Include="Comm\ImageViewNG.cpp" />

@@ -1027,6 +1027,11 @@ void CPgManager::OnEvent(UINT uEvent, LPVOID lpvData)
 	if (theApp.m_bExitFlag == FALSE)
 		return;
 
+	// 先交给基类处理公共的断线重连逻辑
+	if (OnEventReconnectBase(uEvent))
+		return;
+
+	// 以下为 PG 业务相关事件的处理
 	switch (uEvent)
 	{
 	case EVT_CONDROP:
@@ -1049,17 +1054,12 @@ void CPgManager::OnEvent(UINT uEvent, LPVOID lpvData)
 
 BOOL CPgManager::getConectCheck()
 {
-	SockAddrIn addrin;
-	GetSockName(addrin);
-	LONG  uAddr = addrin.GetIPAddr();
-	if (uAddr == 0)
-		return FALSE;	//Á¢¼Ó¾ÈÇÔ
-	else
-		return TRUE;	//Á¢¼ÓÇÔ
+	return getConectCheckBase();
 }
 
 bool CPgManager::SocketServerOpen(CString strServerPort, int iPcNum)
 {
+	SocketServerOpenBase(strServerPort);
 	m_bMelsecSimulaion = true;
 	SetSmartAddressing(false);
 	SetServerState(true);
@@ -1072,4 +1072,9 @@ bool CPgManager::SocketServerOpen(CString strServerPort, int iPcNum)
 void CPgManager::RemoveClient()
 {
 	ShutdownConnection((SOCKET)m_hComm);
+}
+
+void CPgManager::LogServerMsg(LPCTSTR szMsg)
+{
+	PgLogMessage(szMsg);
 }

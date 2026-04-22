@@ -1,11 +1,11 @@
 #pragma once
 
 #include "Ani_Data_Serever_PC.h"
-#include "SocketComm.h"
+#include "SocketServerBase.h"
 #include "EZini.h"
 #include "StringSupport.h"
 
-class CPgManager: public CSocketComm
+class CPgManager: public CSocketServerBase
 {
 public:
 	CPgManager();
@@ -65,4 +65,9 @@ public:
 #endif
 
 	CCriticalSection m_csSocketSend;
+
+protected:
+	// 实现基类的纯虚函数
+	virtual LPCTSTR GetDeviceName() const override { return _T("PG"); }
+	virtual void LogServerMsg(LPCTSTR szMsg) override;
 };

@@ -633,9 +633,9 @@ void CPlcThread::ThreadRun()
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_Align1Ready2 + iAlignTypeNum[PatternAlign], OffSet_0, FALSE);
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_Align1End1 + iAlignTypeNum[PatternAlign], OffSet_0, FALSE);
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_Align1End2 + iAlignTypeNum[PatternAlign], OffSet_0, FALSE);
-						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
-							_T("[PlcThread] Resetting AlignResult for type=%d, alignNum=%d"), 
-							eWordType_Align1Result1 + iAlignTypeNum[PatternAlign], iAlignTypeNum[PatternAlign]));
+						//theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+						//	_T("[PlcThread] Resetting AlignResult for type=%d, alignNum=%d"), 
+						//	eWordType_Align1Result1 + iAlignTypeNum[PatternAlign], iAlignTypeNum[PatternAlign]));
 						theApp.m_pEqIf->m_pMNetH->SetAlignResult(eWordType_Align1Result1 + iAlignTypeNum[PatternAlign], &m_AlignResultReset);
 						theApp.m_pEqIf->m_pMNetH->SetAlignResult(eWordType_Align1Result2 + iAlignTypeNum[PatternAlign], &m_AlignResultReset);
 					}
@@ -649,9 +649,9 @@ void CPlcThread::ThreadRun()
 					{
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_TrayCheckReady1 + iAlignTypeNum[TrayCheck], OffSet_0, FALSE);
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_TrayCheckEnd1 + iAlignTypeNum[TrayCheck], OffSet_0, TRUE);
-						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
-							_T("[PlcThread] Resetting TrayCheckResult for type=%d, checkNum=%d"), 
-							eWordType_TrayCheckResult1 + iAlignTypeNum[TrayCheck], iAlignTypeNum[TrayCheck]));
+						//theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+						//	_T("[PlcThread] Resetting TrayCheckResult for type=%d, checkNum=%d"), 
+						//	eWordType_TrayCheckResult1 + iAlignTypeNum[TrayCheck], iAlignTypeNum[TrayCheck]));
 						theApp.m_pEqIf->m_pMNetH->SetTrayCheckResult(eWordType_TrayCheckResult1 + iAlignTypeNum[TrayCheck], &m_trayCheckResultReset);
 					}
 					iAlignTypeNum[TrayCheck]++;
@@ -664,9 +664,9 @@ void CPlcThread::ThreadRun()
 					{
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_TrayAlignReady1 + iAlignTypeNum[TrayAlign], OffSet_0, FALSE);
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_TrayAlignEnd1 + iAlignTypeNum[TrayAlign], OffSet_0, TRUE);
-						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
-							_T("[PlcThread] Resetting TrayAlignResult for type=%d, alignNum=%d"), 
-							eWordType_TrayAlignResult1 + iAlignTypeNum[TrayAlign], iAlignTypeNum[TrayAlign]));
+						//theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+						//	_T("[PlcThread] Resetting TrayAlignResult for type=%d, alignNum=%d"), 
+						//	eWordType_TrayAlignResult1 + iAlignTypeNum[TrayAlign], iAlignTypeNum[TrayAlign]));
 						theApp.m_pEqIf->m_pMNetH->SetAlignResult(eWordType_TrayAlignResult1 + iAlignTypeNum[TrayAlign], &m_AlignResultReset);
 					}
 					iAlignTypeNum[TrayAlign]++;
@@ -907,8 +907,8 @@ void CPlcThread::ThreadRun()
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd3, OffSet_0, FALSE);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd4, OffSet_0, FALSE);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionSameDefectAlarmStart, OffSet_0, FALSE);
-					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
-						_T("[PlcThread] Resetting VisionResult1~4 = %d (%s)"), m_codeReset, PLC_ResultValue[m_codeReset]));
+					//theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+					//	_T("[PlcThread] Resetting VisionResult1~4 = %d (%s)"), m_codeReset, PLC_ResultValue[m_codeReset]));
 					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1, &m_codeReset);
 					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult2, &m_codeReset);
 					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult3, &m_codeReset);

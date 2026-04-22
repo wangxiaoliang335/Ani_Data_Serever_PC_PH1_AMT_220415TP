@@ -2089,12 +2089,13 @@ struct DfsDataValue
 	CString m_ContactCount;
 	CString m_LoadeHandlerNUM;
 	CString m_UnLoadeHandlerNUM;
+	CString m_strUniqueID;  // Lighting UniqueID（阶段二策略3需要）
 
 	void Reset()
 	{
 		m_TypeNum = m_StageNum = 0;
 		m_FpcID = m_PreGammaContactStatus = m_TactTime = m_EndTime = m_PreGammaTime = m_TpTime = m_UnloadHandlerTime = m_LoadHandlerTime = m_StartTime =
-			m_PanelID = m_ModelID = m_IndexNum = m_ChNum = m_TpResult = _T("");
+			m_PanelID = m_ModelID = m_IndexNum = m_ChNum = m_TpResult = m_strUniqueID = _T("");
 	}
 };
 

@@ -47,12 +47,12 @@ bool CLightingSocketClient::Connect(const CString& ip, const CString& port)
 	SetConnectionParameters(ip, port);
 
 	LightingDbgPrint(_T("[Lighting] Connecting to %s:%s...\n"), ip, port);
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Connecting to %s:%s"), ip, port));
+	//theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Connecting to %s:%s"), ip, port));
 
 	if (!ConnectTo(ip, port, AF_INET, SOCK_STREAM))
 	{
 		LightingDbgPrint(_T("[Lighting] Connection failed!\n"));
-		theApp.m_pLightingLog->LOG_INFO(_T("Connection failed!"));
+		//theApp.m_pLightingLog->LOG_INFO(_T("Connection failed!"));
 		m_bConnected = FALSE;
 		theApp.m_LightingConectStatus = FALSE;
 		
@@ -61,7 +61,7 @@ bool CLightingSocketClient::Connect(const CString& ip, const CString& port)
 	}
 
 	LightingDbgPrint(_T("[Lighting] Connected successfully!\n"));
-	theApp.m_pLightingLog->LOG_INFO(_T("Connected successfully!"));
+	//theApp.m_pLightingLog->LOG_INFO(_T("Connected successfully!"));
 
 	if (!WatchComm())
 	{
@@ -83,7 +83,7 @@ bool CLightingSocketClient::Connect(const CString& ip, const CString& port)
 	else
 	{
 		LightingDbgPrint(_T("[Lighting] Auto-test disabled by config, skipping timer...\n"));
-		theApp.m_pLightingLog->LOG_INFO(_T("Auto-test disabled by config, skipping timer"));
+		//theApp.m_pLightingLog->LOG_INFO(_T("Auto-test disabled by config, skipping timer"));
 	}
 	return true;
 }
@@ -145,7 +145,7 @@ void CLightingSocketClient::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 	CString strDebug;
 	strDebug.Format(_T("[Lighting] OnDataReceived: dwCount=%u\n"), dwCount);
 	OutputDebugString(strDebug);
-	theApp.m_pLightingLog->LOG_INFO(strDebug);
+	//theApp.m_pLightingLog->LOG_INFO(strDebug);
 
 	CString strChunk;
 	MultiByteToWideChar(CP_ACP, 0, reinterpret_cast<LPCSTR>(lpBuffer), dwCount,
@@ -155,7 +155,7 @@ void CLightingSocketClient::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 	m_recvCache += strChunk;
 
 	LightingDbgPrint(_T("[Lighting -> MC] RECV raw: '%s', cache: '%s'\n"), strChunk, m_recvCache);
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("RECV raw: '%s', cache: '%s'"), strChunk, m_recvCache));
+	//theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("RECV raw: '%s', cache: '%s'"), strChunk, m_recvCache));
 
 	int atPos = -1;
 	while ((atPos = m_recvCache.Find(_T('@'))) >= 0)
@@ -179,7 +179,7 @@ void CLightingSocketClient::OnEvent(UINT uEvent, LPVOID /*lpvData*/)
 		m_bConnected = TRUE;
 		theApp.m_LightingConectStatus = TRUE;
 		LightingDbgPrint(_T("[Lighting] Connection established!\n"));
-		theApp.m_pLightingLog->LOG_INFO(_T("Connection established"));
+		//theApp.m_pLightingLog->LOG_INFO(_T("Connection established"));
 		if (_ttoi(theApp.m_strLightingAutoTest) != 0)
 		{
 			StartAutoTestTimer(10000);
@@ -187,7 +187,7 @@ void CLightingSocketClient::OnEvent(UINT uEvent, LPVOID /*lpvData*/)
 		else
 		{
 			LightingDbgPrint(_T("[Lighting] Auto-test disabled by config, skipping timer...\n"));
-			theApp.m_pLightingLog->LOG_INFO(_T("Auto-test disabled by config"));
+			//theApp.m_pLightingLog->LOG_INFO(_T("Auto-test disabled by config"));
 		}
 		break;
 	case EVT_CONDROP:
@@ -198,7 +198,7 @@ void CLightingSocketClient::OnEvent(UINT uEvent, LPVOID /*lpvData*/)
 			m_bConnected = FALSE;
 			theApp.m_LightingConectStatus = FALSE;
 			LightingDbgPrint(_T("[Lighting] Connection lost!\n"));
-			theApp.m_pLightingLog->LOG_INFO(_T("Connection lost"));
+			//theApp.m_pLightingLog->LOG_INFO(_T("Connection lost"));
 			if (_ttoi(theApp.m_strLightingAutoTest) != 0)
 			{
 				StopAutoTestTimer();
@@ -221,7 +221,7 @@ void CLightingSocketClient::SetEventHandler(ILightingEventHandler* pHandler)
 void CLightingSocketClient::HandleSingleMessage(const CString& msg)
 {
 	LightingDbgPrint(_T("[Lighting -> MC] HANDLE msg: '%s'\n"), msg);
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("HANDLE msg: '%s'"), msg));
+	//theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("HANDLE msg: '%s'"), msg));
 
 	if (msg.CompareNoCase(_T("Running")) == 0)
 	{
@@ -246,12 +246,12 @@ void CLightingSocketClient::HandleSingleMessage(const CString& msg)
 void CLightingSocketClient::HandleRunning()
 {
 	LightingDbgPrint(_T("[Lighting -> MC] Received: Running@\n"));
-	theApp.m_pLightingLog->LOG_INFO(_T("Received: Running@"));
+	//theApp.m_pLightingLog->LOG_INFO(_T("Received: Running@"));
 
 	if (m_pHandler == nullptr)
 	{
 		LightingDbgPrint(_T("[Lighting -> MC] ERROR: m_pHandler is nullptr!\n"));
-		theApp.m_pLightingLog->LOG_INFO(_T("ERROR: m_pHandler is nullptr!"));
+		//theApp.m_pLightingLog->LOG_INFO(_T("ERROR: m_pHandler is nullptr!"));
 		return;
 	}
 	m_pHandler->OnLightingRunning();
@@ -260,12 +260,12 @@ void CLightingSocketClient::HandleRunning()
 void CLightingSocketClient::HandleSnapFN()
 {
 	LightingDbgPrint(_T("[Lighting -> MC] Received: SnapFN@\n"));
-	theApp.m_pLightingLog->LOG_INFO(_T("Received: SnapFN@"));
+	//theApp.m_pLightingLog->LOG_INFO(_T("Received: SnapFN@"));
 
 	if (m_pHandler == nullptr)
 	{
 		LightingDbgPrint(_T("[Lighting -> MC] ERROR: m_pHandler is nullptr!\n"));
-		theApp.m_pLightingLog->LOG_INFO(_T("ERROR: m_pHandler is nullptr!"));
+		//theApp.m_pLightingLog->LOG_INFO(_T("ERROR: m_pHandler is nullptr!"));
 		return;
 	}
 	m_pHandler->OnLightingSnapFN();
@@ -274,7 +274,7 @@ void CLightingSocketClient::HandleSnapFN()
 void CLightingSocketClient::HandleFNResult(const CString& payload)
 {
 	LightingDbgPrint(_T("[Lighting -> MC] Received: FN$%s@\n"), payload);
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Received: FN$%s@"), payload));
+	//theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Received: FN$%s@"), payload));
 
 	CString cleanPayload = payload;
 	cleanPayload.Remove(_T('$'));
@@ -283,8 +283,8 @@ void CLightingSocketClient::HandleFNResult(const CString& payload)
 	{
 		LightingDbgPrint(_T("[Lighting -> MC] FN$ payload length invalid after clean: '%s' (len=%d)\n"), 
 			cleanPayload, cleanPayload.GetLength());
-		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("FN$ payload length invalid after clean: '%s' (len=%d)"), 
-			cleanPayload, cleanPayload.GetLength()));
+		//theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("FN$ payload length invalid after clean: '%s' (len=%d)"), 
+		//	cleanPayload, cleanPayload.GetLength()));
 		return;
 	}
 
@@ -294,13 +294,13 @@ void CLightingSocketClient::HandleFNResult(const CString& payload)
 		CString tmp = cleanPayload.Mid(i * 2, 2);
 		resultCode[i] = _ttoi(tmp);
 		LightingDbgPrint(_T("[Lighting -> MC] FN$ resultCode[%d]=%d\n"), i, resultCode[i]);
-		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("FN$ resultCode[%d]=%d"), i, resultCode[i]));
+		//theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("FN$ resultCode[%d]=%d"), i, resultCode[i]));
 	}
 
 	if (m_pHandler == nullptr)
 	{
 		LightingDbgPrint(_T("[Lighting -> MC] ERROR: m_pHandler is nullptr!\n"));
-		theApp.m_pLightingLog->LOG_INFO(_T("ERROR: m_pHandler is nullptr!"));
+		//theApp.m_pLightingLog->LOG_INFO(_T("ERROR: m_pHandler is nullptr!"));
 		return;
 	}
 
@@ -316,7 +316,7 @@ void CLightingSocketClient::StartAutoTestTimer(DWORD dwDelayMs)
 	StopAutoTestTimer();
 
 	LightingDbgPrint(_T("[Lighting] Starting auto-test timer (delay: %ums)...\n"), dwDelayMs);
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Starting auto-test timer (delay: %ums)"), dwDelayMs));
+	//theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Starting auto-test timer (delay: %ums)"), dwDelayMs));
 
 	m_hAutoTestStopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 	if (!m_hAutoTestStopEvent)
@@ -334,7 +334,7 @@ void CLightingSocketClient::StartAutoTestTimer(DWORD dwDelayMs)
 void CLightingSocketClient::StopAutoTestTimer()
 {
 	LightingDbgPrint(_T("[Lighting] Stopping auto-test timer...\n"));
-	theApp.m_pLightingLog->LOG_INFO(_T("Stopping auto-test timer"));
+	//theApp.m_pLightingLog->LOG_INFO(_T("Stopping auto-test timer"));
 
 	if (m_hAutoTestStopEvent)
 	{
@@ -355,7 +355,7 @@ void CLightingSocketClient::StopAutoTestTimer()
 	}
 
 	LightingDbgPrint(_T("[Lighting] Auto-test timer stopped.\n"));
-	theApp.m_pLightingLog->LOG_INFO(_T("Auto-test timer stopped"));
+	//theApp.m_pLightingLog->LOG_INFO(_T("Auto-test timer stopped"));
 }
 
 DWORD WINAPI CLightingSocketClient::AutoTestTimerThread(LPVOID lpParam)
@@ -366,7 +366,7 @@ DWORD WINAPI CLightingSocketClient::AutoTestTimerThread(LPVOID lpParam)
 
 	DWORD threadId = GetCurrentThreadId();
 	LightingDbgPrint(_T("[Lighting] Auto-test timer started (delay: %ums), ThreadID=%lu\n"), 10000, threadId);
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Auto-test timer started (delay: %ums), ThreadID=%lu"), 10000, threadId));
+	//theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Auto-test timer started (delay: %ums), ThreadID=%lu"), 10000, threadId));
 
 	HANDLE handles[2] = { pThis->m_hAutoTestStopEvent, NULL };
 	DWORD dwRet = WaitForMultipleObjects(1, handles, FALSE, 10000);
@@ -374,7 +374,7 @@ DWORD WINAPI CLightingSocketClient::AutoTestTimerThread(LPVOID lpParam)
 	if (dwRet == WAIT_TIMEOUT)
 	{
 		LightingDbgPrint(_T("[Lighting] Auto-test timer triggered, sending Start command... ThreadID=%lu\n"), threadId);
-		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Auto-test timer triggered, sending Start command, ThreadID=%lu"), threadId));
+		//theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Auto-test timer triggered, sending Start command, ThreadID=%lu"), threadId));
 
 		for (int i = 0; i < 4; ++i)
 			theApp.m_bLightingActiveSlot[i] = TRUE;
@@ -400,7 +400,7 @@ DWORD WINAPI CLightingSocketClient::AutoTestTimerThread(LPVOID lpParam)
 	else
 	{
 		LightingDbgPrint(_T("[Lighting] Auto-test timer cancelled\n"));
-		theApp.m_pLightingLog->LOG_INFO(_T("Auto-test timer cancelled"));
+		//theApp.m_pLightingLog->LOG_INFO(_T("Auto-test timer cancelled"));
 	}
 
 	return 0;
@@ -417,13 +417,13 @@ void CLightingSocketClient::StartReconnectThread()
 	StopReconnectThread();
 
 	LightingDbgPrint(_T("[Lighting] Starting reconnect thread...\n"));
-	theApp.m_pLightingLog->LOG_INFO(_T("Starting reconnect thread"));
+	//theApp.m_pLightingLog->LOG_INFO(_T("Starting reconnect thread"));
 
 	m_hReconnectStopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 	if (!m_hReconnectStopEvent)
 	{
 		LightingDbgPrint(_T("[Lighting] Failed to create reconnect stop event\n"));
-		theApp.m_pLightingLog->LOG_INFO(_T("Failed to create reconnect stop event"));
+		//theApp.m_pLightingLog->LOG_INFO(_T("Failed to create reconnect stop event"));
 		return;
 	}
 
@@ -431,7 +431,7 @@ void CLightingSocketClient::StartReconnectThread()
 	if (!m_hReconnectThread)
 	{
 		LightingDbgPrint(_T("[Lighting] Failed to create reconnect thread\n"));
-		theApp.m_pLightingLog->LOG_INFO(_T("Failed to create reconnect thread"));
+		//theApp.m_pLightingLog->LOG_INFO(_T("Failed to create reconnect thread"));
 		CloseHandle(m_hReconnectStopEvent);
 		m_hReconnectStopEvent = NULL;
 		return;
@@ -459,7 +459,7 @@ void CLightingSocketClient::StopReconnectThread()
 	}
 
 	LightingDbgPrint(_T("[Lighting] Reconnect thread stopped\n"));
-	theApp.m_pLightingLog->LOG_INFO(_T("Reconnect thread stopped"));
+	//theApp.m_pLightingLog->LOG_INFO(_T("Reconnect thread stopped"));
 }
 
 DWORD WINAPI CLightingSocketClient::ReconnectThread(LPVOID lpParam)
@@ -469,7 +469,7 @@ DWORD WINAPI CLightingSocketClient::ReconnectThread(LPVOID lpParam)
 		return 0;
 
 	LightingDbgPrint(_T("[Lighting] Reconnect thread started\n"));
-	theApp.m_pLightingLog->LOG_INFO(_T("Reconnect thread started"));
+	//theApp.m_pLightingLog->LOG_INFO(_T("Reconnect thread started"));
 
 	DWORD dwAttemptCount = 0;
 	HANDLE hStopEvent = pThis->m_hReconnectStopEvent;
@@ -481,21 +481,21 @@ DWORD WINAPI CLightingSocketClient::ReconnectThread(LPVOID lpParam)
 		if (WaitForSingleObject(hStopEvent, 0) == WAIT_OBJECT_0)
 		{
 			LightingDbgPrint(_T("[Lighting] Reconnect thread received stop signal\n"));
-			theApp.m_pLightingLog->LOG_INFO(_T("Reconnect thread received stop signal"));
+			//theApp.m_pLightingLog->LOG_INFO(_T("Reconnect thread received stop signal"));
 			break;
 		}
 
 		if (strIP.IsEmpty() || strPort.IsEmpty())
 		{
 			LightingDbgPrint(_T("[Lighting] Invalid connection parameters, stopping reconnect\n"));
-			theApp.m_pLightingLog->LOG_INFO(_T("Invalid connection parameters, stopping reconnect"));
+			//theApp.m_pLightingLog->LOG_INFO(_T("Invalid connection parameters, stopping reconnect"));
 			break;
 		}
 
 		if (pThis->m_bConnected)
 		{
 			LightingDbgPrint(_T("[Lighting] Connection already established, stopping reconnect\n"));
-			theApp.m_pLightingLog->LOG_INFO(_T("Connection already established, stopping reconnect"));
+			//theApp.m_pLightingLog->LOG_INFO(_T("Connection already established, stopping reconnect"));
 			break;
 		}
 
@@ -504,12 +504,12 @@ DWORD WINAPI CLightingSocketClient::ReconnectThread(LPVOID lpParam)
 		if (pThis->m_dwMaxReconnectAttempts > 0 && dwAttemptCount > pThis->m_dwMaxReconnectAttempts)
 		{
 			LightingDbgPrint(_T("[Lighting] Max reconnect attempts reached (%d), stopping\n"), pThis->m_dwMaxReconnectAttempts);
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Max reconnect attempts reached (%d), stopping"), pThis->m_dwMaxReconnectAttempts));
+			//theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Max reconnect attempts reached (%d), stopping"), pThis->m_dwMaxReconnectAttempts));
 			break;
 		}
 
 		LightingDbgPrint(_T("[Lighting] Reconnect attempt %d to %s:%s...\n"), dwAttemptCount, strIP, strPort);
-		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Reconnect attempt %d to %s:%s"), dwAttemptCount, strIP, strPort));
+		//theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Reconnect attempt %d to %s:%s"), dwAttemptCount, strIP, strPort));
 
 		pThis->StopComm();
 		pThis->CloseComm();
@@ -517,7 +517,7 @@ DWORD WINAPI CLightingSocketClient::ReconnectThread(LPVOID lpParam)
 		if (pThis->ConnectTo(strIP, strPort, AF_INET, SOCK_STREAM))
 		{
 			LightingDbgPrint(_T("[Lighting] Reconnect successful!\n"));
-			theApp.m_pLightingLog->LOG_INFO(_T("Reconnect successful!"));
+			//theApp.m_pLightingLog->LOG_INFO(_T("Reconnect successful!"));
 
 			if (pThis->WatchComm())
 			{
@@ -534,20 +534,20 @@ DWORD WINAPI CLightingSocketClient::ReconnectThread(LPVOID lpParam)
 			else
 			{
 				LightingDbgPrint(_T("[Lighting] Reconnect failed: Failed to start communication thread\n"));
-				theApp.m_pLightingLog->LOG_INFO(_T("Reconnect failed: Failed to start communication thread"));
+				//theApp.m_pLightingLog->LOG_INFO(_T("Reconnect failed: Failed to start communication thread"));
 				pThis->CloseComm();
 			}
 		}
 		else
 		{
 			LightingDbgPrint(_T("[Lighting] Reconnect attempt %d failed\n"), dwAttemptCount);
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Reconnect attempt %d failed"), dwAttemptCount));
+			//theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("Reconnect attempt %d failed"), dwAttemptCount));
 		}
 
 		if (WaitForSingleObject(hStopEvent, pThis->m_dwReconnectInterval) == WAIT_OBJECT_0)
 		{
 			LightingDbgPrint(_T("[Lighting] Reconnect thread received stop signal during wait\n"));
-			theApp.m_pLightingLog->LOG_INFO(_T("Reconnect thread received stop signal during wait"));
+			//theApp.m_pLightingLog->LOG_INFO(_T("Reconnect thread received stop signal during wait"));
 			break;
 		}
 	}

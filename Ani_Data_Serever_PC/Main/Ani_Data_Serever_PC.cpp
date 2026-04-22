@@ -1323,15 +1323,15 @@ void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strF
 		{
 			if (!strDBCode.IsEmpty())
 			{
-				m_pTestLog->Info(_T("SetLoadResultCode DB Success: FpcID=%s, Code=%s, Grade=%s"),
-					strFpcID, strDBCode, strDBGrade);
+				//m_pTestLog->Info(_T("SetLoadResultCode DB Success: FpcID=%s, Code=%s, Grade=%s"),
+				//	strFpcID, strDBCode, strDBGrade);
 				m_Send_Result_Code_Map.insert(make_pair(strDBCode, strDBGrade));
 				bGetFromDB = TRUE;
 			}
 		}
 		else
 		{
-			m_pTestLog->Info(_T("SetLoadResultCode DB Failed: %s"), GetDBInterface().GetLastError());
+			//m_pTestLog->Info(_T("SetLoadResultCode DB Failed: %s"), GetDBInterface().GetLastError());
 		}
 	}
 
@@ -1342,7 +1342,7 @@ void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strF
 	}
 
 	// 数据库获取失败，fallback到文件读取
-	m_pTestLog->Info(_T("SetLoadResultCode: Fallback to file read"));
+	//m_pTestLog->Info(_T("SetLoadResultCode: Fallback to file read"));
 
 	strShift = theApp.m_lastShiftIndex == 0 ? _T("DY") : _T("NT");
 	strFilePath.Format(_T("%s\\%s\\%s_%s\\%s.ini"), DATA_DEFECT_CODE_PATH, _T("AOI"), theApp.m_strCurrentToday, strShift, strFpcID);
@@ -1455,16 +1455,16 @@ CString CAni_Data_Serever_PCApp::SetTotalLoadResultCode(CString strPanelID, CStr
 						if (!strCode.IsEmpty())
 						{
 							strCodeGrade = CStringSupport::FormatString(_T("%s^%s"), strCode, strGrade);
-							theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetTotalLoadResultCode DB OK: %s"),
-								strPanelID, strFpcID, strCodeGrade);
+							//theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetTotalLoadResultCode DB OK: %s"),
+							//	strPanelID, strFpcID, strCodeGrade);
 							SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 							return strCodeGrade;
 						}
 					}
 					else
 					{
-						theApp.m_PlcLog->Warn(_T("PanelID [%s] FpcID [%s] AOI SetTotalLoadResultCode DB: No inspection result found"),
-							strPanelID, strFpcID);
+						//theApp.m_PlcLog->Warn(_T("PanelID [%s] FpcID [%s] AOI SetTotalLoadResultCode DB: No inspection result found"),
+						//	strPanelID, strFpcID);
 					}
 				}
 				SQLFreeHandle(SQL_HANDLE_STMT, stmt);
@@ -4972,192 +4972,192 @@ void CAni_Data_Serever_PCApp::OnLightingSnapFN()
 // 生成AOI CSV文件（在FN$回调中调用）
 // 格式与旧AOI程序生成的CSV一致
 //==============================================================================
-BOOL CAni_Data_Serever_PCApp::GenerateAOICsvFile(CString strPanelID, CString strUniqueID, SQLHDBC pConn)
-{
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[AOI CSV] GenerateAOICsvFile START: PanelID=%s, UniqueID=%s"), strPanelID, strUniqueID));
-
-	if (strPanelID.IsEmpty() || strUniqueID.IsEmpty())
-	{
-		theApp.m_pLightingLog->LOG_ERR(_T("[AOI CSV] PanelID or UniqueID is empty, skip"));
-		return FALSE;
-	}
-
-	// 1. 构建CSV文件路径
-	CString strDate = GetDateString2();
-	CString strCsvDir = DFS_AOI_CSV_PATH + strDate + _T("\\") + strPanelID + _T("\\AOI\\");
-	CreateFolders(strCsvDir);
-	CString strCsvPath = strCsvDir + strPanelID + _T(".csv");
-
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[AOI CSV] CSV path: %s"), strCsvPath));
-
-	// 2. 打开文件
-	CStdioFile sFile;
-	if (!sFile.Open(strCsvPath, CFile::modeCreate | CFile::modeWrite | CFile::shareDenyNone))
-	{
-		theApp.m_pLightingLog->LOG_ERR(CStringSupport::FormatString(
-			_T("[AOI CSV] Failed to open file: %s"), strCsvPath));
-		return FALSE;
-	}
-
-	CString strLine;
-
-	// 3. 写入 EQP_PANEL_DATA_BEGIN
-	strLine = _T("EQP_PANEL_DATA_BEGIN");
-	sFile.WriteString(strLine + _T("\n"));
-
-	// 标题行
-	strLine = _T("RECIPE_NO,AOI_RECIPE_NAME,PG_RECIPE_NAME,TP_RECIPE_NAME,START_TIME,END_TIME,LOAD_STAGE_NO,INSP_STAGE_NO,UNLOAD_STAGE_NO,PROBE_CONTACT_CNT,INDEX_PANEL_GRADE,INDEX_MAIN_CODE,FINAL_PANEL_GRADE,FINAL_MAIN_CODE,OPERATOR_ID");
-	sFile.WriteString(strLine + _T("\n"));
-
-	// 数据行 - 从数据库读取检测结果
-	CInspectionResult inspResult;
-	CString strRecipeNo = _T("");
-	CString strAoiRecipeName = _T("S86_AFT_ANI");  // 可从配置读取
-	CString strFinalGrade;
-	CString strFinalCode;
-	if (CLightingDB::Get().QueryByUniqueID(strUniqueID, inspResult))
-	{
-		strFinalGrade = inspResult.Grade_AOI;
-		strFinalCode = inspResult.Code_AOI;
-	}
-
-	// 构建数据行
-	strLine.Format(_T(",%s,,,,,,,,,,,%s,%s,,"),
-		strAoiRecipeName,
-		strFinalGrade,
-		strFinalCode);
-	sFile.WriteString(strLine + _T("\n"));
-
-	strLine = _T("EQP_PANEL_DATA_END");
-	sFile.WriteString(strLine + _T("\n"));
-
-	// 空行
-	sFile.WriteString(_T("\n"));
-
-	// 4. 写入 DEFECT_DATA_BEGIN
-	strLine = _T("DEFECT_DATA_BEGIN");
-	sFile.WriteString(strLine + _T("\n"));
-
-	// 标题行
-	strLine = _T("PANEL_ID,DEFECT_DATA_NUM,DEFECT_TYPE,DEFECT_PTRN,DEFECT_CODE,DEFECT_GRADE,IMAGE_DATA,X,Y,SIZE,CAM_INSPECT,Zone");
-	sFile.WriteString(strLine + _T("\n"));
-
-	// 查询缺陷详情
-	std::vector<SDFSDefectDataBegin> vecAOIDefects;
-	if (CLightingDB::Get().QueryAOIDefectListThreadSafe(strUniqueID, vecAOIDefects, pConn))
-	{
-		for (size_t i = 0; i < vecAOIDefects.size(); i++)
-		{
-			SDFSDefectDataBegin& defect = vecAOIDefects[i];
-
-			// 拼接完整的图片路径
-			CString strImgPath = defect.strIMAGE_DATA;
-			if (!strImgPath.IsEmpty())
-			{
-				// 从配置读取根路径
-				EZIni ini(DATA_SYSTEM_DATA_PATH);
-				CString strAoiRootPath = ini[AOI_INI_SECTION][_T("MainAOIImageRoot")];
-				if (strAoiRootPath.IsEmpty())
-					strAoiRootPath = DFS_AOI_IMAGE_ROOT_DEFAULT;
-
-				// 如果路径不是以根路径开头，则拼接
-				if (strImgPath.Left(strAoiRootPath.GetLength()).CompareNoCase(strAoiRootPath) != 0)
-				{
-					strImgPath = strAoiRootPath + strImgPath;
-				}
-
-				// 提取文件名作为IMAGE_DATA
-				int nPos = strImgPath.ReverseFind('\\');
-				if (nPos >= 0)
-					strImgPath = strImgPath.Mid(nPos + 1);
-			}
-
-			// 写入缺陷数据行
-			strLine.Format(_T("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"),
-				strPanelID,
-				defect.strDEFECT_DATA_NUM,
-				defect.strDEFECT_TYPE,
-				defect.strDEFECT_PTRN,
-				defect.strDEFECT_CODE,
-				defect.strDEFECT_GRADE,
-				strImgPath,
-				defect.strX,
-				defect.strY,
-				defect.strSIZE,
-				defect.strCAM_INSPECT,
-				defect.strZone);
-			sFile.WriteString(strLine + _T("\n"));
-		}
-	}
-
-	strLine = _T("DEFECT_DATA_END");
-	sFile.WriteString(strLine + _T("\n"));
-
-	// 空行
-	sFile.WriteString(_T("\n"));
-
-	// 5. 写入 OPV_DATA_BEGIN
-	strLine = _T("OPV_DATA_BEGIN");
-	sFile.WriteString(strLine + _T("\n"));
-
-	// 标题行
-	strLine = _T("PANEL_ID,FPC_ID,DEFECT_GRADE,TP_FUNCTION,DEFECT_CODE,DEFECT_PTN,DATA_X1,GATE_Y1,DATA_X2,GATE_Y2,DATA_X3,GATE_Y3,IMAGE,GLASS_COORDINATE_X1,GLASS_COORDINATE_Y1,GLASS_COORDINATE_X2,GLASS_COORDINATE_Y2,GLASS_COORDINATE_X3,GLASS_COORDINATE_Y3");
-	sFile.WriteString(strLine + _T("\n"));
-
-	// 写入OPV数据（与缺陷数据相同，只是格式不同，复用上面的查询结果）
-	if (!vecAOIDefects.empty())
-	{
-		for (size_t i = 0; i < vecAOIDefects.size(); i++)
-		{
-			SDFSDefectDataBegin& defect = vecAOIDefects[i];
-
-			// 拼接完整的图片路径
-			CString strImgPath = defect.strIMAGE_DATA;
-			if (!strImgPath.IsEmpty())
-			{
-				EZIni ini(DATA_SYSTEM_DATA_PATH);
-				CString strAoiRootPath = ini[AOI_INI_SECTION][_T("MainAOIImageRoot")];
-				if (strAoiRootPath.IsEmpty())
-					strAoiRootPath = DFS_AOI_IMAGE_ROOT_DEFAULT;
-
-				if (strImgPath.Left(strAoiRootPath.GetLength()).CompareNoCase(strAoiRootPath) != 0)
-				{
-					strImgPath = strAoiRootPath + strImgPath;
-				}
-
-				int nPos = strImgPath.ReverseFind('\\');
-				if (nPos >= 0)
-					strImgPath = strImgPath.Mid(nPos + 1);
-			}
-
-			// 写入OPV数据行
-			strLine.Format(_T("%s,%s,%s,***,%s,%s,%s,%s,%s,%s,***,***,%s,***,***,***,***,***,***"),
-				strPanelID,
-				strPanelID,  // FPC_ID 同 PanelID
-				defect.strDEFECT_GRADE,
-				defect.strDEFECT_CODE,
-				defect.strDEFECT_PTRN,
-				defect.strX,
-				defect.strY,
-				defect.strX,
-				defect.strY,
-				strImgPath);
-			sFile.WriteString(strLine + _T("\n"));
-		}
-	}
-
-	strLine = _T("OPV_DATA_END");
-	sFile.WriteString(strLine + _T("\n"));
-
-	sFile.Close();
-
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
-		_T("[AOI CSV] GenerateAOICsvFile SUCCESS: %s"), strCsvPath));
-
-	return TRUE;
-}
+//BOOL CAni_Data_Serever_PCApp::GenerateAOICsvFile(CString strPanelID, CString strUniqueID, SQLHDBC pConn)
+//{
+//	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+//		_T("[AOI CSV] GenerateAOICsvFile START: PanelID=%s, UniqueID=%s"), strPanelID, strUniqueID));
+//
+//	if (strPanelID.IsEmpty() || strUniqueID.IsEmpty())
+//	{
+//		theApp.m_pLightingLog->LOG_ERR(_T("[AOI CSV] PanelID or UniqueID is empty, skip"));
+//		return FALSE;
+//	}
+//
+//	// 1. 构建CSV文件路径
+//	CString strDate = GetDateString2();
+//	CString strCsvDir = DFS_AOI_CSV_PATH + strDate + _T("\\") + strPanelID + _T("\\AOI\\");
+//	CreateFolders(strCsvDir);
+//	CString strCsvPath = strCsvDir + strPanelID + _T(".csv");
+//
+//	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+//		_T("[AOI CSV] CSV path: %s"), strCsvPath));
+//
+//	// 2. 打开文件
+//	CStdioFile sFile;
+//	if (!sFile.Open(strCsvPath, CFile::modeCreate | CFile::modeWrite | CFile::shareDenyNone))
+//	{
+//		theApp.m_pLightingLog->LOG_ERR(CStringSupport::FormatString(
+//			_T("[AOI CSV] Failed to open file: %s"), strCsvPath));
+//		return FALSE;
+//	}
+//
+//	CString strLine;
+//
+//	// 3. 写入 EQP_PANEL_DATA_BEGIN
+//	strLine = _T("EQP_PANEL_DATA_BEGIN");
+//	sFile.WriteString(strLine + _T("\n"));
+//
+//	// 标题行
+//	strLine = _T("RECIPE_NO,AOI_RECIPE_NAME,PG_RECIPE_NAME,TP_RECIPE_NAME,START_TIME,END_TIME,LOAD_STAGE_NO,INSP_STAGE_NO,UNLOAD_STAGE_NO,PROBE_CONTACT_CNT,INDEX_PANEL_GRADE,INDEX_MAIN_CODE,FINAL_PANEL_GRADE,FINAL_MAIN_CODE,OPERATOR_ID");
+//	sFile.WriteString(strLine + _T("\n"));
+//
+//	// 数据行 - 从数据库读取检测结果
+//	CInspectionResult inspResult;
+//	CString strRecipeNo = _T("");
+//	CString strAoiRecipeName = _T("S86_AFT_ANI");  // 可从配置读取
+//	CString strFinalGrade;
+//	CString strFinalCode;
+//	if (CLightingDB::Get().QueryByUniqueID(strUniqueID, inspResult))
+//	{
+//		strFinalGrade = inspResult.Grade_AOI;
+//		strFinalCode = inspResult.Code_AOI;
+//	}
+//
+//	// 构建数据行
+//	strLine.Format(_T(",%s,,,,,,,,,,,%s,%s,,"),
+//		strAoiRecipeName,
+//		strFinalGrade,
+//		strFinalCode);
+//	sFile.WriteString(strLine + _T("\n"));
+//
+//	strLine = _T("EQP_PANEL_DATA_END");
+//	sFile.WriteString(strLine + _T("\n"));
+//
+//	// 空行
+//	sFile.WriteString(_T("\n"));
+//
+//	// 4. 写入 DEFECT_DATA_BEGIN
+//	strLine = _T("DEFECT_DATA_BEGIN");
+//	sFile.WriteString(strLine + _T("\n"));
+//
+//	// 标题行
+//	strLine = _T("PANEL_ID,DEFECT_DATA_NUM,DEFECT_TYPE,DEFECT_PTRN,DEFECT_CODE,DEFECT_GRADE,IMAGE_DATA,X,Y,SIZE,CAM_INSPECT,Zone");
+//	sFile.WriteString(strLine + _T("\n"));
+//
+//	// 查询缺陷详情
+//	std::vector<SDFSDefectDataBegin> vecAOIDefects;
+//	if (CLightingDB::Get().QueryAOIDefectListThreadSafe(strUniqueID, vecAOIDefects, pConn))
+//	{
+//		for (size_t i = 0; i < vecAOIDefects.size(); i++)
+//		{
+//			SDFSDefectDataBegin& defect = vecAOIDefects[i];
+//
+//			// 拼接完整的图片路径
+//			CString strImgPath = defect.strIMAGE_DATA;
+//			if (!strImgPath.IsEmpty())
+//			{
+//				// 从配置读取根路径
+//				EZIni ini(DATA_SYSTEM_DATA_PATH);
+//				CString strAoiRootPath = ini[AOI_INI_SECTION][_T("MainAOIImageRoot")];
+//				if (strAoiRootPath.IsEmpty())
+//					strAoiRootPath = DFS_AOI_IMAGE_ROOT_DEFAULT;
+//
+//				// 如果路径不是以根路径开头，则拼接
+//				if (strImgPath.Left(strAoiRootPath.GetLength()).CompareNoCase(strAoiRootPath) != 0)
+//				{
+//					strImgPath = strAoiRootPath + strImgPath;
+//				}
+//
+//				// 提取文件名作为IMAGE_DATA
+//				int nPos = strImgPath.ReverseFind('\\');
+//				if (nPos >= 0)
+//					strImgPath = strImgPath.Mid(nPos + 1);
+//			}
+//
+//			// 写入缺陷数据行
+//			strLine.Format(_T("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"),
+//				strPanelID,
+//				defect.strDEFECT_DATA_NUM,
+//				defect.strDEFECT_TYPE,
+//				defect.strDEFECT_PTRN,
+//				defect.strDEFECT_CODE,
+//				defect.strDEFECT_GRADE,
+//				strImgPath,
+//				defect.strX,
+//				defect.strY,
+//				defect.strSIZE,
+//				defect.strCAM_INSPECT,
+//				defect.strZone);
+//			sFile.WriteString(strLine + _T("\n"));
+//		}
+//	}
+//
+//	strLine = _T("DEFECT_DATA_END");
+//	sFile.WriteString(strLine + _T("\n"));
+//
+//	// 空行
+//	sFile.WriteString(_T("\n"));
+//
+//	// 5. 写入 OPV_DATA_BEGIN
+//	strLine = _T("OPV_DATA_BEGIN");
+//	sFile.WriteString(strLine + _T("\n"));
+//
+//	// 标题行
+//	strLine = _T("PANEL_ID,FPC_ID,DEFECT_GRADE,TP_FUNCTION,DEFECT_CODE,DEFECT_PTN,DATA_X1,GATE_Y1,DATA_X2,GATE_Y2,DATA_X3,GATE_Y3,IMAGE,GLASS_COORDINATE_X1,GLASS_COORDINATE_Y1,GLASS_COORDINATE_X2,GLASS_COORDINATE_Y2,GLASS_COORDINATE_X3,GLASS_COORDINATE_Y3");
+//	sFile.WriteString(strLine + _T("\n"));
+//
+//	// 写入OPV数据（与缺陷数据相同，只是格式不同，复用上面的查询结果）
+//	if (!vecAOIDefects.empty())
+//	{
+//		for (size_t i = 0; i < vecAOIDefects.size(); i++)
+//		{
+//			SDFSDefectDataBegin& defect = vecAOIDefects[i];
+//
+//			// 拼接完整的图片路径
+//			CString strImgPath = defect.strIMAGE_DATA;
+//			if (!strImgPath.IsEmpty())
+//			{
+//				EZIni ini(DATA_SYSTEM_DATA_PATH);
+//				CString strAoiRootPath = ini[AOI_INI_SECTION][_T("MainAOIImageRoot")];
+//				if (strAoiRootPath.IsEmpty())
+//					strAoiRootPath = DFS_AOI_IMAGE_ROOT_DEFAULT;
+//
+//				if (strImgPath.Left(strAoiRootPath.GetLength()).CompareNoCase(strAoiRootPath) != 0)
+//				{
+//					strImgPath = strAoiRootPath + strImgPath;
+//				}
+//
+//				int nPos = strImgPath.ReverseFind('\\');
+//				if (nPos >= 0)
+//					strImgPath = strImgPath.Mid(nPos + 1);
+//			}
+//
+//			// 写入OPV数据行
+//			strLine.Format(_T("%s,%s,%s,***,%s,%s,%s,%s,%s,%s,***,***,%s,***,***,***,***,***,***"),
+//				strPanelID,
+//				strPanelID,  // FPC_ID 同 PanelID
+//				defect.strDEFECT_GRADE,
+//				defect.strDEFECT_CODE,
+//				defect.strDEFECT_PTRN,
+//				defect.strX,
+//				defect.strY,
+//				defect.strX,
+//				defect.strY,
+//				strImgPath);
+//			sFile.WriteString(strLine + _T("\n"));
+//		}
+//	}
+//
+//	strLine = _T("OPV_DATA_END");
+//	sFile.WriteString(strLine + _T("\n"));
+//
+//	sFile.Close();
+//
+//	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+//		_T("[AOI CSV] GenerateAOICsvFile SUCCESS: %s"), strCsvPath));
+//
+//	return TRUE;
+//}
 
 void CAni_Data_Serever_PCApp::LightingFlowTimeoutCheck()
 {

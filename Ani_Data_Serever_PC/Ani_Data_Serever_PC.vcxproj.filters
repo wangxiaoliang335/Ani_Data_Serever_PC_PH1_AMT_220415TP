@@ -379,6 +379,13 @@
     <ClInclude Include="Util\DataModels.h">
       <Filter>Util</Filter>
     </ClInclude>
+    <ClInclude Include="Util\DataModels.h" />
+    <ClInclude Include="Util\CLightingDB.h" />
+    <ClInclude Include="Util\TLSConnection.h" />
+    <ClInclude Include="Util\DBInterface.h" />
+    <ClInclude Include="Communication\SocketServerBase.h">
+      <Filter>Communication</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Comm\ImageViewNG.cpp">
@@ -670,5 +677,10 @@
       <Filter>Communication</Filter>
     </ClCompile>
     <ClCompile Include="Communication\LightingSocketClient.cpp" />
+    <ClCompile Include="Util\CLightingDB.cpp" />
+    <ClCompile Include="Util\TLSConnection.cpp" />
+    <ClCompile Include="Communication\SocketServerBase.cpp">
+      <Filter>Communication</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

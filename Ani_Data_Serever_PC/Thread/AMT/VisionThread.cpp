@@ -26,7 +26,7 @@ CVisionThread::~CVisionThread()
 
 void CVisionThread::ThreadRun()
 {
-	theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Thread started"));
+	theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] Thread started"));
 	AutoFocusData pAutoFocusData;
 	for (auto &InspResult : m_lastInspResultVec)
 		InspResult.Reset();
@@ -40,7 +40,7 @@ void CVisionThread::ThreadRun()
 			//if (theApp.m_bAllPassMode)
 			//	continue;
 
-			theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+			theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 				_T("[VisionThread] Connection status - LightingConect=%d, AOIPassMode=%d"), 
 				theApp.m_LightingConectStatus, theApp.m_AOIPassMode));
 
@@ -51,7 +51,7 @@ void CVisionThread::ThreadRun()
 
 			if (m_bFirstStatus)
 			{
-				theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] First connection status detected"));
+				theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] First connection status detected"));
 				m_bFirstStatus = FALSE;
 				time_check.SetCheckTime(60000);
 			time_check.StartTimer();
@@ -65,21 +65,27 @@ void CVisionThread::ThreadRun()
 
 				for (int jj = 0; jj < PanelMaxCount; jj++)
 					m_bStartVision[jj] = FALSE;
-				theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Initialized all panel start flags to FALSE"));
+				theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] Initialized all panel start flags to FALSE"));
 			}
 
 			//TEST Model �� (TRUE) Model ���浵 �Ⱥ��� �׳� ��� ���� �մϴ�.
 			//TEST Model �� (FALSE) Model ���� �� ���� ��� check 
 			if (theApp.m_AOIPassMode == FALSE)
 			{
-				theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+				theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 					_T("[VisionThread] AOIPassMode=FALSE, checking PLC connection and model change - PLC=%d, ModelChange1=%d, ModelChange2=%d"),
 					theApp.m_PlcConectStatus, theApp.m_ChangeModelVision1, theApp.m_ChangeModelVision2));
 				/*if (theApp.m_PlcConectStatus == FALSE || theApp.m_ChangeModelVision1 == TRUE || theApp.m_ChangeModelVision2 == TRUE)
 				{
-					theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Skipping due to PLC disconnected or model change in progress"));
+					theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] Skipping due to PLC disconnected or model change in progress"));
 					continue;
 				}*/
+
+				if (theApp.m_PlcConectStatus == FALSE)
+				{
+					theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] Skipping due to PLC disconnected or model change in progress"));
+					continue;
+				}
 			}
 
 			if (time_check.IsTimeOver())
@@ -90,12 +96,12 @@ void CVisionThread::ThreadRun()
 
 			if (theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_VisionPlcSend, 0))
 			{
-				theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Received eBitType_VisionPlcSend signal from PLC"));
+				theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] Received eBitType_VisionPlcSend signal from PLC"));
 				VisionPanelCheck();
 			}
 			else
 			{
-				theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Received eBitType_VisionPlcSend not signal from PLC"));
+				theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] Received eBitType_VisionPlcSend not signal from PLC"));
 				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionPcReceiver, 0, FALSE);
 			}
 			
@@ -115,14 +121,14 @@ void CVisionThread::ThreadRun()
 			for (int ii = 0; ii < PanelMaxCount; ii++)
 			{
 				m_bStartFlag = startFlags[ii];  // 使用预先读取的值
-				theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+				theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 					_T("[VisionThread] Panel %d StartFlag=%d"), ii + 1, m_bStartFlag));
 
 				if (m_bStartFlag == FALSE)
 				{
-					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+					theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 						_T("[VisionThread] Resetting Panel %d results and flags"), ii + 1));
-					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+					theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 						_T("[VisionThread] SetPlcWordData eWordType_VisionResult%d = %d (%s)"),
 						ii + 1, m_codeReset, PLC_ResultValue[m_codeReset]));
 					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + ii, &m_codeReset);
@@ -133,13 +139,13 @@ void CVisionThread::ThreadRun()
 				if (m_bStartVision[ii] == !m_bStartFlag)
 				{
 					m_bStartVision[ii] = m_bStartFlag;
-					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Panel %d StartFlag changed to %d"), ii + 1, m_bStartVision[ii]));
+					theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Panel %d StartFlag changed to %d"), ii + 1, m_bStartVision[ii]));
 					theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Vision Panel %d Start Flag [%s]"), ii + 1, m_bStartVision[ii] == FALSE ? _T("FALSE") : _T("TRUE")));
 
 					if (m_bStartFlag == TRUE)
 					{
-						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Starting inspection for Panel %d"), ii + 1));
-						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+						theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Starting inspection for Panel %d"), ii + 1));
+						theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 							_T("[VisionThread] SetPlcWordData eWordType_VisionResult%d = %d (%s)"), 
 							ii + 1, m_codeReset, PLC_ResultValue[m_codeReset]));
 						theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + ii, &m_codeReset);
@@ -152,27 +158,27 @@ void CVisionThread::ThreadRun()
 			// 点灯调用移到循环外：有治具从 FALSE->TRUE 时才调用一次
 			if (bAnyStartNeeded && theApp.m_LightingThreadOpenFlag && theApp.m_LightingConectStatus)
 			{
-				theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Using Lighting protocol (6501 port) for inspection"));
-				theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+				theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] Using Lighting protocol (6501 port) for inspection"));
+				theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 					_T("[VisionThread] startFlags[] = [%d, %d, %d, %d] from VisionStart1~4"),
 					startFlags[0], startFlags[1], startFlags[2], startFlags[3]));
 				TryStartLightingFromPlc(startFlags);  // 直接调用本类方法
 			}
 			else if (bAnyStartNeeded)
 			{
-				theApp.m_PlcLog->LOG_WARN(CStringSupport::FormatString(
+				theApp.m_VisionLog->LOG_WARN(CStringSupport::FormatString(
 					_T("[VisionThread] Lighting NOT available, skipping TryStartLightingFromPlc")));
 			}
 
 			for (int ii = 0; ii < MaxCamCount; ii++)
 			{
 				m_bAutoFocusStartFlag = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_AutoFocusEnd1 + ii, OffSet_0);
-				theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+				theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 					_T("[VisionThread] Cam %d AutoFocusEndFlag=%d"), ii + 1, m_bAutoFocusStartFlag));
 
 				if (m_bAutoFocusStartFlag == TRUE)
 				{
-					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Processing AutoFocusEnd for Cam %d"), ii + 1));
+					theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Processing AutoFocusEnd for Cam %d"), ii + 1));
 					theApp.m_pEqIf->m_pMNetH->SetAutoFocusData(eWordType_AutoFocusMoter1, &pAutoFocusData);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusSave1 + ii, OffSet_0, FALSE);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusStart1 + ii, OffSet_0, FALSE);
@@ -181,15 +187,15 @@ void CVisionThread::ThreadRun()
 				if (m_bAutoFocusStart[ii] == !m_bAutoFocusStartFlag)
 				{
 					m_bAutoFocusStart[ii] = m_bAutoFocusStartFlag;
-					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Cam %d AutoFocusEndFlag changed to %d"), ii + 1, m_bAutoFocusStart[ii]));
+					theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Cam %d AutoFocusEndFlag changed to %d"), ii + 1, m_bAutoFocusStart[ii]));
 					theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Auto Focus Cam_%d End Flag [%s]"), ii + 1, m_bAutoFocusStart[ii] == FALSE ? _T("FALSE") : _T("TRUE")));
 
 					if (m_bAutoFocusStartFlag == TRUE)
 					{
-						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Processing AutoFocusEnd for Cam %d"), ii + 1));
+						theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] Processing AutoFocusEnd for Cam %d"), ii + 1));
 						if (theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_AutoFocusSave1 + ii, OffSet_0))
 					{
-						theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] AutoFocus Save position for Cam %d"), ii + 1));
+						theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] AutoFocus Save position for Cam %d"), ii + 1));
 						//save - 已禁用 Vision PC 协议，现在只使用 Lighting
 						//theApp.m_VisionSocketManager->SocketSendto(ii, _T("GOOD"), MC_FOCUS_SAVE_POS_DONE);
 						theApp.m_pEqIf->m_pMNetH->SetAutoFocusData(eWordType_AutoFocusMoter1, &pAutoFocusData);
@@ -200,7 +206,7 @@ void CVisionThread::ThreadRun()
 					}
 						else
 						{
-							theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] AutoFocus Axis Move for Cam %d"), ii + 1));
+							theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(_T("[VisionThread] AutoFocus Axis Move for Cam %d"), ii + 1));
 							//axis Move - 已禁用 Vision PC 协议，现在只使用 Lighting
 							//theApp.m_pEqIf->m_pMNetH->GetPlcWordData(eWordType_AutoFocusMoter1, &m_AutoFocusPosition);
 							//if (m_AutoFocusPosition == 1)
@@ -223,7 +229,7 @@ void CVisionThread::ThreadRun()
 				// AOI 超时：直接处理，不走两阶段 timer（SocketSendto 已禁用）
 				if (InspResult.m_bInspStart == TRUE && InspResult.time_check.IsTimeOver())
 				{
-					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+					theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 						_T("[VisionThread] AOI timeout for PC%d, Panel%d, Cell=%s"),
 						InspResult.m_iPCNum, InspResult.m_iPanelNum, InspResult.m_cellId));
 
@@ -242,7 +248,7 @@ void CVisionThread::ThreadRun()
 					// Lighting 模式：重置周期状态
 					if (theApp.m_bLightingCycleInProgress)
 					{
-						theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+						theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 							_T("[VisionThread] Fixture timeout, resetting m_bLightingCycleInProgress (Fixture=%d)"),
 							InspResult.m_iPanelNum + 1));
 						theApp.m_csLightingFlow.Lock();
@@ -255,7 +261,7 @@ void CVisionThread::ThreadRun()
 
 				if (InspResult.m_bResult == TRUE && theApp.m_bVisionDeleteFlag == TRUE)
 				{
-					theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+					theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 						_T("[VisionThread] Resetting inspection result for PC%d, Panel%d, Cell=%s"),
 						InspResult.m_iPCNum, InspResult.m_iPanelNum, InspResult.m_cellId));
 					InspResult.Reset();
@@ -266,14 +272,14 @@ void CVisionThread::ThreadRun()
 		}
 		else
 		{
-			theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Vision PC connection lost, resetting status"));
+			theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] Vision PC connection lost, resetting status"));
 			// Vision PC 状态已禁用，现在只使用 Lighting (5601端口)
 			// theApp.m_VisionPCStatus[0] = FALSE;
 			// theApp.m_VisionPCStatus[1] = FALSE;
 			m_bFirstStatus = TRUE;
 		}
 	}
-	theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] Thread exited"));
+	theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] Thread exited"));
 }
 
 
@@ -493,27 +499,27 @@ void CVisionThread::VisionPanelCheck()
 	FpcIDData pFpcData;
 	CString strPanel, strFpcID;
 
-	theApp.m_PlcLog->LOG_INFO(_T("[VisionThread] VisionPanelCheck started"));
+	theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] VisionPanelCheck started"));
 
 	for (int ii = 0; ii < PanelMaxCount; ii++)
 	{
 		theApp.m_pEqIf->m_pMNetH->GetFpcIdData(eWordType_VisionFpcID1 + ii, &pFpcData);
 		strFpcID = CStringSupport::ToWString(pFpcData.m_FpcIDData, sizeof(pFpcData.m_FpcIDData));
 		
-		theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+		theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 			_T("[VisionThread] Received eWordType_VisionFpcID%d signal - FPC ID: %s"), 
 			ii + 1, strFpcID));
 
 		theApp.m_pEqIf->m_pMNetH->GetPanelData(eWordType_VisionPanel1 + ii, &pPanelData);
 		strPanel = CStringSupport::ToWString(pPanelData.m_PanelData, sizeof(pPanelData.m_PanelData));
 		
-		theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+		theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 			_T("[VisionThread] Received eWordType_VisionPanel%d signal - Panel: %s"), 
 			ii + 1, strPanel));
 
 		if (strFpcID.GetLength() > 0)
 		{
-			theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+			theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 				_T("[VisionThread] FPC ID found for panel %d, setting VisionPcReceiver bit"), ii + 1));
 			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionPcReceiver, 0, TRUE);
 			break;
@@ -804,7 +810,7 @@ void CVisionThread::VisionPLCResult(int Num, int iPanelNum, CString ResultMsg, i
 	}
 		
 
-	theApp.m_PlcLog->LOG_INFO(CStringSupport::FormatString(
+	theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 		_T("[VisionThread] SetPlcWordData eWordType_VisionResult%d = %d (%s)"), 
 		iPanelNum + 1, ResultCode, PLC_ResultValue[ResultCode]));
 	theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + iPanelNum, &ResultCode);
@@ -877,14 +883,14 @@ BOOL CVisionThread::VisionVecAdd(CString strPanel, CString strFpcID, int iPanelN
 BOOL CVisionThread::TryStartLightingFromPlc(const BOOL startFlags[4])
 {
 	// 入口日志：记录 startFlags 值，方便分析问题
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+	theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 		_T("[Lighting] TryStartLightingFromPlc ENTRY: startFlags=[%d][%d][%d][%d], m_LightingThreadOpenFlag=%d, m_LightingConectStatus=%d"),
 		startFlags[0], startFlags[1], startFlags[2], startFlags[3],
 		theApp.m_LightingThreadOpenFlag, theApp.m_LightingConectStatus));
 
 	if (!theApp.m_LightingThreadOpenFlag || !theApp.m_LightingConectStatus)
 	{
-		theApp.m_pLightingLog->LOG_INFO(_T("[Lighting] TryStartLightingFromPlc: Lighting not ready, skipping"));
+		theApp.m_VisionLog->LOG_INFO(_T("[Lighting] TryStartLightingFromPlc: Lighting not ready, skipping"));
 		return FALSE;
 	}
 
@@ -892,7 +898,7 @@ BOOL CVisionThread::TryStartLightingFromPlc(const BOOL startFlags[4])
 	if (theApp.m_bLightingCycleInProgress)
 	{
 		theApp.m_csLightingFlow.Unlock();
-		theApp.m_pLightingLog->LOG_INFO(_T("Lighting Start requested but previous cycle still in progress (ignored)"));
+		theApp.m_VisionLog->LOG_INFO(_T("Lighting Start requested but previous cycle still in progress (ignored)"));
 		return FALSE;
 	}
 
@@ -904,14 +910,14 @@ BOOL CVisionThread::TryStartLightingFromPlc(const BOOL startFlags[4])
 	}
 
 	// 记录活跃槽位检查结果
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+	theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 		_T("[Lighting] TryStartLightingFromPlc: any=%d, activeSlots=[%d][%d][%d][%d]"),
 		any, theApp.m_bLightingActiveSlot[0], theApp.m_bLightingActiveSlot[1], theApp.m_bLightingActiveSlot[2], theApp.m_bLightingActiveSlot[3]));
 
 	if (!any)
 	{
 		theApp.m_csLightingFlow.Unlock();
-		theApp.m_pLightingLog->LOG_INFO(_T("[Lighting] TryStartLightingFromPlc: no active slots, skipping"));
+		theApp.m_VisionLog->LOG_INFO(_T("[Lighting] TryStartLightingFromPlc: no active slots, skipping"));
 		return FALSE;
 	}
 
@@ -933,7 +939,7 @@ BOOL CVisionThread::TryStartLightingFromPlc(const BOOL startFlags[4])
 	int iCurIndex = (theApp.m_CurrentIndexZone + (MaxZone - CZone)) % 4;
 	if (iCurIndex < 0 || iCurIndex >= theApp.m_indexList.size())
 	{
-		theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("[SendICWStartMessage] iCurIndex=%d 越界, use 0"), iCurIndex), 0);
+		theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(_T("[SendICWStartMessage] iCurIndex=%d 越界, use 0"), iCurIndex), 0);
 		iCurIndex = 0;
 	}
 	int iBaseIndex = theApp.m_indexList[iCurIndex].m_indexNum;
@@ -945,7 +951,7 @@ BOOL CVisionThread::TryStartLightingFromPlc(const BOOL startFlags[4])
 		theApp.m_strLightingDBName,
 		theApp.m_strLightingDBUser,
 		theApp.m_strLightingDBPassword,
-		theApp.m_pLightingLog))
+		theApp.m_VisionLog))
 	{
 		PanelData pPanelData;
 		FpcIDData pFpcData;
@@ -989,11 +995,11 @@ BOOL CVisionThread::TryStartLightingFromPlc(const BOOL startFlags[4])
 			CString strMarkID;
 			strMarkID.Format(_T("%02d"), iStation);
 			CString strBarcode = strFpcID.IsEmpty() ? strPanelID : strFpcID;
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+			theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 				_T("[DBG] About to update ivs_lcd_idmap: fixtureNo=%d, UniqueID=%s, Barcode=%s, MarkID=%s"),
 				iStation, strUniqueID, strBarcode, strMarkID));
 			BOOL updateResult = CLightingDB::Get().UpdateLightingIdMap(iStation, strUniqueID, strBarcode, strMarkID);
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+			theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 				_T("[DBG] UpdateLightingIdMap result: %s (fixtureNo=%d)"),
 				updateResult ? _T("SUCCESS") : _T("FAILED"), iStation));
 
@@ -1006,11 +1012,11 @@ BOOL CVisionThread::TryStartLightingFromPlc(const BOOL startFlags[4])
 	}
 	else
 	{
-		theApp.m_pLightingLog->LOG_INFO(_T("TryStartLightingFromPlc: DB not connected, skip idmap update"));
+		theApp.m_VisionLog->LOG_INFO(_T("TryStartLightingFromPlc: DB not connected, skip idmap update"));
 	}
 
 	theApp.m_LightingSocketManager.SendStart(curStr, maxStr);
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+	theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 		_T("Lighting Start sent (slots=%02d%02d%02d%02d)"),
 		usedSlots[0], usedSlots[1], usedSlots[2], usedSlots[3]));
 
@@ -1072,12 +1078,12 @@ void CVisionThread::ParshingVisionData(int Num, CString strContents)
 
 void CVisionThread::OnLightingRunning()
 {
-	theApp.m_pLightingLog->LOG_INFO(_T("[Lighting] OnLightingRunning called"));
+	theApp.m_VisionLog->LOG_INFO(_T("[Lighting] OnLightingRunning called"));
 }
 
 void CVisionThread::OnLightingSnapFN()
 {
-	theApp.m_pLightingLog->LOG_INFO(_T("[Lighting] OnLightingSnapFN called"));
+	theApp.m_VisionLog->LOG_INFO(_T("[Lighting] OnLightingSnapFN called"));
 
 	// 点灯采图完成
 	// 写入 PLC：SnapFN 信号
@@ -1099,7 +1105,7 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 		resultCode[0], resultCode[1], resultCode[2], resultCode[3], threadId);
 	OutputDebugString(temp);
 
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+	theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 		_T("[Lighting] OnLightingResult called: [%02d][%02d][%02d][%02d], ThreadID=%lu"),
 		resultCode[0], resultCode[1], resultCode[2], resultCode[3], threadId));
 
@@ -1110,7 +1116,7 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 	for (int i = 0; i < 4; ++i) active[i] = theApp.m_bLightingActiveSlot[i];
 	theApp.m_csLightingFlow.Unlock();
 
-	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+	theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 		_T("[Lighting] OnLightingResult STATE: cycleInProgress=%d, activeSlots=[%d][%d][%d][%d]"),
 		cycleInProgress, active[0], active[1], active[2], active[3]));
 
@@ -1130,7 +1136,7 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 
 		//if (!active[slotIdx])
 		//{
-		//	theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+		//	theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 		//		_T("[Lighting] fixtureNo=%d but slot not active (ignored)"), fixtureNo));
 		//	continue;
 		//}
@@ -1141,7 +1147,7 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 
 		if (bIdMapOK)
 		{
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+			theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 				_T("[Lighting] QueryIdMap OK: FixtureNo=%d, UniqueID=%s, ScreenID=%s, MarkID=%s"),
 				fixtureNo, uniqueID, screenID, markID));
 
@@ -1149,7 +1155,7 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 			CInspectionResult inspResult;
 			if (!CLightingDB::Get().QueryByUniqueID(uniqueID, inspResult))
 			{
-				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+				theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 					_T("[Lighting] QueryByUniqueID failed for UniqueID=%s"), uniqueID));
 				USHORT tmpResult = m_codeOk;
 				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + i, &tmpResult);
@@ -1174,7 +1180,7 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 					if (inspVec.m_iResultValue == m_codeFail)
 							theApp.m_pRankTread->AddRankCodeList(inspVec.m_cellId, inspVec.m_FpcID, inspVec.m_iPanelNum, inspVec.m_iCurIndex, RankAOI);
 
-						theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+						theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 							_T("[Lighting] Updated m_lastInspResultVec: FixtureNo=%d, Result=%s"),
 							fixtureNo, inspVec.m_bResult ? _T("OK") : _T("NG")));
 						bFoundInVec = TRUE;
@@ -1189,25 +1195,25 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 				CDefectInfoList defectList;
 				if (!inspResult.GUID.IsEmpty())
 				{
-					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+					theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 						_T("[Lighting] Fixture %d: QueryAOIDefectList(GUID=%s)"),
 						fixtureNo, (LPCTSTR)inspResult.GUID));
 					if (!CLightingDB::Get().QueryAOIDefectListThreadSafe(inspResult.GUID, defectList, SQL_NULL_HANDLE))
 					{
-						theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+						theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 							_T("[Lighting] Fixture %d: QueryAOIDefectList failed"),
 							fixtureNo));
 					}
 					else
 					{
-						theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+						theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 							_T("[Lighting] Fixture %d: QueryAOIDefectList found %d defects"),
 							fixtureNo, (int)defectList.size()));
 					}
 				}
 				else
 				{
-					theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+					theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 						_T("[Lighting] Fixture %d: inspResult.GUID is empty, skip defect query"),
 						fixtureNo));
 				}
@@ -1240,12 +1246,12 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 				{
 					if (dfsInfo.WriteOpvDefectCodeINI(screenID, defectList, fixtureNo))
 					{
-						theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: WriteOpvDefectCodeINI success (PanelID=%s, DefectCount=%d)"),
+						theApp.m_VisionLog->Info(_T("[ICW FN$] Fixture %d: WriteOpvDefectCodeINI success (PanelID=%s, DefectCount=%d)"),
 							i+1, (LPCTSTR)screenID, (int)defectList.size());
 					}
 					else
 					{
-						theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: WriteOpvDefectCodeINI failed"), i+1);
+						theApp.m_VisionLog->Info(_T("[ICW FN$] Fixture %d: WriteOpvDefectCodeINI failed"), i+1);
 					}
 				}
 
@@ -1259,7 +1265,7 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 				//theApp.m_pEqIf->m_pMNetH->SetDefectGradeRankData(eWordType_DefectGradeResult1 + i, &pDefectGradeRank);
 				//theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_DefectCodeEnd1 + i, OffSet_0, TRUE);
 
-				//theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+				//theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 				//	_T("[Lighting] Write PLC DefectCode: Slot=%d, DefectCount=%d, Code=%s, Grade=%s"),
 				//	i, defectList.size(), strDefectCode, strDefectGrade));
 
@@ -1277,29 +1283,30 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 				dfsData.m_Lumitop = (inspResult.AOIResult.CompareNoCase(_T("OK")) == 0) ? _T("OK") : _T("NG");
 				dfsData.m_TypeNum = Machine_AOI;
 				dfsData.m_StageNum = i + 1;
+				dfsData.m_strUniqueID = uniqueID;  // 保存UniqueID供阶段二策略3使用
 
 				theApp.m_pFTP->DfsAddTransferFile(dfsData);
 
 				if (dfsInfo.WriteAOICSVFile(inspResult, defectList, fixtureNo, screenID))
 				{
-					theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: WriteAOICSVFile success (DefectCount=%d)"), fixtureNo, (int)defectList.size());
+					theApp.m_VisionLog->Info(_T("[ICW FN$] Fixture %d: WriteAOICSVFile success (DefectCount=%d)"), fixtureNo, (int)defectList.size());
 				}
 				else
 				{
-					theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: WriteAOICSVFile failed"), fixtureNo);
+					theApp.m_VisionLog->Info(_T("[ICW FN$] Fixture %d: WriteAOICSVFile failed"), fixtureNo);
 				}
 
 				// 生成 CSV
 				//theApp.GenerateAOICsvFile(screenID, uniqueID, SQL_NULL_HANDLE);
 
-				theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+				theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 					_T("[Lighting] Complete: Slot=%d, FixtureNo=%d, AOIResult=%s"),
 					i, fixtureNo, inspResult.AOIResult));
 			}
 		}
 		else
 		{
-			theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(
+			theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 				_T("[Lighting] QueryIdMapByFixtureNo failed: FixtureNo=%d"), fixtureNo));
 			USHORT tmpResult = m_codeOk;
 			theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + i, &tmpResult);

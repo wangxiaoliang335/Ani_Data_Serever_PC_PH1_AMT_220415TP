@@ -63,6 +63,7 @@ struct LightingInspectionResult {
 	CString m_strGradeAOI;       // 缺陷等级
 	CString m_strStartTime;
 	CString m_strStopTime;
+	CString m_strLocalIP;       // AOI设备IP地址（策略3拼图路径用）
 	BOOL m_bValid;
 	LightingInspectionResult() : m_bValid(FALSE) {}
 };
@@ -76,7 +77,7 @@ public:
 
 	// Lighting 线程专用的数据库操作（使用线程局部连接）
 	//LightingInspectionResult QueryInspectionResultThreadSafe(CString uniqueID, SQLHDBC pConn);
-	BOOL QueryIdMapByFixtureNoThreadSafe(int fixtureNo, CString& uniqueID, CString& screenID, CString& markID, SQLHDBC pConn);
+	//BOOL QueryIdMapByFixtureNoThreadSafe(int fixtureNo, CString& uniqueID, CString& screenID, CString& markID, SQLHDBC pConn);
 
 	CMultiDocTemplate* m_pDocOperator;
 	HANDLE m_hApp;
@@ -272,7 +273,7 @@ public:
 	CString GetLightingUniqueIDByBarcode(CString strBarcode);
 
 	// 生成AOI CSV文件（在FN$回调中调用）
-	BOOL GenerateAOICsvFile(CString strPanelID, CString strUniqueID, SQLHDBC pConn);
+	//BOOL GenerateAOICsvFile(CString strPanelID, CString strUniqueID, SQLHDBC pConn);
 
 #if _SYSTEM_AMTAFT_
 	AOIProductionData m_UiShiftProduction[MaxZone];

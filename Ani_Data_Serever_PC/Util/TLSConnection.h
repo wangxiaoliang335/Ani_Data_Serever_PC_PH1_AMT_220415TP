@@ -107,7 +107,7 @@ inline BOOL GetTlsLightingConnection(
     ret = SQLAllocHandle(SQL_HANDLE_ENV, SQL_NULL_HANDLE, &g_pTlsLightingEnv);
     if (!SQL_SUCCEEDED(ret))
     {
-        if (pLog) pLog->LOG_INFO(_T("GetTlsLightingConnection: Failed to allocate ODBC environment handle"));
+        //if (pLog) pLog->LOG_INFO(_T("GetTlsLightingConnection: Failed to allocate ODBC environment handle"));
         return FALSE;
     }
 
@@ -115,7 +115,7 @@ inline BOOL GetTlsLightingConnection(
     ret = SQLSetEnvAttr(g_pTlsLightingEnv, SQL_ATTR_ODBC_VERSION, (SQLPOINTER)SQL_OV_ODBC3, 0);
     if (!SQL_SUCCEEDED(ret))
     {
-        if (pLog) pLog->LOG_INFO(_T("GetTlsLightingConnection: Failed to set ODBC environment attribute"));
+        //if (pLog) pLog->LOG_INFO(_T("GetTlsLightingConnection: Failed to set ODBC environment attribute"));
         SQLFreeHandle(SQL_HANDLE_ENV, g_pTlsLightingEnv);
         g_pTlsLightingEnv = SQL_NULL_HANDLE;
         return FALSE;
@@ -125,7 +125,7 @@ inline BOOL GetTlsLightingConnection(
     ret = SQLAllocHandle(SQL_HANDLE_DBC, g_pTlsLightingEnv, &g_pTlsLightingConn);
     if (!SQL_SUCCEEDED(ret))
     {
-        if (pLog) pLog->LOG_INFO(_T("GetTlsLightingConnection: Failed to allocate ODBC connection handle"));
+        //if (pLog) pLog->LOG_INFO(_T("GetTlsLightingConnection: Failed to allocate ODBC connection handle"));
         SQLFreeHandle(SQL_HANDLE_ENV, g_pTlsLightingEnv);
         g_pTlsLightingEnv = SQL_NULL_HANDLE;
         return FALSE;
@@ -170,9 +170,9 @@ inline BOOL GetTlsLightingConnection(
             OutputDebugString(CStringSupport::FormatString(
                 _T("[TLS] SQLDriverConnectA SUCCEEDED! g_pTlsLightingConn=0x%p, flag=%d\n"),
                 (void*)g_pTlsLightingConn, g_bTlsLightingDBConnected));
-            if (pLog) pLog->LOG_INFO(CStringSupport::FormatString(
-                _T("GetTlsLightingConnection: Connected successfully with driver: %s"), 
-                CString(driverNames[i])));
+            //if (pLog) pLog->LOG_INFO(CStringSupport::FormatString(
+            //    _T("GetTlsLightingConnection: Connected successfully with driver: %s"), 
+            //    CString(driverNames[i])));
             connected = TRUE;
             break;
         }
@@ -185,16 +185,16 @@ inline BOOL GetTlsLightingConnection(
             OutputDebugString(CStringSupport::FormatString(
                 _T("[TLS] Driver %s failed: [%s] %s\n"),
                 CString(driverNames[i]), CString((char*)sqlState), CString((char*)msg)));
-            if (pLog) pLog->LOG_INFO(CStringSupport::FormatString(
-                _T("GetTlsLightingConnection: Driver %s failed, trying next..."), 
-                CString(driverNames[i])));
+            //if (pLog) pLog->LOG_INFO(CStringSupport::FormatString(
+            //    _T("GetTlsLightingConnection: Driver %s failed, trying next..."), 
+            //    CString(driverNames[i])));
         }
     }
     
     if (!connected)
     {
         OutputDebugString(_T("[TLS] All drivers failed, cleanup and return FALSE\n"));
-        if (pLog) pLog->LOG_INFO(_T("GetTlsLightingConnection: Failed to connect with all drivers"));
+        //if (pLog) pLog->LOG_INFO(_T("GetTlsLightingConnection: Failed to connect with all drivers"));
         SQLFreeHandle(SQL_HANDLE_DBC, g_pTlsLightingConn);
         SQLFreeHandle(SQL_HANDLE_ENV, g_pTlsLightingEnv);
         g_pTlsLightingConn = SQL_NULL_HANDLE;
@@ -255,7 +255,7 @@ inline BOOL PingTlsLightingConnection(CLogger* pLog = nullptr)
     ret = SQLAllocHandle(SQL_HANDLE_STMT, g_pTlsLightingConn, &hStmt);
     if (!SQL_SUCCEEDED(ret))
     {
-        if (pLog) pLog->LOG_INFO(_T("PingTlsLightingConnection: Failed to allocate statement handle"));
+        //if (pLog) pLog->LOG_INFO(_T("PingTlsLightingConnection: Failed to allocate statement handle"));
         return FALSE;
     }
 
@@ -269,7 +269,7 @@ inline BOOL PingTlsLightingConnection(CLogger* pLog = nullptr)
     }
 
     // Connection is lost or error occurred
-    if (pLog) pLog->LOG_INFO(_T("PingTlsLightingConnection: Connection lost or error"));
+    //if (pLog) pLog->LOG_INFO(_T("PingTlsLightingConnection: Connection lost or error"));
 
     SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     return FALSE;
@@ -292,7 +292,7 @@ inline BOOL CheckAndReconnectTlsLighting(
     if (!IsTlsLightingDBConnected())
     {
         OutputDebugString(_T("[TLS] CheckAndReconnectTlsLighting: Not connected, calling GetTlsLightingConnection...\n"));
-        if (pLog) pLog->LOG_INFO(_T("CheckAndReconnectTlsLighting: No connection, creating new one..."));
+        //if (pLog) pLog->LOG_INFO(_T("CheckAndReconnectTlsLighting: No connection, creating new one..."));
         return GetTlsLightingConnection(strServer, strDBName, strUser, strPassword, pLog);
     }
 
@@ -304,7 +304,7 @@ inline BOOL CheckAndReconnectTlsLighting(
     if (!PingTlsLightingConnection(pLog))
     {
         OutputDebugString(_T("[TLS] CheckAndReconnectTlsLighting: Ping FAILED, reconnecting...\n"));
-        if (pLog) pLog->LOG_INFO(_T("CheckAndReconnectTlsLighting: Connection lost, reconnecting..."));
+        //if (pLog) pLog->LOG_INFO(_T("CheckAndReconnectTlsLighting: Connection lost, reconnecting..."));
 
         // Close existing connection
         CloseTlsLightingConnection();

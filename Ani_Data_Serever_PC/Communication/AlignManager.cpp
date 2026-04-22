@@ -58,13 +58,7 @@ CAlignManager::~CAlignManager()
 
 BOOL CAlignManager::getConectCheck()
 {
-	SockAddrIn addrin;
-	GetSockName(addrin);
-	LONG  uAddr = addrin.GetIPAddr();
-	if (uAddr == 0)
-		return FALSE;
-	else
-		return TRUE;
+	return getConectCheckBase();
 }
 
 bool CAlignManager::SocketServerOpen(CString strServerPort)
@@ -555,6 +549,9 @@ void CAlignManager::OnEvent(UINT uEvent, LPVOID lpvData)
 	if (theApp.m_bExitFlag == FALSE)
 		return;
 
+	// 先交给基类处理公共的断线重连逻辑
+	if (OnEventReconnectBase(uEvent))
+		return;
 	switch (uEvent)
 	{
 	case EVT_CONDROP:
@@ -573,4 +570,9 @@ void CAlignManager::OnEvent(UINT uEvent, LPVOID lpvData)
 		LogWrite(m_iAlignNum, _T("Unknown Socket event"));
 		break;
 	}
+}
+
+void CAlignManager::LogServerMsg(LPCTSTR szMsg)
+{
+	LogWrite(m_iAlignNum, szMsg);
 }
