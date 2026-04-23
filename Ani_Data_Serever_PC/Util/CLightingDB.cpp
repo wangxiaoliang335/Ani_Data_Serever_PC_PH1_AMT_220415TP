@@ -707,11 +707,11 @@ BOOL CLightingDB::UpdateLightingInspectionResult(CString uniqueID)
 	return TRUE;
 }
 
-BOOL CLightingDB::UpdateLightingIdMap(int fixtureNo, CString uniqueID, CString screenID, CString markID)
+BOOL CLightingDB::InsertLightingIdMap(int fixtureNo, CString uniqueID, CString screenID, CString markID)
 {
 	DWORD threadId = GetCurrentThreadId();
 	OutputDebugString(CStringSupport::FormatString(
-		_T("[CLightingDB] UpdateLightingIdMap: ThreadID=%lu, fixtureNo=%d, uniqueID=%s, screenID=%s, markID=%s\n"),
+		_T("[CLightingDB] InsertLightingIdMap: ThreadID=%lu, fixtureNo=%d, uniqueID=%s, screenID=%s, markID=%s\n"),
 		threadId, fixtureNo, uniqueID, screenID, markID));
 
 	SQLHDBC pUseConn = EnsureTlsConnection();
@@ -727,39 +727,16 @@ BOOL CLightingDB::UpdateLightingIdMap(int fixtureNo, CString uniqueID, CString s
 	CString strMark = markID;
 	strMark.Replace(_T("'"), _T("''"));
 
-	// Check record exists
+	// 直接 INSERT，不检查是否存在
 	char sqlBuf[1024];
-	sprintf_s(sqlBuf, sizeof(sqlBuf), "SELECT COUNT(*) FROM ivs_lcd_idmap WHERE MainAoiFixID='%d'", fixtureNo);
-	SQLHSTMT checkStmt = SQL_NULL_HANDLE;
-	SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &checkStmt);
-	if (!SQL_SUCCEEDED(ret)) {
-		PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
-		SQLFreeHandle(SQL_HANDLE_STMT, checkStmt);
-		return FALSE;
-	}
-	ret = SQLExecDirectA(checkStmt, (SQLCHAR*)sqlBuf, SQL_NTS);
-	int count = 0;
-	if (SQL_SUCCEEDED(ret)) {
-		ret = SQLFetch(checkStmt);
-		if (SQL_SUCCEEDED(ret))
-			SQLGetData(checkStmt, 1, SQL_C_SLONG, &count, 0, NULL);
-	}
-	SQLFreeHandle(SQL_HANDLE_STMT, checkStmt);
-
-	if (count > 0)
-		sprintf_s(sqlBuf, sizeof(sqlBuf), "UPDATE ivs_lcd_idmap SET UniqueID='%s', Barcode='%s' WHERE MainAoiFixID='%d'",
-			UnicodeToMultiByte(strUID.GetString()).c_str(),
-			UnicodeToMultiByte(strBarcode.GetString()).c_str(),
-			fixtureNo);
-	else
-		sprintf_s(sqlBuf, sizeof(sqlBuf), "INSERT INTO ivs_lcd_idmap (MarkID, UniqueID, Barcode, MainAoiFixID) VALUES ('%s', '%s', '%s', '%d')",
-			UnicodeToMultiByte(strMark.GetString()).c_str(),
-			UnicodeToMultiByte(strUID.GetString()).c_str(),
-			UnicodeToMultiByte(strBarcode.GetString()).c_str(),
-			fixtureNo);
+	sprintf_s(sqlBuf, sizeof(sqlBuf), "INSERT INTO ivs_lcd_idmap (MarkID, UniqueID, Barcode, MainAoiFixID) VALUES ('%s', '%s', '%s', '%d')",
+		UnicodeToMultiByte(strMark.GetString()).c_str(),
+		UnicodeToMultiByte(strUID.GetString()).c_str(),
+		UnicodeToMultiByte(strBarcode.GetString()).c_str(),
+		fixtureNo);
 
 	SQLHSTMT stmt = SQL_NULL_HANDLE;
-	ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
+	SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
 	if (!SQL_SUCCEEDED(ret)) {
 		PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
 		return FALSE;
@@ -770,10 +747,58 @@ BOOL CLightingDB::UpdateLightingIdMap(int fixtureNo, CString uniqueID, CString s
 		SQLLEN affected = 0;
 		SQLRowCount(stmt, &affected);
 		OutputDebugString(CStringSupport::FormatString(
-			_T("[CLightingDB] UpdateLightingIdMap: affected=%d, fixtureNo=%d\n"), (int)affected, fixtureNo));
+			_T("[CLightingDB] InsertLightingIdMap: affected=%d, fixtureNo=%d\n"), (int)affected, fixtureNo));
 		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 		return TRUE;
 	}
+	PrintOdbcError(stmt, SQL_HANDLE_STMT);
+	SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+	return FALSE;
+}
+
+// 保留旧函数名以兼容，但内部改为直接 INSERT
+BOOL CLightingDB::UpdateLightingIdMap(int fixtureNo, CString uniqueID, CString screenID, CString markID)
+{
+	return InsertLightingIdMap(fixtureNo, uniqueID, screenID, markID);
+}
+
+// 清空 ivs_lcd_idmap 表
+BOOL CLightingDB::ClearLightingIdMap()
+{
+	OutputDebugString(_T("[CLightingDB] ClearLightingIdMap: Clearing ivs_lcd_idmap table\n"));
+
+	SQLHDBC pUseConn = EnsureTlsConnection();
+	if (pUseConn == SQL_NULL_HANDLE)
+		pUseConn = GetOrCreateConn();
+	if (pUseConn == SQL_NULL_HANDLE)
+		return FALSE;
+
+	char sqlBuf[256];
+	sprintf_s(sqlBuf, sizeof(sqlBuf), "TRUNCATE TABLE ivs_lcd_idmap");
+
+	SQLHSTMT stmt = SQL_NULL_HANDLE;
+	SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
+	if (!SQL_SUCCEEDED(ret)) {
+		PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
+		return FALSE;
+	}
+
+	ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlBuf, SQL_NTS);
+	if (SQL_SUCCEEDED(ret)) {
+		OutputDebugString(_T("[CLightingDB] ClearLightingIdMap: Table truncated successfully\n"));
+		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+		return TRUE;
+	}
+
+	// TRUNCATE 失败时尝试 DELETE
+	sprintf_s(sqlBuf, sizeof(sqlBuf), "DELETE FROM ivs_lcd_idmap");
+	ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlBuf, SQL_NTS);
+	if (SQL_SUCCEEDED(ret)) {
+		OutputDebugString(_T("[CLightingDB] ClearLightingIdMap: Table deleted successfully\n"));
+		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+		return TRUE;
+	}
+
 	PrintOdbcError(stmt, SQL_HANDLE_STMT);
 	SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 	return FALSE;

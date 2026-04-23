@@ -50,7 +50,10 @@ public:
 	BOOL QueryIdMapByFixtureNo(int fixtureNo, CString& uniqueID, CString& screenID, CString& markID);
 	BOOL QueryIdMapByFixtureNoThreadSafe(int fixtureNo, CString& uniqueID, CString& screenID, CString& markID, SQLHDBC pConn);
 
+	// 直接 INSERT 到 ivs_lcd_idmap 表
+	BOOL InsertLightingIdMap(int fixtureNo, CString uniqueID, CString screenID, CString markID);
 	BOOL UpdateLightingIdMap(int fixtureNo, CString uniqueID, CString screenID, CString markID);
+	BOOL ClearLightingIdMap();  // 清空 ivs_lcd_idmap 表
 	BOOL UpdateLightingInspectionResult(CString uniqueID);
 
 	void GetLightingResultByBarcode(CString strBarcode, CString& strAOIResult, CString& strCodeAOI, CString& strGradeAOI, BOOL& bValid);
