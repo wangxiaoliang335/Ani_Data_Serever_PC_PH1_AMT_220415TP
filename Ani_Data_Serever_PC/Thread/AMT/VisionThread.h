@@ -24,7 +24,7 @@ public:
 	void VisionFirstCheckMethod(int Num);
 	void VisionCheckMethod(int Num);
 	void VisionInspectionMethod(int Num, int panelNum);
-	void ParsingGrabEnd(int Num, CString strContents);
+	//void ParsingGrabEnd(int Num, CString strContents);
 	//void ParsingInspectionResult(int Num, CString strContents);
 	void ParsingModelRequest(int Num, CString strContents);
 	void ParsingPcTimeRequest(int Num, CString strContents);
@@ -59,7 +59,7 @@ public:
 	std::vector<CString> m_lastRequest;
 
 	// 检测结果缓存（与老代码统一，方便管理和查询）
-	std::vector<InspResult> m_lastInspResultVec;
+	//std::vector<InspResult> m_lastInspResultVec;
 
 	CString GetLastContents(int index) { return m_lastContent[index]; }
 	CString GetLastCommand(int index) { return m_lastCommand[index]; }
@@ -82,6 +82,13 @@ private:
 
 	BOOL m_bAutoFocusStart[MaxCamCount];
 	BOOL m_bAutoFocusStartFlag;
+
+	// 连接状态缓存，只在状态变化时打印日志
+	int m_iLastLightingConnectStatus;
+	int m_iLastAOIPassMode;
+
+	// PLC 信号状态缓存，避免日志刷屏
+	BOOL m_bLastPlcSendSignal;
 
 };
 

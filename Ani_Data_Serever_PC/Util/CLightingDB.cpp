@@ -167,10 +167,9 @@ void CLightingDB::GetLightingResultByBarcode(CString strBarcode, CString& strAOI
 	}
 
 	string sqlStr = "SELECT UniqueID FROM ivs_lcd_idmap WHERE Barcode = '" + UnicodeToMultiByte(strBarcode.GetString()) + "'";
-	ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlStr.c_str(), SQL_NTS);
-	if (!SQL_SUCCEEDED(ret)) {
-		PrintOdbcError(stmt, SQL_HANDLE_STMT);
-		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+	if (!ExecQueryWithRetry(_T("GetLightingResultByBarcode[SELECT_UniqueID]"), conn, sqlStr, stmt, &ret)) {
+		if (stmt != SQL_NULL_HANDLE)
+			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 		return;
 	}
 
@@ -220,7 +219,28 @@ BOOL CLightingDB::QueryLightingDefectList(CString strUniqueID, std::vector<LUMIT
 	if (!SQL_SUCCEEDED(ret)) {
 		PrintOdbcError(stmt, SQL_HANDLE_STMT);
 		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-		return FALSE;
+
+		// SQL 失败，重连后重试一次
+		OutputDebugString(_T("[CLightingDB] QueryLightingDefectList: SQL failed, retrying after reconnect...\n"));
+		conn = EnsureTlsConnection();
+		if (conn == SQL_NULL_HANDLE)
+			conn = GetOrCreateConn();
+		if (conn == SQL_NULL_HANDLE)
+			return FALSE;
+
+		ret = SQLAllocHandle(SQL_HANDLE_STMT, conn, &stmt);
+		if (!SQL_SUCCEEDED(ret)) {
+			PrintOdbcError(conn, SQL_HANDLE_DBC);
+			return FALSE;
+		}
+
+		ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlStr.c_str(), SQL_NTS);
+		if (!SQL_SUCCEEDED(ret)) {
+			PrintOdbcError(stmt, SQL_HANDLE_STMT);
+			OutputDebugString(_T("[CLightingDB] QueryLightingDefectList: retry also failed\n"));
+			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+			return FALSE;
+		}
 	}
 
 	int iDefectCount = 0;
@@ -301,12 +321,8 @@ BOOL CLightingDB::QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefect
 		"TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI, ImagePath "
 		"FROM ivs_lcd_aoidefect WHERE GUID_IVS_LCD_InspectionResult = '" + UnicodeToMultiByte(strUniqueID.GetString()) + "' ORDER BY DefectIndex";
 
-	ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlStr.c_str(), SQL_NTS);
-	if (!SQL_SUCCEEDED(ret)) {
-		PrintOdbcError(stmt, SQL_HANDLE_STMT);
-		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+	if (!ExecQueryWithRetry(_T("QueryAOIDefectList"), pUseConn, sqlStr, stmt, &ret))
 		return FALSE;
-	}
 
 	int iDefectCount = 0;
 	while ((ret = SQLFetch(stmt)) == SQL_SUCCESS || ret == SQL_SUCCESS_WITH_INFO) {
@@ -410,18 +426,18 @@ CString CLightingDB::GetLightingUniqueIDByBarcode(CString strBarcode)
 	}
 
 	string sqlStr = "SELECT UniqueID FROM ivs_lcd_idmap WHERE Barcode = '" + UnicodeToMultiByte(strBarcode.GetString()) + "'";
-	ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlStr.c_str(), SQL_NTS);
-	if (SQL_SUCCEEDED(ret)) {
-		ret = SQLFetch(stmt);
-		if (SQL_SUCCEEDED(ret)) {
-			SQLCHAR buf[101] = {0};
-			SQLLEN len = 0;
-			SQLGetData(stmt, 1, SQL_C_CHAR, buf, sizeof(buf), &len);
-			strUniqueID = CA2W((char*)buf);
-		}
+	if (!ExecQueryWithRetry(_T("GetLightingUniqueIDByBarcode"), conn, sqlStr, stmt, &ret)) {
+		if (stmt != SQL_NULL_HANDLE)
+			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+		return strUniqueID;
 	}
-	else {
-		PrintOdbcError(stmt, SQL_HANDLE_STMT);
+
+	ret = SQLFetch(stmt);
+	if (SQL_SUCCEEDED(ret)) {
+		SQLCHAR buf[101] = {0};
+		SQLLEN len = 0;
+		SQLGetData(stmt, 1, SQL_C_CHAR, buf, sizeof(buf), &len);
+		strUniqueID = CA2W((char*)buf);
 	}
 	SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 	return strUniqueID;
@@ -467,6 +483,46 @@ BOOL CLightingDB::QueryIdMapByFixtureNo(int fixtureNo, CString& uniqueID, CStrin
 	}
 	else {
 		PrintOdbcError(stmt, SQL_HANDLE_STMT);
+		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+
+		// SQL 失败，重连后重试一次
+		OutputDebugString(_T("[CLightingDB] QueryIdMapByFixtureNo: SQL failed, retrying after reconnect...\n"));
+		conn = EnsureTlsConnection();
+		if (conn == SQL_NULL_HANDLE)
+			conn = GetOrCreateConn();
+		if (conn == SQL_NULL_HANDLE)
+			return FALSE;
+
+		ret = SQLAllocHandle(SQL_HANDLE_STMT, conn, &stmt);
+		if (!SQL_SUCCEEDED(ret)) {
+			PrintOdbcError(conn, SQL_HANDLE_DBC);
+			return FALSE;
+		}
+
+		sprintf_s(sqlBuf, sizeof(sqlBuf), "SELECT UniqueID, Barcode, MainAoiFixID FROM ivs_lcd_idmap WHERE MainAoiFixID = '%d'", fixtureNo);
+		ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlBuf, SQL_NTS);
+		if (SQL_SUCCEEDED(ret)) {
+			ret = SQLFetch(stmt);
+			if (SQL_SUCCEEDED(ret)) {
+				SQLCHAR uidBuf[101] = {0}, screenBuf[101] = {0};
+				SQLLEN lenUid = 0, lenScreen = 0;
+				int mainAoiFixID = 0;
+				SQLGetData(stmt, 1, SQL_C_CHAR, uidBuf, sizeof(uidBuf), &lenUid);
+				SQLGetData(stmt, 2, SQL_C_CHAR, screenBuf, sizeof(screenBuf), &lenScreen);
+				SQLGetData(stmt, 3, SQL_C_SLONG, &mainAoiFixID, 0, NULL);
+				uniqueID = CA2W((char*)uidBuf);
+				screenID = CA2W((char*)screenBuf);
+				markID.Format(_T("%02d"), mainAoiFixID);
+				OutputDebugString(CStringSupport::FormatString(
+					_T("[CLightingDB] QueryIdMapByFixtureNo: retry success, FixtureNo=%d, UniqueID=%s, ScreenID=%s, MarkID=%s\n"),
+					fixtureNo, uniqueID, screenID, markID));
+				ok = TRUE;
+			}
+		}
+		else {
+			PrintOdbcError(stmt, SQL_HANDLE_STMT);
+			OutputDebugString(_T("[CLightingDB] QueryIdMapByFixtureNo: retry also failed\n"));
+		}
 	}
 	SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 	return ok;
@@ -514,6 +570,46 @@ BOOL CLightingDB::QueryIdMapByFixtureNoThreadSafe(int fixtureNo, CString& unique
 	}
 	else {
 		PrintOdbcError(stmt, SQL_HANDLE_STMT);
+		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+
+		// SQL 失败，重连后重试一次
+		OutputDebugString(_T("[CLightingDB] QueryIdMapByFixtureNoThreadSafe: SQL failed, retrying after reconnect...\n"));
+		pUseConn = EnsureTlsConnection();
+		if (pUseConn == SQL_NULL_HANDLE)
+			pUseConn = GetOrCreateConn();
+		if (pUseConn == SQL_NULL_HANDLE)
+			return FALSE;
+
+		ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
+		if (!SQL_SUCCEEDED(ret)) {
+			PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
+			return FALSE;
+		}
+
+		sprintf_s(sqlBuf, sizeof(sqlBuf), "SELECT UniqueID, Barcode, MainAoiFixID FROM ivs_lcd_idmap WHERE MainAoiFixID = '%d'", fixtureNo);
+		ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlBuf, SQL_NTS);
+		if (SQL_SUCCEEDED(ret)) {
+			ret = SQLFetch(stmt);
+			if (SQL_SUCCEEDED(ret)) {
+				SQLCHAR uidBuf[101] = {0}, screenBuf[101] = {0};
+				SQLLEN lenUid = 0, lenScreen = 0;
+				int mainAoiFixID = 0;
+				SQLGetData(stmt, 1, SQL_C_CHAR, uidBuf, sizeof(uidBuf), &lenUid);
+				SQLGetData(stmt, 2, SQL_C_CHAR, screenBuf, sizeof(screenBuf), &lenScreen);
+				SQLGetData(stmt, 3, SQL_C_SLONG, &mainAoiFixID, 0, NULL);
+				uniqueID = CA2W((char*)uidBuf);
+				screenID = CA2W((char*)screenBuf);
+				markID.Format(_T("%02d"), mainAoiFixID);
+				OutputDebugString(CStringSupport::FormatString(
+					_T("[CLightingDB] QueryIdMapByFixtureNoThreadSafe: retry success, FixtureNo=%d, UniqueID=%s, ScreenID=%s, MarkID=%s\n"),
+					fixtureNo, uniqueID, screenID, markID));
+				ok = TRUE;
+			}
+		}
+		else {
+			PrintOdbcError(stmt, SQL_HANDLE_STMT);
+			OutputDebugString(_T("[CLightingDB] QueryIdMapByFixtureNoThreadSafe: retry also failed\n"));
+		}
 	}
 	SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 	return ok;
@@ -550,46 +646,85 @@ LightingInspectionResult CLightingDB::QueryInspectionResultThreadSafe(CString un
 	string sqlStr = "SELECT GUID, ScreenID, AOIResult, Code_AOI, Grade_AOI, StartTime, StopTime, LocalIP "
 		"FROM ivs_lcd_inspectionresult WHERE UniqueID = '" + UnicodeToMultiByte(uniqueID.GetString()) + "'";
 
-	ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlStr.c_str(), SQL_NTS);
-	if (SQL_SUCCEEDED(ret)) {
+	// 重试循环：SQLExecDirect 失败或 SQLFetch 失败都重试一次（断线重连后重试）
+	for (int nRetry = 0; nRetry < 2; ++nRetry) {
+		if (nRetry > 0) {
+			// 重新获取连接并重建语句句柄
+			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+			stmt = SQL_NULL_HANDLE;
+			pUseConn = EnsureTlsConnection();
+			if (pUseConn == SQL_NULL_HANDLE)
+				pUseConn = GetOrCreateConn();
+			if (pUseConn == SQL_NULL_HANDLE)
+				break;
+			ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
+			if (!SQL_SUCCEEDED(ret)) {
+				PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
+				break;
+			}
+			OutputDebugString(CStringSupport::FormatString(
+				_T("[CLightingDB] QueryInspectionResultThreadSafe: retry %d for UniqueID=%s\n"), nRetry, uniqueID));
+		}
+
+		ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlStr.c_str(), SQL_NTS);
+		if (!SQL_SUCCEEDED(ret)) {
+			PrintOdbcError(stmt, SQL_HANDLE_STMT);
+			continue;  // 重试
+		}
+
 		ret = SQLFetch(stmt);
-		if (SQL_SUCCEEDED(ret)) {
-		SQLCHAR guidBuf[101] = {0}, screenIDBuf[101] = {0}, aoiResultBuf[51] = {0},
-			codeAOIBuf[51] = {0}, gradeAOIBuf[51] = {0}, startTimeBuf[51] = {0}, stopTimeBuf[51] = {0}, localIPBuf[101] = {0};
-		SQLLEN lenGUID = 0, lenScreenID = 0, lenAOIResult = 0, lenCodeAOI = 0, lenGradeAOI = 0, lenStartTime = 0, lenStopTime = 0, lenLocalIP = 0;
-
-		SQLGetData(stmt, 1, SQL_C_CHAR, guidBuf, sizeof(guidBuf), &lenGUID);
-		SQLGetData(stmt, 2, SQL_C_CHAR, screenIDBuf, sizeof(screenIDBuf), &lenScreenID);
-		SQLGetData(stmt, 3, SQL_C_CHAR, aoiResultBuf, sizeof(aoiResultBuf), &lenAOIResult);
-		SQLGetData(stmt, 4, SQL_C_CHAR, codeAOIBuf, sizeof(codeAOIBuf), &lenCodeAOI);
-		SQLGetData(stmt, 5, SQL_C_CHAR, gradeAOIBuf, sizeof(gradeAOIBuf), &lenGradeAOI);
-		SQLGetData(stmt, 6, SQL_C_CHAR, startTimeBuf, sizeof(startTimeBuf), &lenStartTime);
-		SQLGetData(stmt, 7, SQL_C_CHAR, stopTimeBuf, sizeof(stopTimeBuf), &lenStopTime);
-		SQLGetData(stmt, 8, SQL_C_CHAR, localIPBuf, sizeof(localIPBuf), &lenLocalIP);  // 8: LocalIP
-
-		result.m_strGUID = CA2W((char*)guidBuf);
-		result.m_strScreenID = CA2W((char*)screenIDBuf);
-		result.m_strUniqueID = uniqueID;
-		result.m_strAOIResult = CA2W((char*)aoiResultBuf);
-		result.m_strCodeAOI = CA2W((char*)codeAOIBuf);
-		result.m_strGradeAOI = CA2W((char*)gradeAOIBuf);
-		result.m_strStartTime = CA2W((char*)startTimeBuf);
-		result.m_strStopTime = CA2W((char*)stopTimeBuf);
-		result.m_strLocalIP = CA2W((char*)localIPBuf);
-			result.m_bValid = TRUE;
-
-			OutputDebugString(CStringSupport::FormatString(
-				_T("[CLightingDB] QueryInspectionResultThreadSafe: UniqueID=%s, AOIResult=%s, Code=%s, Grade=%s\n"),
-				uniqueID, result.m_strAOIResult, result.m_strCodeAOI, result.m_strGradeAOI));
-		}
-		else {
-			OutputDebugString(CStringSupport::FormatString(
-				_T("[CLightingDB] QueryInspectionResultThreadSafe: No result for UniqueID=%s\n"), uniqueID));
-		}
-	}
-	else {
+		if (SQL_SUCCEEDED(ret))
+			break;  // 成功，退出重试循环
+		if (ret == SQL_NO_DATA)
+			break;  // 无数据，不需要重试
+		// SQLFetch 失败（如连接断开），继续重试
 		PrintOdbcError(stmt, SQL_HANDLE_STMT);
+		// 不 break，让循环自然重试
 	}
+
+	BOOL bNoData = (ret == SQL_NO_DATA);
+	if (!SQL_SUCCEEDED(ret)) {
+		if (!bNoData) {
+			// SQL_ERROR: 两次尝试都失败
+			OutputDebugString(CStringSupport::FormatString(
+				_T("[CLightingDB] QueryInspectionResultThreadSafe: both attempts failed for UniqueID=%s\n"), uniqueID));
+		} else {
+			// SQL_NO_DATA: 存在记录但 Fetch 失败（理论上不太可能）
+			OutputDebugString(CStringSupport::FormatString(
+				_T("[CLightingDB] QueryInspectionResultThreadSafe: SQL_NO_DATA for UniqueID=%s\n"), uniqueID));
+		}
+		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+		return result;
+	}
+
+	SQLCHAR guidBuf[101] = {0}, screenIDBuf[101] = {0}, aoiResultBuf[51] = {0},
+		codeAOIBuf[51] = {0}, gradeAOIBuf[51] = {0}, startTimeBuf[51] = {0}, stopTimeBuf[51] = {0}, localIPBuf[101] = {0};
+	SQLLEN lenGUID = 0, lenScreenID = 0, lenAOIResult = 0, lenCodeAOI = 0, lenGradeAOI = 0, lenStartTime = 0, lenStopTime = 0, lenLocalIP = 0;
+
+	SQLGetData(stmt, 1, SQL_C_CHAR, guidBuf, sizeof(guidBuf), &lenGUID);
+	SQLGetData(stmt, 2, SQL_C_CHAR, screenIDBuf, sizeof(screenIDBuf), &lenScreenID);
+	SQLGetData(stmt, 3, SQL_C_CHAR, aoiResultBuf, sizeof(aoiResultBuf), &lenAOIResult);
+	SQLGetData(stmt, 4, SQL_C_CHAR, codeAOIBuf, sizeof(codeAOIBuf), &lenCodeAOI);
+	SQLGetData(stmt, 5, SQL_C_CHAR, gradeAOIBuf, sizeof(gradeAOIBuf), &lenGradeAOI);
+	SQLGetData(stmt, 6, SQL_C_CHAR, startTimeBuf, sizeof(startTimeBuf), &lenStartTime);
+	SQLGetData(stmt, 7, SQL_C_CHAR, stopTimeBuf, sizeof(stopTimeBuf), &lenStopTime);
+	SQLGetData(stmt, 8, SQL_C_CHAR, localIPBuf, sizeof(localIPBuf), &lenLocalIP);  // 8: LocalIP
+
+	result.m_strGUID = CA2W((char*)guidBuf);
+	result.m_strScreenID = CA2W((char*)screenIDBuf);
+	result.m_strUniqueID = uniqueID;
+	result.m_strAOIResult = CA2W((char*)aoiResultBuf);
+	result.m_strCodeAOI = CA2W((char*)codeAOIBuf);
+	result.m_strGradeAOI = CA2W((char*)gradeAOIBuf);
+	result.m_strStartTime = CA2W((char*)startTimeBuf);
+	result.m_strStopTime = CA2W((char*)stopTimeBuf);
+	result.m_strLocalIP = CA2W((char*)localIPBuf);
+	result.m_bValid = TRUE;
+
+	OutputDebugString(CStringSupport::FormatString(
+		_T("[CLightingDB] QueryInspectionResultThreadSafe: UniqueID=%s, AOIResult=%s, Code=%s, Grade=%s\n"),
+		uniqueID, result.m_strAOIResult, result.m_strCodeAOI, result.m_strGradeAOI));
+
 	SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 	return result;
 }
@@ -628,20 +763,48 @@ BOOL CLightingDB::QueryByUniqueID(const CString& strUniqueID, CInspectionResult&
 		"FROM IVS_LCD_InspectionResult WHERE UniqueID = '" + UnicodeToMultiByte(strUniqueID.GetString()) + "' "
 		"ORDER BY SysID DESC LIMIT 1";
 
-	ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlStr.c_str(), SQL_NTS);
-	if (!SQL_SUCCEEDED(ret)) {
+	// 重试循环：SQLExecDirect 失败或 SQLFetch 失败都重试一次（断线重连后重试）
+	for (int nRetry = 0; nRetry < 2; ++nRetry) {
+		if (nRetry > 0) {
+			// 重新获取连接并重建语句句柄
+			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+			stmt = SQL_NULL_HANDLE;
+			conn = EnsureTlsConnection();
+			if (conn == SQL_NULL_HANDLE)
+				conn = GetOrCreateConn();
+			if (conn == SQL_NULL_HANDLE)
+				break;
+			ret = SQLAllocHandle(SQL_HANDLE_STMT, conn, &stmt);
+			if (!SQL_SUCCEEDED(ret)) {
+				PrintOdbcError(conn, SQL_HANDLE_DBC);
+				break;
+			}
+			OutputDebugString(CStringSupport::FormatString(
+				_T("[CLightingDB] QueryByUniqueID: retry %d for UniqueID=%s\n"), nRetry, strUniqueID));
+		}
+
+		ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlStr.c_str(), SQL_NTS);
+		if (!SQL_SUCCEEDED(ret)) {
+			PrintOdbcError(stmt, SQL_HANDLE_STMT);
+			continue;  // 重试
+		}
+
+		ret = SQLFetch(stmt);
+		if (SQL_SUCCEEDED(ret))
+			break;  // 成功，退出重试循环
+		if (ret == SQL_NO_DATA)
+			break;  // 无数据，不需要重试
+		// SQLFetch 失败（如连接断开），继续重试
 		PrintOdbcError(stmt, SQL_HANDLE_STMT);
-		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-		return FALSE;
 	}
 
-	ret = SQLFetch(stmt);
 	if (!SQL_SUCCEEDED(ret)) {
 		if (ret == SQL_NO_DATA)
 			OutputDebugString(CStringSupport::FormatString(
 				_T("[CLightingDB] QueryByUniqueID: No result for UniqueID=%s\n"), strUniqueID));
 		else
-			PrintOdbcError(stmt, SQL_HANDLE_STMT);
+			OutputDebugString(CStringSupport::FormatString(
+				_T("[CLightingDB] QueryByUniqueID: both attempts failed for UniqueID=%s\n"), strUniqueID));
 		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 		return FALSE;
 	}
@@ -751,7 +914,38 @@ BOOL CLightingDB::InsertLightingIdMap(int fixtureNo, CString uniqueID, CString s
 		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 		return TRUE;
 	}
+
+	// SQL 失败，可能是连接断开，重连后重试一次
 	PrintOdbcError(stmt, SQL_HANDLE_STMT);
+	OutputDebugString(_T("[CLightingDB] InsertLightingIdMap: SQL failed, retrying after reconnect...\n"));
+	SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+
+	// 重新获取连接
+	pUseConn = EnsureTlsConnection();
+	if (pUseConn == SQL_NULL_HANDLE)
+		pUseConn = GetOrCreateConn();
+	if (pUseConn == SQL_NULL_HANDLE)
+		return FALSE;
+
+	stmt = SQL_NULL_HANDLE;
+	ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
+	if (!SQL_SUCCEEDED(ret)) {
+		PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
+		return FALSE;
+	}
+
+	ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlBuf, SQL_NTS);
+	if (SQL_SUCCEEDED(ret)) {
+		SQLLEN affected = 0;
+		SQLRowCount(stmt, &affected);
+		OutputDebugString(CStringSupport::FormatString(
+			_T("[CLightingDB] InsertLightingIdMap: retry success, affected=%d, fixtureNo=%d\n"), (int)affected, fixtureNo));
+		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+		return TRUE;
+	}
+
+	PrintOdbcError(stmt, SQL_HANDLE_STMT);
+	OutputDebugString(_T("[CLightingDB] InsertLightingIdMap: retry also failed\n"));
 	SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 	return FALSE;
 }
@@ -790,7 +984,30 @@ BOOL CLightingDB::ClearLightingIdMap()
 		return TRUE;
 	}
 
-	// TRUNCATE 失败时尝试 DELETE
+	// TRUNCATE 失败时尝试 DELETE（需要先重建 stmt 句柄）
+	PrintOdbcError(stmt, SQL_HANDLE_STMT);
+	OutputDebugString(_T("[CLightingDB] ClearLightingIdMap: TRUNCATE failed, trying DELETE after rebuild...\n"));
+	SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+	stmt = SQL_NULL_HANDLE;
+	ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
+	if (!SQL_SUCCEEDED(ret)) {
+		PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
+		// 重建 stmt 也失败，尝试重连后再试
+		OutputDebugString(_T("[CLightingDB] ClearLightingIdMap: stmt rebuild failed, reconnecting...\n"));
+		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+		stmt = SQL_NULL_HANDLE;
+		pUseConn = EnsureTlsConnection();
+		if (pUseConn == SQL_NULL_HANDLE)
+			pUseConn = GetOrCreateConn();
+		if (pUseConn == SQL_NULL_HANDLE)
+			return FALSE;
+		ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
+		if (!SQL_SUCCEEDED(ret)) {
+			PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
+			return FALSE;
+		}
+	}
+	// 重建 stmt 成功后，执行 DELETE
 	sprintf_s(sqlBuf, sizeof(sqlBuf), "DELETE FROM ivs_lcd_idmap");
 	ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlBuf, SQL_NTS);
 	if (SQL_SUCCEEDED(ret)) {
@@ -799,7 +1016,44 @@ BOOL CLightingDB::ClearLightingIdMap()
 		return TRUE;
 	}
 
+	// DELETE 也失败，可能是连接断开，重连后重试一次
 	PrintOdbcError(stmt, SQL_HANDLE_STMT);
+	OutputDebugString(_T("[CLightingDB] ClearLightingIdMap: DELETE failed, retrying after reconnect...\n"));
+	SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+
+	// 重新获取连接
+	pUseConn = EnsureTlsConnection();
+	if (pUseConn == SQL_NULL_HANDLE)
+		pUseConn = GetOrCreateConn();
+	if (pUseConn == SQL_NULL_HANDLE)
+		return FALSE;
+
+	// 重试 TRUNCATE
+	ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
+	if (!SQL_SUCCEEDED(ret)) {
+		PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
+		return FALSE;
+	}
+
+	sprintf_s(sqlBuf, sizeof(sqlBuf), "TRUNCATE TABLE ivs_lcd_idmap");
+	ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlBuf, SQL_NTS);
+	if (SQL_SUCCEEDED(ret)) {
+		OutputDebugString(_T("[CLightingDB] ClearLightingIdMap: retry success (TRUNCATE)\n"));
+		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+		return TRUE;
+	}
+
+	// 重试 DELETE
+	sprintf_s(sqlBuf, sizeof(sqlBuf), "DELETE FROM ivs_lcd_idmap");
+	ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlBuf, SQL_NTS);
+	if (SQL_SUCCEEDED(ret)) {
+		OutputDebugString(_T("[CLightingDB] ClearLightingIdMap: retry success (DELETE)\n"));
+		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+		return TRUE;
+	}
+
+	PrintOdbcError(stmt, SQL_HANDLE_STMT);
+	OutputDebugString(_T("[CLightingDB] ClearLightingIdMap: retry also failed\n"));
 	SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 	return FALSE;
 }
@@ -838,6 +1092,59 @@ SQLHDBC CLightingDB::GetOrCreateConn()
 	return EnsureTlsConnection();
 }
 
+BOOL CLightingDB::ExecQueryWithRetry(LPCWSTR strFuncName, SQLHDBC& connRef, const std::string& sqlQuery,
+	SQLHSTMT& stmtRef, SQLRETURN* outRet)
+{
+	SQLRETURN ret = SQLExecDirectA(stmtRef, (SQLCHAR*)sqlQuery.c_str(), SQL_NTS);
+	if (SQL_SUCCEEDED(ret)) {
+		if (outRet) *outRet = ret;
+		return TRUE;
+	}
+
+	// SQL 执行失败，打印错误并尝试断线重连后重试
+	PrintOdbcError(stmtRef, SQL_HANDLE_STMT);
+	SQLFreeHandle(SQL_HANDLE_STMT, stmtRef);
+
+	OutputDebugString(CStringSupport::FormatString(
+		_T("[CLightingDB] %s: SQL failed, retrying after reconnect...\n"), strFuncName));
+
+	// 重新获取连接
+	connRef = EnsureTlsConnection();
+	if (connRef == SQL_NULL_HANDLE)
+		connRef = GetOrCreateConn();
+	if (connRef == SQL_NULL_HANDLE) {
+		stmtRef = SQL_NULL_HANDLE;
+		if (outRet) *outRet = SQL_ERROR;
+		return FALSE;
+	}
+
+	// 重建语句句柄
+	ret = SQLAllocHandle(SQL_HANDLE_STMT, connRef, &stmtRef);
+	if (!SQL_SUCCEEDED(ret)) {
+		PrintOdbcError(connRef, SQL_HANDLE_DBC);
+		stmtRef = SQL_NULL_HANDLE;
+		if (outRet) *outRet = ret;
+		return FALSE;
+	}
+
+	// 重试 SQL 执行
+	ret = SQLExecDirectA(stmtRef, (SQLCHAR*)sqlQuery.c_str(), SQL_NTS);
+	if (SQL_SUCCEEDED(ret)) {
+		OutputDebugString(CStringSupport::FormatString(
+			_T("[CLightingDB] %s: retry succeeded\n"), strFuncName));
+		if (outRet) *outRet = ret;
+		return TRUE;
+	}
+
+	PrintOdbcError(stmtRef, SQL_HANDLE_STMT);
+	OutputDebugString(CStringSupport::FormatString(
+		_T("[CLightingDB] %s: retry also failed\n"), strFuncName));
+	SQLFreeHandle(SQL_HANDLE_STMT, stmtRef);
+	stmtRef = SQL_NULL_HANDLE;
+	if (outRet) *outRet = ret;
+	return FALSE;
+}
+
 CLightingDB& GetDBInterface()
 {
 	return CLightingDB::Get();
@@ -864,22 +1171,29 @@ BOOL CLightingDB::QueryDefectCodeByBarcode(CString strBarcode, CString& strCode,
 	}
 
 	string sqlStr = "SELECT Code_AOI, Grade_AOI FROM ivs_lcd_inspectionresult WHERE Barcode = '" + UnicodeToMultiByte(strBarcode.GetString()) + "'";
-	ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlStr.c_str(), SQL_NTS);
-	if (SQL_SUCCEEDED(ret)) {
-		ret = SQLFetch(stmt);
-		if (SQL_SUCCEEDED(ret)) {
-			SQLCHAR buf[101] = {0};
-			SQLLEN len = 0;
-			SQLGetData(stmt, 1, SQL_C_CHAR, buf, sizeof(buf), &len);
-			strCode = CA2W((char*)buf);
-			SQLGetData(stmt, 2, SQL_C_CHAR, buf, sizeof(buf), &len);
-			strGrade = CA2W((char*)buf);
-			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
-			return TRUE;
-		}
+	if (!ExecQueryWithRetry(_T("QueryDefectCodeByBarcode"), conn, sqlStr, stmt, &ret)) {
+		PrintOdbcError(stmt, SQL_HANDLE_STMT);
+		m_strLastError = _T("Query failed");
+		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+		return FALSE;
 	}
+
+	ret = SQLFetch(stmt);
+	if (SQL_SUCCEEDED(ret)) {
+		SQLCHAR buf[101] = {0};
+		SQLLEN len = 0;
+		SQLGetData(stmt, 1, SQL_C_CHAR, buf, sizeof(buf), &len);
+		strCode = CA2W((char*)buf);
+		SQLGetData(stmt, 2, SQL_C_CHAR, buf, sizeof(buf), &len);
+		strGrade = CA2W((char*)buf);
+		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+		return TRUE;
+	}
+	if (ret == SQL_NO_DATA)
+		m_strLastError = _T("Query returned no results");
+	else
+		m_strLastError = _T("Fetch failed");
 	PrintOdbcError(stmt, SQL_HANDLE_STMT);
-	m_strLastError = _T("Query returned no results");
 	SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 	return FALSE;
 }

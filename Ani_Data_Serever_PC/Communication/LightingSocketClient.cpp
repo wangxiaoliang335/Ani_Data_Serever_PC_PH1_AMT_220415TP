@@ -134,7 +134,7 @@ void CLightingSocketClient::SendStart(CString curStr, CString maxStr)
 
 	WriteComm(pData, static_cast<DWORD>(cmdA.GetLength()), 100L);
 
-	theApp.m_pLightingSendReceiverLog->LOG_INFO(CStringSupport::FormatString(_T("[%s] [MC -> Lighting] %s"), 
+	theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(_T("[%s] [MC -> Lighting] %s"),
 		GetNowSystemTimeMilliseconds(), cmd));
 
 	m_csSocketSend.Unlock();

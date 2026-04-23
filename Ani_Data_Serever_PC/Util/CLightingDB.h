@@ -80,6 +80,16 @@ private:
 	void PrintOdbcError(SQLHANDLE handle, SQLSMALLINT type);
 	std::string UnicodeToMultiByte(const wchar_t* unicodeStr);
 
+	// 通用 SQL 执行重试函数（断线重连 + 重试一次）
+	// strFuncName: 调用方的函数名（日志用）
+	// connRef: 连接句柄引用（重连后会更新）
+	// sqlQuery: 要执行的 SQL 语句
+	// stmtRef: 语句句柄引用（重连后会重建）
+	// outRet: 输出参数，返回 SQLExecDirect 的结果
+	// 返回 TRUE 表示执行成功，FALSE 表示失败
+	BOOL ExecQueryWithRetry(LPCWSTR strFuncName, SQLHDBC& connRef, const std::string& sqlQuery,
+		SQLHSTMT& stmtRef, SQLRETURN* outRet);
+
 	static CWinApp* s_pApp;
 	static CLightingDB s_instance;
 

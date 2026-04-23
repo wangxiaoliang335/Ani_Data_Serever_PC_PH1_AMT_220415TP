@@ -16,7 +16,10 @@ CVisionThread::CVisionThread()
 	m_lastContent.resize(2);
 	m_lastCommand.resize(2);
 	m_lastRequest.resize(2);
-	m_lastInspResultVec.resize(8);  // 本线程独立的检测结果缓存
+	theApp.m_lastInspResultVec.resize(8);  // 本线程独立的检测结果缓存
+	m_iLastLightingConnectStatus = -1;  // 初始化为无效值，确保首次一定打印
+	m_iLastAOIPassMode = -1;
+	m_bLastPlcSendSignal = FALSE;  // 初始化为 FALSE，确保首次触发时打印
 	theApp.m_bVisionDeleteFlag = TRUE;
 }
 
@@ -39,7 +42,7 @@ void CVisionThread::ThreadRun()
 	theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] TLS database connection ready"));
 
 	AutoFocusData pAutoFocusData;
-	for (auto &InspResult : m_lastInspResultVec)
+	for (auto &InspResult : theApp.m_lastInspResultVec)
 		InspResult.Reset();
 
 	while (::WaitForSingleObject(m_hQuit, 50) != WAIT_OBJECT_0)
@@ -51,9 +54,16 @@ void CVisionThread::ThreadRun()
 			//if (theApp.m_bAllPassMode)
 			//	continue;
 
-			theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
-				_T("[VisionThread] Connection status - LightingConect=%d, AOIPassMode=%d"), 
-				theApp.m_LightingConectStatus, theApp.m_AOIPassMode));
+			// 连接状态变化时打印日志
+			if (theApp.m_LightingConectStatus != m_iLastLightingConnectStatus ||
+				theApp.m_AOIPassMode != m_iLastAOIPassMode)
+			{
+				theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+					_T("[VisionThread] Connection status changed - LightingConect=%d, AOIPassMode=%d"),
+					theApp.m_LightingConectStatus, theApp.m_AOIPassMode));
+				m_iLastLightingConnectStatus = theApp.m_LightingConectStatus;
+				m_iLastAOIPassMode = theApp.m_AOIPassMode;
+			}
 
 			if (theApp.m_LightingConectStatus || theApp.m_AOIPassMode)
 		{
@@ -107,12 +117,20 @@ void CVisionThread::ThreadRun()
 
 			if (theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_VisionPlcSend, 0))
 			{
-				theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] Received eBitType_VisionPlcSend signal from PLC"));
+				if (!m_bLastPlcSendSignal)
+				{
+					theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] Received eBitType_VisionPlcSend signal from PLC"));
+					m_bLastPlcSendSignal = TRUE;
+				}
 				VisionPanelCheck();
 			}
 			else
 			{
-				//theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] Received eBitType_VisionPlcSend not signal from PLC"));
+				if (m_bLastPlcSendSignal)
+				{
+					theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] eBitType_VisionPlcSend signal cleared"));
+					m_bLastPlcSendSignal = FALSE;
+				}
 				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionPcReceiver, 0, FALSE);
 			}
 			
@@ -510,28 +528,26 @@ void CVisionThread::VisionPanelCheck()
 	FpcIDData pFpcData;
 	CString strPanel, strFpcID;
 
-	//theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] VisionPanelCheck started"));
-
 	for (int ii = 0; ii < PanelMaxCount; ii++)
 	{
 		theApp.m_pEqIf->m_pMNetH->GetFpcIdData(eWordType_VisionFpcID1 + ii, &pFpcData);
 		strFpcID = CStringSupport::ToWString(pFpcData.m_FpcIDData, sizeof(pFpcData.m_FpcIDData));
 		
-		theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
-			_T("[VisionThread] Received eWordType_VisionFpcID%d signal - FPC ID: %s"), 
-			ii + 1, strFpcID));
+		//theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+		//	_T("[VisionThread] Received eWordType_VisionFpcID%d signal - FPC ID: %s"), 
+		//	ii + 1, strFpcID));
 
 		theApp.m_pEqIf->m_pMNetH->GetPanelData(eWordType_VisionPanel1 + ii, &pPanelData);
 		strPanel = CStringSupport::ToWString(pPanelData.m_PanelData, sizeof(pPanelData.m_PanelData));
 		
-		theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
-			_T("[VisionThread] Received eWordType_VisionPanel%d signal - Panel: %s"), 
-			ii + 1, strPanel));
+		//theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+		//	_T("[VisionThread] Received eWordType_VisionPanel%d signal - Panel: %s"), 
+		//	ii + 1, strPanel));
 
 		if (strFpcID.GetLength() > 0)
 		{
-			theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
-				_T("[VisionThread] FPC ID found for panel %d, setting VisionPcReceiver bit"), ii + 1));
+			//theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+			//	_T("[VisionThread] FPC ID found for panel %d, setting VisionPcReceiver bit"), ii + 1));
 			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionPcReceiver, 0, TRUE);
 			break;
 		}
@@ -604,35 +620,35 @@ void CVisionThread::VisionInspectionMethod(int Num, int panelNum)
 	}
 }
 
-void CVisionThread::ParsingGrabEnd(int Num, CString strContents)
-{
-	CString sendMsg, strPanelID, strFpcID;
-	CStringArray responseTokens;
-	CStringSupport::GetTokenArray(strContents, _T(','), responseTokens);
-
-	strPanelID = responseTokens[0];
-	strFpcID = responseTokens[1];
-	strPanelID.Trim();
-	strFpcID.Trim();
-
-	// 已禁用 Vision PC Socket 发送 - 现在只使用 Lighting 协议
-	// sendMsg.Format(_T("%d,%s,%s"), MC_GRAB_END_RECEIVE, strPanelID, strFpcID);
-	// SocketSendto(Num, sendMsg, MC_GRAB_END_RECEIVE);
-	
-	for (auto &InspResult : theApp.m_lastInspResultVec)
-	{
-		if (!InspResult.m_cellId.CompareNoCase(strPanelID))
-		{
-			if (InspResult.m_bInspStart == TRUE)
-			{
-				LogWrite(CStringSupport::FormatString(_T("Panel [%s] Vision Grab End"), strPanelID), Num);
-				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + InspResult.m_iPanelNum, OffSet_0, TRUE);
-				InspResult.m_bGrabEnd = TRUE;
-				break;
-			}
-		}
-	}
-}
+//void CVisionThread::ParsingGrabEnd(int Num, CString strContents)
+//{
+//	CString sendMsg, strPanelID, strFpcID;
+//	CStringArray responseTokens;
+//	CStringSupport::GetTokenArray(strContents, _T(','), responseTokens);
+//
+//	strPanelID = responseTokens[0];
+//	strFpcID = responseTokens[1];
+//	strPanelID.Trim();
+//	strFpcID.Trim();
+//
+//	// 已禁用 Vision PC Socket 发送 - 现在只使用 Lighting 协议
+//	// sendMsg.Format(_T("%d,%s,%s"), MC_GRAB_END_RECEIVE, strPanelID, strFpcID);
+//	// SocketSendto(Num, sendMsg, MC_GRAB_END_RECEIVE);
+//	
+//	for (auto &InspResult : theApp.m_lastInspResultVec)
+//	{
+//		if (!InspResult.m_cellId.CompareNoCase(strPanelID))
+//		{
+//			if (InspResult.m_bInspStart == TRUE)
+//			{
+//				LogWrite(CStringSupport::FormatString(_T("Panel [%s] Vision Grab End"), strPanelID), Num);
+//				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + InspResult.m_iPanelNum, OffSet_0, TRUE);
+//				InspResult.m_bGrabEnd = TRUE;
+//				break;
+//			}
+//		}
+//	}
+//}
 
 //void CVisionThread::ParsingInspectionResult(int Num, CString strContents)
 //{
@@ -868,25 +884,54 @@ BOOL CVisionThread::VisionVecAdd(CString strPanel, CString strFpcID, int iPanelN
 	if (panelData.m_cellId.IsEmpty())
 		panelData.m_cellId = panelData.m_FpcID;
 
+	theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[VisionVecAdd] ENTRY: strPanel=%s, strFpcID=%s, iPanelNum=%d, iIndexNum=%d, iPCNo=%d"),
+		strPanel, strFpcID, iPanelNum, iIndexNum, iPCNo));
+
+	// 检查是否已存在
 	for (auto &InspResult : theApp.m_lastInspResultVec)
 	{
 		if (!InspResult.m_cellId.CompareNoCase(strPanel))
 		{
 			flag = FALSE;
+			theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+				_T("[VisionVecAdd] Panel %s already exists in m_lastInspResultVec, skipping"), strPanel));
 			VisionPLCResult(iPCNo, iPanelNum, _T("PLC ID Error"), m_codePlcPanelError, strPanel);
 			break;
 		}
 	}
 
+	// 查找空槽位并加入
+	BOOL bAdded = FALSE;
 	for (auto &InspResult : theApp.m_lastInspResultVec)
 	{
 		if (InspResult.m_bInspStart == FALSE && flag == TRUE)
 		{
 			InspResult = panelData;
+			bAdded = TRUE;
+			theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+				_T("[VisionVecAdd] SUCCESS: Added to slot, CellID=%s, iPanelNum=%d, m_bInspStart=%d"),
+				InspResult.m_cellId, InspResult.m_iPanelNum, InspResult.m_bInspStart));
 			break;
 		}
-			
 	}
+
+	if (!bAdded)
+	{
+		theApp.m_VisionLog->LOG_WARN(CStringSupport::FormatString(
+			_T("[VisionVecAdd] FAILED: No empty slot found, flag=%d"), flag));
+	}
+
+	// 打印当前 m_lastInspResultVec 的状态
+	int iBusyCount = 0;
+	for (const auto& ir : theApp.m_lastInspResultVec)
+	{
+		if (ir.m_bInspStart) iBusyCount++;
+	}
+	theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[VisionVecAdd] m_lastInspResultVec status: total=%d, busy=%d, free=%d"),
+		(int)theApp.m_lastInspResultVec.size(), iBusyCount,
+		(int)theApp.m_lastInspResultVec.size() - iBusyCount));
 
 	return flag;
 }
@@ -992,8 +1037,8 @@ BOOL CVisionThread::TryStartLightingFromPlc(const BOOL startFlags[4])
 					continue;
 
 				int fixtureNo = i + 1;  // 治具号 1~4
-				theApp.m_pEqIf->m_pMNetH->GetPanelData(eWordType_PreGammaPanel1 + i, &pPanelData);
-				theApp.m_pEqIf->m_pMNetH->GetFpcIdData(eWordType_PreGammaFpcID1 + i, &pFpcData);
+				theApp.m_pEqIf->m_pMNetH->GetPanelData(eWordType_VisionPanel1 + i, &pPanelData);
+				theApp.m_pEqIf->m_pMNetH->GetFpcIdData(eWordType_VisionFpcID1 + i, &pFpcData);
 
 				CString strPanelID = CStringSupport::ToWString(pPanelData.m_PanelData, sizeof(pPanelData.m_PanelData));
 				CString strFpcID = CStringSupport::ToWString(pFpcData.m_FpcIDData, sizeof(pFpcData.m_FpcIDData));
@@ -1022,7 +1067,7 @@ BOOL CVisionThread::TryStartLightingFromPlc(const BOOL startFlags[4])
 					updateResult ? _T("SUCCESS") : _T("FAILED"), iStation));
 
 				// ========== 这里添加 VisionVecAdd 调用 ==========
-				int iPanelNum = fixtureNo;        // 治具号 1~4
+				int iPanelNum = fixtureNo - 1;        // 治具号 1~4
 				int iIndexNum = iStation;         // 工位号
 				int iPCNo = fixtureNo;            // PC编号 (Lighting协议不需要区分PC1/PC2)
 				VisionVecAdd(strPanelID, strFpcID, iPanelNum, iIndexNum, iPCNo, iCurIndex);
@@ -1103,15 +1148,43 @@ void CVisionThread::OnLightingSnapFN()
 {
 	theApp.m_VisionLog->LOG_INFO(_T("[Lighting] OnLightingSnapFN called"));
 
+	//for (int i = 0; i < 4; ++i)
+	//{
+	//	if (theApp.m_bLightingActiveSlot[i])
+	//	{
+	//		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + i, OffSet_0, TRUE);
+	//	}
+	//}
+
 	// 点灯采图完成
 	// 写入 PLC：SnapFN 信号
-	for (int i = 0; i < 4; ++i)
+	int iMatchCount = 0;
+	theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[Lighting] OnLightingSnapFN: DUMP m_lastInspResultVec (size=%d)"),
+		(int)theApp.m_lastInspResultVec.size()));
+	for (size_t i = 0; i < theApp.m_lastInspResultVec.size(); ++i)
 	{
-		if (theApp.m_bLightingActiveSlot[i])
+		const auto& ir = theApp.m_lastInspResultVec[i];
+		theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+			_T("[Lighting] OnLightingSnapFN: [%d] CellID=%s, m_bInspStart=%d, m_bGrabEnd=%d, m_iPanelNum=%d"),
+			i, ir.m_cellId, ir.m_bInspStart, ir.m_bGrabEnd, ir.m_iPanelNum));
+	}
+
+	for (auto& InspResult : theApp.m_lastInspResultVec)
+	{
+		//if (theApp.m_bLightingActiveSlot[i])
+		if (InspResult.m_bInspStart == TRUE && InspResult.m_bGrabEnd == FALSE)
 		{
-			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + i, OffSet_0, TRUE);
+			iMatchCount++;
+			theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+				_T("[Lighting] OnLightingSnapFN: Setting VisionGrabEnd1+%d (Panel=%d, CellID=%s)"),
+				InspResult.m_iPanelNum, InspResult.m_iPanelNum, InspResult.m_cellId));
+			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + InspResult.m_iPanelNum, OffSet_0, TRUE);
+			InspResult.m_bGrabEnd = TRUE;
 		}
 	}
+	theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+		_T("[Lighting] OnLightingSnapFN: Matched %d items in m_lastInspResultVec"), iMatchCount));
 }
 
 void CVisionThread::OnLightingResult(const int resultCode[4])
@@ -1186,7 +1259,7 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 
 				// ========== 更新 m_lastInspResultVec（与其他检测结果统一管理）==========
 				BOOL bFoundInVec = FALSE;
-				for (auto &inspVec : m_lastInspResultVec)
+				for (auto &inspVec : theApp.m_lastInspResultVec)
 				{
 					if (inspVec.m_iIndexPanelNum == fixtureNo && !inspVec.m_cellId.IsEmpty())
 					{
@@ -1213,8 +1286,52 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 
 				// 写入 PLC 结果
 				USHORT plcResult = (inspResult.AOIResult.CompareNoCase(_T("OK")) == 0) ? m_codeOk : m_codeNg;
+
+				CString strDefectCode = inspResult.Code_AOI;
+				CString strGrade = inspResult.Grade_AOI;
+
+				// iSendNGBuffer 值含义：
+		// 1 = OK Buffer（检测合格）
+		// 2 = NG Buffer 1（等级0的缺陷：A/R1）
+		// 3 = NG Buffer 2（等级1的缺陷：B/R2）
+		// 4 = NG Buffer 3（等级2的缺陷：C/R3）
+		// 5 = NG Buffer 4（等级3的缺陷：R4）
+		//LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Step5 - Write SendNgBufferResult"), nFixtureNo), nFixtureNo - 1);
+				//int nSendNGBuffer = 0;
+				//if (plcResult == m_codeOk)
+				//{
+				//	nSendNGBuffer = 1;  // OK Buffer
+				//}
+				//else if (!strGrade.IsEmpty())
+				//{
+				//	// 缺陷等级转换为数值：Grade A=0最优, B=1, C=2, R1=0, R2=1, R3=2, R4=3...
+				//	int nNGGrade = 0;
+				//	if (strGrade.GetLength() >= 2 && strGrade[0] == _T('R'))
+				//	{
+				//		nNGGrade = _ttoi(strGrade.Mid(1)) - 1;  // R1=0, R2=1, R3=2...
+				//		if (nNGGrade < 0) nNGGrade = 0;
+				//		if (nNGGrade > 3) nNGGrade = 3;
+				//	}
+				//	else if (strGrade.GetLength() >= 1)
+				//	{
+				//		if (strGrade[0] >= _T('A') && strGrade[0] <= _T('C'))
+				//			nNGGrade = strGrade[0] - _T('A');
+				//		else
+				//			nNGGrade = 0;
+				//	}
+				//	nSendNGBuffer = nNGGrade + 2;
+				//}
+				//else
+				//{
+				//	nSendNGBuffer = 2;  // 无等级信息，默认 NG Buffer 1
+				//}
+				//theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_SendNgBufferResult1 + i, &nSendNGBuffer);
+				
+				theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+					_T("[VisionThread] Write PLC result - Index=%d, AOIResult=%s, plcResult=0x%04X"),
+					i, inspResult.AOIResult, plcResult));
 				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + i, &plcResult);
-				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + +i, OffSet_0, TRUE);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + i, OffSet_0, TRUE);
 				CDefectInfoList defectList;
 				if (!inspResult.GUID.IsEmpty())
 				{
@@ -1241,25 +1358,25 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 						fixtureNo));
 				}
 
-				// 写入缺陷代码和等级
-				CString strDefectCode = _T("");
-				CString strDefectGrade = _T("");
-				int iCount = 0;
+				//// 写入缺陷代码和等级
+				//CString strDefectCode = _T("");
+				//CString strDefectGrade = _T("");
+				//int iCount = 0;
 
-				for (size_t j = 0; j < defectList.size(); j++)
-				{
-					if (theApp.m_iNumberSendToPlc > 0 && iCount >= theApp.m_iNumberSendToPlc)
-						break;
+				//for (size_t j = 0; j < defectList.size(); j++)
+				//{
+				//	if (theApp.m_iNumberSendToPlc > 0 && iCount >= theApp.m_iNumberSendToPlc)
+				//		break;
 
-					if (!defectList[j].Code_AOI.IsEmpty())
-					{
-						if (iCount == 0)
-							strDefectGrade = defectList[j].Grade_AOI;
+				//	if (!defectList[j].Code_AOI.IsEmpty())
+				//	{
+				//		if (iCount == 0)
+				//			strDefectGrade = defectList[j].Grade_AOI;
 
-						strDefectCode.Append(defectList[j].Code_AOI);
-						iCount++;
-					}
-				}
+				//		strDefectCode.Append(defectList[j].Code_AOI);
+				//		iCount++;
+				//	}
+				//}
 
 				CDFSInfo dfsInfo;
 				// 写入 OpvDefectCode INI 文件（新机器 AOI 检测完成后生成，供 OPV 复检使用）

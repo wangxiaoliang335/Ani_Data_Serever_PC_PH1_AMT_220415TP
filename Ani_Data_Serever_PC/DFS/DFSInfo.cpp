@@ -2006,7 +2006,7 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 				(LPCTSTR)item.strDEFECT_CODE,
 				(LPCTSTR)item.strDEFECT_GRADE,
 				(LPCTSTR)item.strIMAGE_DATA,
-				fX, fY, fSize,
+				fY, fX, fSize,
 				(LPCTSTR)item.strZone);
 			sFile.WriteString(strDefectLine);
 		}
