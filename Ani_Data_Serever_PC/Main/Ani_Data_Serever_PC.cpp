@@ -4689,22 +4689,22 @@ void CAni_Data_Serever_PCApp::OnLightingRunning()
 	// 实际处理已移至 CVisionThread::OnLightingRunning()
 }
 
-void CAni_Data_Serever_PCApp::OnLightingSnapFN()
-{
-	// 点灯采图完成 SnapFN，产品可以移动
-	theApp.m_pLightingLog->LOG_INFO(_T("Lighting snap completed (SnapFN), product can move"));
-
-	m_csLightingFlow.Lock();
-	BOOL active[4] = { m_bLightingActiveSlot[0], m_bLightingActiveSlot[1], m_bLightingActiveSlot[2], m_bLightingActiveSlot[3] };
-	m_csLightingFlow.Unlock();
-
-	// SnapFN -> GrabEnd：对当前周期内的治具位写 GrabEnd
-	for (int i = 0; i < 4; ++i)
-	{
-		if (active[i])
-			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + i, OffSet_0, TRUE);
-	}
-}
+//void CAni_Data_Serever_PCApp::OnLightingSnapFN()
+//{
+//	// 点灯采图完成 SnapFN，产品可以移动
+//	theApp.m_pLightingLog->LOG_INFO(_T("Lighting snap completed (SnapFN), product can move"));
+//
+//	m_csLightingFlow.Lock();
+//	BOOL active[4] = { m_bLightingActiveSlot[0], m_bLightingActiveSlot[1], m_bLightingActiveSlot[2], m_bLightingActiveSlot[3] };
+//	m_csLightingFlow.Unlock();
+//
+//	// SnapFN -> GrabEnd：对当前周期内的治具位写 GrabEnd
+//	for (int i = 0; i < 4; ++i)
+//	{
+//		if (active[i])
+//			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + i, OffSet_0, TRUE);
+//	}
+//}
 
 //void CAni_Data_Serever_PCApp::OnLightingResult(const int resultCode[4])
 //{
@@ -5159,48 +5159,48 @@ void CAni_Data_Serever_PCApp::OnLightingSnapFN()
 //	return TRUE;
 //}
 
-void CAni_Data_Serever_PCApp::LightingFlowTimeoutCheck()
-{
-	if (!m_LightingThreadOpenFlag || !m_LightingConectStatus)
-		return;
-
-	BOOL inProgress = FALSE;
-	DWORD startTick = 0;
-	DWORD timeoutMs = 0;
-	BOOL active[4] = { FALSE, FALSE, FALSE, FALSE };
-
-	m_csLightingFlow.Lock();
-	inProgress = m_bLightingCycleInProgress;
-	startTick = m_dwLightingStartTick;
-	timeoutMs = m_dwLightingTimeoutMs;
-	for (int i = 0; i < 4; ++i) active[i] = m_bLightingActiveSlot[i];
-	m_csLightingFlow.Unlock();
-
-	if (!inProgress || startTick == 0 || timeoutMs == 0)
-		return;
-
-	const DWORD now = ::GetTickCount();
-	if (now - startTick < timeoutMs)
-		return;
-
-	theApp.m_pLightingLog->LOG_INFO(_T("Lighting flow TIMEOUT: forcing PLC End/Result to avoid hang"));
-
-	for (int i = 0; i < 4; ++i)
-	{
-		if (!active[i])
-			continue;
-		USHORT tmpResult = m_codeTimeOut;
-		theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + i, &tmpResult);
-		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + i, OffSet_0, TRUE);
-		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + i, OffSet_0, TRUE);
-	}
-
-	m_csLightingFlow.Lock();
-	m_bLightingCycleInProgress = FALSE;
-	for (int i = 0; i < 4; ++i) m_bLightingActiveSlot[i] = FALSE;
-	m_dwLightingStartTick = 0;
-	m_csLightingFlow.Unlock();
-}
+//void CAni_Data_Serever_PCApp::LightingFlowTimeoutCheck()
+//{
+//	if (!m_LightingThreadOpenFlag || !m_LightingConectStatus)
+//		return;
+//
+//	BOOL inProgress = FALSE;
+//	DWORD startTick = 0;
+//	DWORD timeoutMs = 0;
+//	BOOL active[4] = { FALSE, FALSE, FALSE, FALSE };
+//
+//	m_csLightingFlow.Lock();
+//	inProgress = m_bLightingCycleInProgress;
+//	startTick = m_dwLightingStartTick;
+//	timeoutMs = m_dwLightingTimeoutMs;
+//	for (int i = 0; i < 4; ++i) active[i] = m_bLightingActiveSlot[i];
+//	m_csLightingFlow.Unlock();
+//
+//	if (!inProgress || startTick == 0 || timeoutMs == 0)
+//		return;
+//
+//	const DWORD now = ::GetTickCount();
+//	if (now - startTick < timeoutMs)
+//		return;
+//
+//	theApp.m_pLightingLog->LOG_INFO(_T("Lighting flow TIMEOUT: forcing PLC End/Result to avoid hang"));
+//
+//	for (int i = 0; i < 4; ++i)
+//	{
+//		if (!active[i])
+//			continue;
+//		USHORT tmpResult = m_codeTimeOut;
+//		theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + i, &tmpResult);
+//		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + i, OffSet_0, TRUE);
+//		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + i, OffSet_0, TRUE);
+//	}
+//
+//	m_csLightingFlow.Lock();
+//	m_bLightingCycleInProgress = FALSE;
+//	for (int i = 0; i < 4; ++i) m_bLightingActiveSlot[i] = FALSE;
+//	m_dwLightingStartTick = 0;
+//	m_csLightingFlow.Unlock();
+//}
 
 
 

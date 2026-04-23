@@ -27,6 +27,17 @@ CVisionThread::~CVisionThread()
 void CVisionThread::ThreadRun()
 {
 	theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] Thread started"));
+	
+	// 线程启动时预先建立数据库连接，避免后续操作时等待重连
+	theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] Pre-connecting TLS database connection..."));
+	CheckAndReconnectTlsLighting(
+		theApp.m_strLightingDBServer,
+		theApp.m_strLightingDBName,
+		theApp.m_strLightingDBUser,
+		theApp.m_strLightingDBPassword,
+		theApp.m_VisionLog);
+	theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] TLS database connection ready"));
+
 	AutoFocusData pAutoFocusData;
 	for (auto &InspResult : m_lastInspResultVec)
 		InspResult.Reset();
@@ -1164,7 +1175,7 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 			{
 				theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 					_T("[Lighting] QueryByUniqueID failed for UniqueID=%s"), uniqueID));
-				USHORT tmpResult = m_codeOk;
+				USHORT tmpResult = m_codeFail;
 				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + i, &tmpResult);
 			}
 			else
@@ -1203,7 +1214,7 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 				// 写入 PLC 结果
 				USHORT plcResult = (inspResult.AOIResult.CompareNoCase(_T("OK")) == 0) ? m_codeOk : m_codeNg;
 				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + i, &plcResult);
-
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + +i, OffSet_0, TRUE);
 				CDefectInfoList defectList;
 				if (!inspResult.GUID.IsEmpty())
 				{
@@ -1320,7 +1331,7 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 		{
 			theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 				_T("[Lighting] QueryIdMapByFixtureNo failed: FixtureNo=%d"), fixtureNo));
-			USHORT tmpResult = m_codeOk;
+			USHORT tmpResult = m_codeFail;
 			theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + i, &tmpResult);
 		}
 	}

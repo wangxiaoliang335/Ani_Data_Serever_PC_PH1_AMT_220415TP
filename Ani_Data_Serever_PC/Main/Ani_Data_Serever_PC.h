@@ -239,10 +239,10 @@ public:
 	BOOL m_bLightingActiveSlot[4]; // slot 1..4 -> index 0..3
 	DWORD m_dwLightingStartTick;
 	DWORD m_dwLightingTimeoutMs;
-	void LightingFlowTimeoutCheck();
+	//void LightingFlowTimeoutCheck();
 	
 	virtual void OnLightingRunning() override;
-	virtual void OnLightingSnapFN() override;
+	//virtual void OnLightingSnapFN() override;
 	//virtual void OnLightingResult(const int resultCode[4]) override;
 
 	LightingInspectionResult m_LightingInspResult[4];

@@ -381,8 +381,13 @@ DWORD WINAPI CLightingSocketClient::AutoTestTimerThread(LPVOID lpParam)
 
 		for (int i = 0; i < 4; ++i)
 		{
+			if (i == 0)
+			{
+				theApp.m_VisionLog->LOG_INFO(_T("[DBG] Clearing ivs_lcd_idmap table before inserting new records"));
+				CLightingDB::Get().ClearLightingIdMap();
+			}
+
 			int fixtureNo = i + 1;
-			
 			CString strBarcode;
 			strBarcode.Format(_T("SIM_BARCODE_%d"), fixtureNo);
 			
