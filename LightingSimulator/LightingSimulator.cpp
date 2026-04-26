@@ -1223,15 +1223,11 @@ bool InsertInspectionResult(const std::string& barcode, int fixtureNo, DefectTyp
 }
 
 // Generate test result for multiple fixtures
+// Format: FN$13141516@ (compact, no $ separators between fixture results)
 std::string GenerateTestResult(const std::string& currentFixtures) {
     std::ostringstream result;
     result << "FN$";
-    
-    for (size_t i = 0; i < currentFixtures.length(); i += 2) {
-        if (i > 0) result << "$";
-        result << currentFixtures.substr(i, 2);
-    }
-    
+    result << currentFixtures;  // 直接拼接，如 "13141516"
     result << "@";
     return result.str();
 }
@@ -1677,7 +1673,7 @@ int main() {
     std::cout << "  Start$XX$XX$XX$XX$YY$YY$YY$YY@ - Start detection" << std::endl;
     std::cout << "  Running@                           - Running status" << std::endl;
     std::cout << "  SnapFN@                            - Image capture complete" << std::endl;
-    std::cout << "  FN$XX$XX$XX$XX@                    - Test result" << std::endl;
+    std::cout << "  FN$13141516@                        - Test result (compact, 4 fixtures)" << std::endl;
     std::cout << std::endl;
     std::cout << "Press Ctrl+C to stop server" << std::endl;
     std::cout << "============================================================" << std::endl;
