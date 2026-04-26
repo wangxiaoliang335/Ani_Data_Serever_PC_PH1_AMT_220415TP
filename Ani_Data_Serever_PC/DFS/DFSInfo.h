@@ -195,6 +195,8 @@ struct SDFSDefectDataBegin{
 	CString strX;
 	CString strY;
 	CString strSIZE;
+	CString strWIDTH;     // Pos_width from DB
+	CString strHEIGHT;    // Pos_height from DB
 	CString strCAM_INSPECT;
 	CString strZone;
 	CString strInspName;
@@ -212,6 +214,8 @@ enum
 	DefectData_X	,
 	DefectData_Y,
 	DefectData_SIZE	,
+	DefectData_WIDTH	,
+	DefectData_HEIGHT	,
 	DefectData_CAM_INSPECT	,
 	DefectData_Zone	,
 	MaxSDFSDefectListBeginCount

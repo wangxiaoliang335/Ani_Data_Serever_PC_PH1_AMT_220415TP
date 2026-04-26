@@ -140,7 +140,7 @@ SQLHDBC CLightingDB::GetDfsLightingConnection()
 	return SQL_NULL_HANDLE;
 }
 
-void CLightingDB::GetLightingResultByBarcode(CString strBarcode, CString& strAOIResult, CString& strCodeAOI, CString& strGradeAOI, BOOL& bValid)
+void CLightingDB::GetLightingResultByBarcode(CString strBarcode, CString& strAOIResult, CString& strCodeAOI, CString& strGradeAOI, CString &strGUID, BOOL& bValid)
 {
 	strAOIResult = _T("");
 	strCodeAOI = _T("");
@@ -193,6 +193,7 @@ void CLightingDB::GetLightingResultByBarcode(CString strBarcode, CString& strAOI
 		strAOIResult = result.m_strAOIResult;
 		strCodeAOI = result.m_strCodeAOI;
 		strGradeAOI = result.m_strGradeAOI;
+		strGUID = result.m_strGUID;
 		bValid = TRUE;
 	}
 }
@@ -293,7 +294,7 @@ BOOL CLightingDB::QueryLightingDefectList(CString strUniqueID, std::vector<LUMIT
 	return TRUE;
 }
 
-BOOL CLightingDB::QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, SQLHDBC pConn)
+BOOL CLightingDB::QueryAOIDefectList(CString strUniqueID, CString strGUID, std::vector<SDFSDefectDataBegin>& vecDefects, SQLHDBC pConn)
 {
 	vecDefects.clear();
 	DWORD threadId = GetCurrentThreadId();
@@ -319,7 +320,7 @@ BOOL CLightingDB::QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefect
 
 	string sqlStr = "SELECT DefectIndex, Type, PatternID, PatternName, Pos_x, Pos_y, Pos_width, Pos_height, "
 		"TrueSize, GrayScale, GrayScale_BK, GrayScaleDiff, Code_AOI, Grade_AOI, ImagePath "
-		"FROM ivs_lcd_aoidefect WHERE GUID_IVS_LCD_InspectionResult = '" + UnicodeToMultiByte(strUniqueID.GetString()) + "' ORDER BY DefectIndex";
+		"FROM ivs_lcd_aoidefect WHERE GUID_IVS_LCD_InspectionResult = '" + UnicodeToMultiByte(strGUID.GetString()) + "' ORDER BY DefectIndex";
 
 	if (!ExecQueryWithRetry(_T("QueryAOIDefectList"), pUseConn, sqlStr, stmt, &ret))
 		return FALSE;
@@ -332,18 +333,16 @@ BOOL CLightingDB::QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefect
 		SQLCHAR buf[512] = {0};
 		SQLLEN len = 0;
 
-		SQLGetData(stmt, 1, SQL_C_CHAR, buf, sizeof(buf), &len);
-		defect.strDEFECT_DATA_NUM = CA2T((char*)buf);
-		if (!defect.strDEFECT_DATA_NUM.IsEmpty()) {
-			int nIndex = _ttoi(defect.strDEFECT_DATA_NUM);
-			defect.strDEFECT_DATA_NUM.Format(_T("%d"), nIndex + 1);
-		}
+		SQLINTEGER nVal = 0;
+		SQLGetData(stmt, 1, SQL_C_SLONG, &nVal, sizeof(nVal), &len);
+		defect.strDEFECT_DATA_NUM = (len == SQL_NULL_DATA) ? _T("") : CStringSupport::FormatString(_T("%d"), nVal + 1);
 
 		SQLGetData(stmt, 2, SQL_C_CHAR, buf, sizeof(buf), &len);
 		defect.strDEFECT_TYPE = CA2T((char*)buf);
 
-		SQLGetData(stmt, 3, SQL_C_CHAR, buf, sizeof(buf), &len);
-		CString strPatternID = CA2T((char*)buf);
+		nVal = 0;
+		SQLGetData(stmt, 3, SQL_C_SLONG, &nVal, sizeof(nVal), &len);
+		CString strPatternID = (len == SQL_NULL_DATA) ? _T("") : CStringSupport::FormatString(_T("%d"), nVal);
 
 		SQLGetData(stmt, 4, SQL_C_CHAR, buf, sizeof(buf), &len);
 		CString strPatternName = CA2T((char*)buf);
@@ -355,14 +354,25 @@ BOOL CLightingDB::QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefect
 		SQLGetData(stmt, 14, SQL_C_CHAR, buf, sizeof(buf), &len);
 		defect.strDEFECT_GRADE = CA2T((char*)buf);
 
-		SQLGetData(stmt, 5, SQL_C_CHAR, buf, sizeof(buf), &len);
-		defect.strX = CA2T((char*)buf);
+		nVal = 0;
+		SQLGetData(stmt, 5, SQL_C_SLONG, &nVal, sizeof(nVal), &len);
+		defect.strX = (len == SQL_NULL_DATA) ? _T("") : CStringSupport::FormatString(_T("%d"), nVal);
 
-		SQLGetData(stmt, 6, SQL_C_CHAR, buf, sizeof(buf), &len);
-		defect.strY = CA2T((char*)buf);
+		nVal = 0;
+		SQLGetData(stmt, 6, SQL_C_SLONG, &nVal, sizeof(nVal), &len);
+		defect.strY = (len == SQL_NULL_DATA) ? _T("") : CStringSupport::FormatString(_T("%d"), nVal);
 
-		SQLGetData(stmt, 9, SQL_C_CHAR, buf, sizeof(buf), &len);
-		defect.strSIZE = CA2T((char*)buf);
+		SQLREAL fVal = 0.0f;
+		SQLGetData(stmt, 9, SQL_C_FLOAT, &fVal, sizeof(fVal), &len);
+		defect.strSIZE = (len == SQL_NULL_DATA) ? _T("") : CStringSupport::FormatString(_T("%.2f"), fVal);
+
+		nVal = 0;
+		SQLGetData(stmt, 7, SQL_C_SLONG, &nVal, sizeof(nVal), &len);
+		defect.strWIDTH = (len == SQL_NULL_DATA) ? _T("") : CStringSupport::FormatString(_T("%d"), nVal);
+
+		nVal = 0;
+		SQLGetData(stmt, 8, SQL_C_SLONG, &nVal, sizeof(nVal), &len);
+		defect.strHEIGHT = (len == SQL_NULL_DATA) ? _T("") : CStringSupport::FormatString(_T("%d"), nVal);
 
 		SQLGetData(stmt, 15, SQL_C_CHAR, buf, sizeof(buf), &len);
 		defect.strIMAGE_DATA = CA2T((char*)buf);
@@ -383,16 +393,16 @@ BOOL CLightingDB::QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefect
 	return TRUE;
 }
 
-BOOL CLightingDB::QueryAOIDefectListThreadSafe(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, SQLHDBC pConn)
+BOOL CLightingDB::QueryAOIDefectListThreadSafe(CString strUniqueID, CString strGUID, std::vector<SDFSDefectDataBegin>& vecDefects, SQLHDBC pConn)
 {
-	return QueryAOIDefectList(strUniqueID, vecDefects, pConn);
+	return QueryAOIDefectList(strUniqueID, strGUID, vecDefects, pConn);
 }
 
-BOOL CLightingDB::QueryAOIDefectListThreadSafe(CString strUniqueID, CDefectInfoList& vecDefects, SQLHDBC pConn)
+BOOL CLightingDB::QueryAOIDefectListThreadSafe(CString strUniqueID, CString strGUID, CDefectInfoList& vecDefects, SQLHDBC pConn)
 {
 	vecDefects.clear();
 	std::vector<SDFSDefectDataBegin> vecRaw;
-	if (!QueryAOIDefectList(strUniqueID, vecRaw, pConn))
+	if (!QueryAOIDefectList(strUniqueID, strGUID, vecRaw, pConn))
 		return FALSE;
 	for (const auto& raw : vecRaw) {
 		CDefectInfo info;
@@ -402,6 +412,8 @@ BOOL CLightingDB::QueryAOIDefectListThreadSafe(CString strUniqueID, CDefectInfoL
 		info.PatternName = raw.strDEFECT_PTRN;
 		info.Pos_x = _ttoi(raw.strX);
 		info.Pos_y = _ttoi(raw.strY);
+		info.Pos_width = _ttoi(raw.strWIDTH);
+		info.Pos_height = _ttoi(raw.strHEIGHT);
 		info.Code_AOI = raw.strDEFECT_CODE;
 		info.Grade_AOI = raw.strDEFECT_GRADE;
 		info.ImagePath = raw.strIMAGE_DATA;

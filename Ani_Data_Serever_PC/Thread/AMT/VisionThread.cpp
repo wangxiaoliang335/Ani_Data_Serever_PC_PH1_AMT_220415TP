@@ -1338,7 +1338,7 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 					theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 						_T("[Lighting] Fixture %d: QueryAOIDefectList(GUID=%s)"),
 						fixtureNo, (LPCTSTR)inspResult.GUID));
-					if (!CLightingDB::Get().QueryAOIDefectListThreadSafe(inspResult.GUID, defectList, SQL_NULL_HANDLE))
+					if (!CLightingDB::Get().QueryAOIDefectListThreadSafe(inspResult.UniqueID, inspResult.GUID, defectList, SQL_NULL_HANDLE))
 					{
 						theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
 							_T("[Lighting] Fixture %d: QueryAOIDefectList failed"),

@@ -647,11 +647,11 @@ void CDFSClient::RunDfsUploadThread()
 					result = DataInfo.SetLoadFile(strPanelID);
 
 					// 从 MySQL 数据库查询点灯检测结果（AOI 点灯检结果，直接从数据库读取）
-					CString strAOIResult, strCodeAOI, strGradeAOI;
+					CString strAOIResult, strCodeAOI, strGradeAOI, strGUID;
 					BOOL bValid = FALSE;
 					BOOL bAnyImageCopied = FALSE;  // 策略1 图片复制成功标记
 					CString strUniqueID = CLightingDB::Get().GetLightingUniqueIDByBarcode(strPanelID);
-					CLightingDB::Get().GetLightingResultByBarcode(strPanelID, strAOIResult, strCodeAOI, strGradeAOI, bValid);
+					CLightingDB::Get().GetLightingResultByBarcode(strPanelID, strAOIResult, strCodeAOI, strGradeAOI, strGUID, bValid);
 					if (bValid)
 					{
 						// 将点灯结果填充到 result 结构
@@ -680,7 +680,7 @@ void CDFSClient::RunDfsUploadThread()
 						{
 							std::vector<SDFSDefectDataBegin> vecAOIDefects;
 							SQLHDBC pDfsConn = CLightingDB::Get().GetDfsLightingConnection();
-							if (CLightingDB::Get().QueryAOIDefectList(strUniqueID, vecAOIDefects, pDfsConn))
+							if (CLightingDB::Get().QueryAOIDefectList(strUniqueID, strGUID, vecAOIDefects, pDfsConn))
 							{
 								theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
 									_T("DFS: QueryAOIDefectList found %d defects for UniqueID=%s, PanelID=%s"),
@@ -838,7 +838,7 @@ void CDFSClient::RunDfsUploadThread()
 
 									CString strAoiImageDir;
 									strAoiImageDir.Format(_T("%sMainAOI\\%s\\%s\\%s\\%s"),
-										(LPCTSTR)m_strAOIRootPath,   // D:\MEMS_DFS_Data\
+										(LPCTSTR)m_strAOIRootPath,   // D:\MEMS_DFS_Data
 										(LPCTSTR)inspResult.LocalIP, // 192.168.1.100
 										(LPCTSTR)strIndexDir,        // 1
 										(LPCTSTR)strDateDir,        // 2026-04-03

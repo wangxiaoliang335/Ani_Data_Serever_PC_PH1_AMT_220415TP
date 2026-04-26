@@ -42,9 +42,9 @@ public:
 
 	LightingInspectionResult QueryInspectionResult(CString uniqueID);
 	LightingInspectionResult QueryInspectionResultThreadSafe(CString uniqueID, SQLHDBC pConn);
-	BOOL QueryAOIDefectList(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, SQLHDBC pConn);
-	BOOL QueryAOIDefectListThreadSafe(CString strUniqueID, std::vector<SDFSDefectDataBegin>& vecDefects, SQLHDBC pConn);
-	BOOL QueryAOIDefectListThreadSafe(CString strUniqueID, CDefectInfoList& vecDefects, SQLHDBC pConn);
+	BOOL QueryAOIDefectList(CString strUniqueID, CString strGUID, std::vector<SDFSDefectDataBegin>& vecDefects, SQLHDBC pConn);
+	BOOL QueryAOIDefectListThreadSafe(CString strUniqueID, CString strGUID, std::vector<SDFSDefectDataBegin>& vecDefects, SQLHDBC pConn);
+	BOOL QueryAOIDefectListThreadSafe(CString strUniqueID, CString strGUID, CDefectInfoList& vecDefects, SQLHDBC pConn);
 	BOOL QueryLightingDefectList(CString strUniqueID, std::vector<LUMITOP_SDFSDefectDataBegin>& vecDefects);
 	CString GetLightingUniqueIDByBarcode(CString strBarcode);
 	BOOL QueryIdMapByFixtureNo(int fixtureNo, CString& uniqueID, CString& screenID, CString& markID);
@@ -56,7 +56,7 @@ public:
 	BOOL ClearLightingIdMap();  // 清空 ivs_lcd_idmap 表
 	BOOL UpdateLightingInspectionResult(CString uniqueID);
 
-	void GetLightingResultByBarcode(CString strBarcode, CString& strAOIResult, CString& strCodeAOI, CString& strGradeAOI, BOOL& bValid);
+	void GetLightingResultByBarcode(CString strBarcode, CString& strAOIResult, CString& strCodeAOI, CString& strGradeAOI, CString& strGUID, BOOL& bValid);
 	LightingInspectionResult GetLightingResultByUniqueID(CString uniqueID);
 
 	// Query defect code by barcode (used by SetLoadResultCode)

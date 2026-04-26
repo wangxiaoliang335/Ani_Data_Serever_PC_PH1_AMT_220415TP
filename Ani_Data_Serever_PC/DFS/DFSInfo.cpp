@@ -1,4 +1,4 @@
-﻿#include "stdafx.h"
+#include "stdafx.h"
 #include "DFSInfo.h"
 #include "Main/Ani_Data_Serever_PC.h"
 
@@ -1830,8 +1830,8 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 
 		TRACE(_T("  [Defect %d] Type=[%s], Pos_x=%d, Pos_y=%d, Pos_w=%d, Pos_h=%d, TrueSize=%.2f\n"),
 			i, (LPCTSTR)defect.Type, defect.Pos_x, defect.Pos_y, defect.Pos_width, defect.Pos_height, defect.TrueSize);
-		//theApp.m_pTestLog->Info(_T("  [Defect %d] Type=[%s], Pos_x=%d, Pos_y=%d, Pos_w=%d, Pos_h=%d, TrueSize=%.2f"),
-		//	i, (LPCTSTR)defect.Type, defect.Pos_x, defect.Pos_y, defect.Pos_width, defect.Pos_height, defect.TrueSize);
+		theApp.m_VisionLog->Info(_T("  [Defect %d] Type=[%s], Pos_x=%d, Pos_y=%d, Pos_w=%d, Pos_h=%d, TrueSize=%.2f"),
+			i, (LPCTSTR)defect.Type, defect.Pos_x, defect.Pos_y, defect.Pos_width, defect.Pos_height, defect.TrueSize);
 
 		SDFSDefectDataBegin item;
 		item.strPANEL_ID = strCsvPanelID;
@@ -1874,9 +1874,9 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 		TRACE(_T("  [Defect %d] CSV字段: X=[%s], Y=[%s], SIZE=[%s], CODE=[%s], GRADE=[%s]\n"),
 			i, (LPCTSTR)item.strX, (LPCTSTR)item.strY, (LPCTSTR)item.strSIZE,
 			(LPCTSTR)item.strDEFECT_CODE, (LPCTSTR)item.strDEFECT_GRADE);
-		//theApp.m_pTestLog->Info(_T("  [Defect %d] CSV字段: X=[%s], Y=[%s], SIZE=[%s], CODE=[%s], GRADE=[%s]"),
-		//	i, (LPCTSTR)item.strX, (LPCTSTR)item.strY, (LPCTSTR)item.strSIZE,
-		//	(LPCTSTR)item.strDEFECT_CODE, (LPCTSTR)item.strDEFECT_GRADE);
+		theApp.m_VisionLog->Info(_T("  [Defect %d] CSV字段: X=[%s], Y=[%s], SIZE=[%s], CODE=[%s], GRADE=[%s]"),
+			i, (LPCTSTR)item.strX, (LPCTSTR)item.strY, (LPCTSTR)item.strSIZE,
+			(LPCTSTR)item.strDEFECT_CODE, (LPCTSTR)item.strDEFECT_GRADE);
 
 		// CAM_INSPECT=2（与旧 Vision PC 一致）
 		item.strCAM_INSPECT = _T("2");
@@ -1983,10 +1983,23 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 			double fX = 0.0, fY = 0.0, fSize = 0.0;
 			if (ii < (size_t)defectList.size())
 			{
+				// 打印坐标转换参数
+				theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+					_T("[WriteAOICSVFile] CoordConvert[%d]: Pixel(%d,%d) -> Physical(fX=%.2f, fY=%.2f) | ")
+					_T("GridImage=(%d,%d), PanelPhysical=(%.2f,%.2f), Scale=(%.6f,%.6f)"),
+					ii,
+					defectList[ii].Pos_x, defectList[ii].Pos_y,
+					fX, fY,
+					inspResult.GridImageXLen, inspResult.GridImageYLen,
+					inspResult.PanelPhysicalXLen, inspResult.PanelPhysicalYLen,
+					(inspResult.GridImageXLen > 0) ? (inspResult.PanelPhysicalXLen / (double)inspResult.GridImageXLen) : 1.0,
+					(inspResult.GridImageYLen > 0) ? (inspResult.PanelPhysicalYLen / (double)inspResult.GridImageYLen) : 1.0));
+
 				// X 方向：像素坐标 → 玻璃物理坐标
 				double fScaleX = (inspResult.GridImageXLen > 0)
 					? (inspResult.PanelPhysicalXLen / (double)inspResult.GridImageXLen) : 1.0;
-				fX = (double)defectList[ii].Pos_x * fScaleX;
+				//fX = (double)defectList[ii].Pos_x * fScaleX;
+				fX = ((double)inspResult.GridImageXLen - (double)defectList[ii].Pos_x) * fScaleX;   //中心坐标从左上角换成右上角了
 
 				// Y 方向：像素坐标 → 玻璃物理坐标
 				double fScaleY = (inspResult.GridImageYLen > 0)
@@ -1998,7 +2011,7 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 			}
 
 			CString strDefectLine;
-			strDefectLine.Format(_T("%s,%d,%s,%s,%s,%s,%s,%.6f,%.6f,%.6f,2,%s\n"),
+			strDefectLine.Format(_T("%s,%d,%s,%s,%s,%s,%s,%.2f,%.2f,%.6f,2,%s\n"),
 				(LPCTSTR)item.strPANEL_ID,
 				ii + 1,
 				(LPCTSTR)item.strDEFECT_TYPE,
@@ -2006,7 +2019,7 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 				(LPCTSTR)item.strDEFECT_CODE,
 				(LPCTSTR)item.strDEFECT_GRADE,
 				(LPCTSTR)item.strIMAGE_DATA,
-				fY, fX, fSize,
+				fY * 1000, fX * 1000, fSize,
 				(LPCTSTR)item.strZone);
 			sFile.WriteString(strDefectLine);
 		}
