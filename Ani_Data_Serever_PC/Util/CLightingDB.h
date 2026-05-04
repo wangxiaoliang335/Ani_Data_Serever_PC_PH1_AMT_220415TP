@@ -39,6 +39,7 @@ public:
 
 	CString GetSelectLatestByUniqueIDSQL(const CString& strUniqueID) const;
 	BOOL QueryByUniqueID(const CString& strUniqueID, CInspectionResult& result);
+	BOOL QueryByScreenID(const CString& strUniqueID, CInspectionResult& result);
 
 	LightingInspectionResult QueryInspectionResult(CString uniqueID);
 	LightingInspectionResult QueryInspectionResultThreadSafe(CString uniqueID, SQLHDBC pConn);

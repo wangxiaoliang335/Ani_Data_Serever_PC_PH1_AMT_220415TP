@@ -1018,7 +1018,11 @@ BOOL CVisionThread::TryStartLightingFromPlc(const BOOL startFlags[4])
 				if (i == 0)
 				{
 					theApp.m_VisionLog->LOG_INFO(_T("[DBG] Clearing ivs_lcd_idmap table before inserting new records"));
-					CLightingDB::Get().ClearLightingIdMap();
+					if (!CLightingDB::Get().ClearLightingIdMap())
+					{
+						theApp.m_VisionLog->LOG_ERR(CStringSupport::FormatString(
+							_T("[DBG] ClearLightingIdMap FAILED: %s"), CLightingDB::Get().GetLastError()));
+					}
 				}
 				// 使用 startFlags 位信号判断治具：有信号用工位号，无信号用00
 				int iStation = iBaseIndex + i;  // 工位号: 与 VisionInspectionMethod 保持一致
@@ -1062,9 +1066,15 @@ BOOL CVisionThread::TryStartLightingFromPlc(const BOOL startFlags[4])
 					_T("[DBG] About to update ivs_lcd_idmap: fixtureNo=%d, UniqueID=%s, Barcode=%s, MarkID=%s"),
 					iStation, strUniqueID, strBarcode, strMarkID));
 				BOOL updateResult = CLightingDB::Get().UpdateLightingIdMap(iStation, strUniqueID, strBarcode, strMarkID);
-				theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
-					_T("[DBG] UpdateLightingIdMap result: %s (fixtureNo=%d)"),
-					updateResult ? _T("SUCCESS") : _T("FAILED"), iStation));
+				if (updateResult) {
+					theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+						_T("[DBG] UpdateLightingIdMap SUCCESS (fixtureNo=%d)"), iStation));
+				}
+				else {
+					theApp.m_VisionLog->LOG_ERR(CStringSupport::FormatString(
+						_T("[DBG] UpdateLightingIdMap FAILED (fixtureNo=%d): %s"),
+						iStation, CLightingDB::Get().GetLastError()));
+				}
 
 				// ========== 这里添加 VisionVecAdd 调用 ==========
 				int iPanelNum = fixtureNo - 1;        // 治具号 1~4
@@ -1218,6 +1228,32 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 		if (fixtureNo <= 0)
 			continue;
 
+		//BOOL bFoundInVec = FALSE;
+		//for (auto& inspVec : theApp.m_lastInspResultVec)
+		//{
+		//	if (inspVec.m_iIndexPanelNum == fixtureNo && !inspVec.m_cellId.IsEmpty())
+		//	{
+		//		// 找到匹配的记录，更新结果
+		//		//inspVec.m_bResult = (inspResult.AOIResult.CompareNoCase(_T("OK")) == 0);
+		//		inspVec.m_bResult = TRUE;
+		//		inspVec.m_bInspStart = FALSE;  // 关闭检测状态，超时逻辑不再触发
+
+		//		inspVec.time_check.StopTimer();
+
+		//		////inspVec.m_iResultValue = inspVec.m_bResult ? m_codeOk : m_codeNg;
+		//		//inspVec.m_iResultValue = (inspResult.AOIResult.CompareNoCase(_T("OK")) == 0) ? m_codeOk : m_codeNg;
+
+		//		//if (inspVec.m_iResultValue == m_codeFail)
+		//		//	theApp.m_pRankTread->AddRankCodeList(inspVec.m_cellId, inspVec.m_FpcID, inspVec.m_iPanelNum, inspVec.m_iCurIndex, RankAOI);
+
+		//		//theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+		//		//	_T("[Lighting] Updated m_lastInspResultVec: FixtureNo=%d, Result=%s"),
+		//		//	fixtureNo, inspVec.m_bResult ? _T("OK") : _T("NG")));
+		//		bFoundInVec = TRUE;
+		//		break;
+		//	}
+		//}
+
 		//const int slotIdx = fixtureNo - 1;
 		//if (slotIdx < 0 || slotIdx >= 4)
 		//	continue;
@@ -1246,8 +1282,9 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 			CInspectionResult inspResult;
 			if (!CLightingDB::Get().QueryByUniqueID(uniqueID, inspResult))
 			{
-				theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
-					_T("[Lighting] QueryByUniqueID failed for UniqueID=%s"), uniqueID));
+				theApp.m_VisionLog->LOG_ERR(CStringSupport::FormatString(
+					_T("[Lighting] QueryByUniqueID failed for UniqueID=%s, error=%s"), uniqueID,
+					CLightingDB::Get().GetLastError()));
 				USHORT tmpResult = m_codeFail;
 				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + i, &tmpResult);
 			}
@@ -1340,9 +1377,9 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 						fixtureNo, (LPCTSTR)inspResult.GUID));
 					if (!CLightingDB::Get().QueryAOIDefectListThreadSafe(inspResult.UniqueID, inspResult.GUID, defectList, SQL_NULL_HANDLE))
 					{
-						theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
-							_T("[Lighting] Fixture %d: QueryAOIDefectList failed"),
-							fixtureNo));
+						theApp.m_VisionLog->LOG_ERR(CStringSupport::FormatString(
+							_T("[Lighting] Fixture %d: QueryAOIDefectList failed, error=%s"),
+							fixtureNo, CLightingDB::Get().GetLastError()));
 					}
 					else
 					{
@@ -1446,8 +1483,9 @@ void CVisionThread::OnLightingResult(const int resultCode[4])
 		}
 		else
 		{
-			theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
-				_T("[Lighting] QueryIdMapByFixtureNo failed: FixtureNo=%d"), fixtureNo));
+			theApp.m_VisionLog->LOG_ERR(CStringSupport::FormatString(
+				_T("[Lighting] QueryIdMapByFixtureNoThreadSafe failed: FixtureNo=%d, error=%s"), fixtureNo,
+				CLightingDB::Get().GetLastError()));
 			USHORT tmpResult = m_codeFail;
 			theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + i, &tmpResult);
 		}

@@ -634,10 +634,11 @@ void CDFSClient::RunDfsUploadThread()
 					strSumImagePath = strTemp1 + _T("Image");
 					CreateFolders(strSumImagePath);
 
-					strAoiImagePath = DFS_SHARE_PATH + GetDateString2() + _T("\\") + strPanelID + _T("\\AOI\\Image");
-					strViewingImagePath = DFS_VIEWING_ANGLE_SHARE_PATH + GetDateString2() + _T("\\") + strPanelID + _T("\\VIEWING\\Image");
+				strAoiImagePath = DFS_SHARE_PATH + GetDateString2() + _T("\\") + strPanelID + _T("\\AOI\\Image");
+				CreateFolders(strAoiImagePath);
+				strViewingImagePath = DFS_VIEWING_ANGLE_SHARE_PATH + GetDateString2() + _T("\\") + strPanelID + _T("\\VIEWING\\Image");
 
-					DfsInfo.CopyImage(strAoiImagePath, strSumImagePath);
+				DfsInfo.CopyImage(strAoiImagePath, strSumImagePath);
 					//DfsInfo.CopyImage(strViewingImagePath, strSumImagePath);
 
 					strSumPath = strTemp1 + strPanelID + _T(".csv");
@@ -733,8 +734,8 @@ void CDFSClient::RunDfsUploadThread()
 											CString strDir = strImgPath.Left(strImgPath.ReverseFind('\\'));
 											CString strL255Src = strDir + _T("\\L255.bmp");
 											CString strMarkImgSrc = strDir + _T("\\MarkImg.jpg");
-											CString strL255Dest = strAoiImagePath + _T("\\") + strPanelID + _T("_L255.bmp");
-											CString strMarkImgDest = strAoiImagePath + _T("\\") + strPanelID + _T("_MarkImg.jpg");
+											CString strL255Dest = strAoiImagePath + _T("\\") + _T("L255.bmp");
+											CString strMarkImgDest = strAoiImagePath + _T("\\") + _T("AddsrcImageADD.jpg");
 
 											if (PathFileExists(strL255Src))
 											{
@@ -1418,11 +1419,11 @@ void CDFSClient::RunFtpUploadThread()
 					else
 					{
 						// 第二优先级：从 AOI 服务器通过 LocalIP+PlatformID+StartTime 构建路径获取 MarkImg.jpg
-						if (!dfsData.m_strUniqueID.IsEmpty() && CLightingDB::Get().IsConnected())
+						if (!dfsData.m_PanelID.IsEmpty() && CLightingDB::Get().IsConnected())
 						{
 							CInspectionResult inspResult;
 							inspResult.Reset();
-							if (CLightingDB::Get().QueryByUniqueID(dfsData.m_strUniqueID, inspResult))
+							if (CLightingDB::Get().QueryByScreenID(dfsData.m_PanelID, inspResult))
 							{
 								if (!inspResult.LocalIP.IsEmpty() && inspResult.PlatformID >= 0)
 								{
@@ -1479,14 +1480,14 @@ void CDFSClient::RunFtpUploadThread()
 							else
 							{
 								theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
-									_T("[OPV Image] Stage2 Priority2: QueryByUniqueID failed for UniqueID=%s"),
-									(LPCTSTR)dfsData.m_strUniqueID));
+									_T("[OPV Image] Stage2 Priority2: QueryByScreenID failed for m_PanelID=%s"),
+									(LPCTSTR)dfsData.m_PanelID));
 							}
 						}
 						else
 						{
 							theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
-								_T("[OPV Image] Stage2 Priority2: UniqueID is empty or DB disconnected, cannot fallback. PanelID=%s"),
+								_T("[OPV Image] Stage2 Priority2: m_PanelID is empty or DB disconnected, cannot fallback. PanelID=%s"),
 								(LPCTSTR)strPanelID));
 						}
 					}
