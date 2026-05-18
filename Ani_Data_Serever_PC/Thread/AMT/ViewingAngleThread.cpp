@@ -56,8 +56,8 @@ void CViewingAngleThread::ThreadRun()
 
 			}
 
-			//TEST Model ÀÌ (TRUE) Model º¯°æµµ ¾Èº¸°í ±×³É °è¼Ó ÁøÇà ÇÕ´Ï´Ù.
-			//TEST Model ÀÌ (FALSE) Model º¯°æ ¹× »ý¼º °è¼Ó check 
+			//TEST Model ï¿½ï¿½ (TRUE) Model ï¿½ï¿½ï¿½æµµ ï¿½Èºï¿½ï¿½ï¿½ ï¿½×³ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Õ´Ï´ï¿½.
+			//TEST Model ï¿½ï¿½ (FALSE) Model ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ check 
 			if (theApp.m_AnglePassMode == FALSE)
 			{
 				if (theApp.m_PlcConectStatus == FALSE || theApp.m_ChangeModelViewingAngle1 == TRUE || theApp.m_ChangeModelViewingAngle2 == TRUE
@@ -159,7 +159,7 @@ void CViewingAngleThread::ThreadRun()
 
 void CViewingAngleThread::ViewingAngleFirstCheckMethod(int iPanelNum)
 {
-	//Ã³À½ º¸³»ÁÖ´Â°ÍÀÌ IO (MC_ARE_YOU_THERE) , PCTime(MC_PCTIME), ¸ðµ¨¸í(MC_MODEL)
+	//Ã³ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ö´Â°ï¿½ï¿½ï¿½ IO (MC_ARE_YOU_THERE) , PCTime(MC_PCTIME), ï¿½ðµ¨¸ï¿½(MC_MODEL)
 	BOOL bModelCreate, bModelChange;
 	CString strCommand = CStringSupport::FormatString(_T("%d,%d"), MC_ARE_YOU_THERE, theApp.m_ViewingAngleSocketManager[iPanelNum].m_ViewingAngleCheckCount);
 	SocketSendto(iPanelNum, strCommand, MC_ARE_YOU_THERE);
@@ -355,7 +355,7 @@ void CViewingAngleThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 	int Num = ntohs(addrin.GetPort()) == _ttoi(VIEWING_ANGLE_PANEL1_PORT_NUM) ? PanelNum1 : ntohs(addrin.GetPort()) == _ttoi(VIEWING_ANGLE_PANEL2_PORT_NUM) ? 
 		PanelNum2 : ntohs(addrin.GetPort()) == _ttoi(VIEWING_ANGLE_PANEL3_PORT_NUM) ? PanelNum3 : PanelNum4;
 
-	//Åë½ÅÁß ¿¬°á µÇ¾î µé¾î¿Ã°æ¿ì¿¡´Â for ¹®À¸·Î ETX ±âÁØÀ¸·Î ÆÄ½ÌÇØ¼­ ÀüºÎ °¡Á®¿Ã¼ö ÀÖµµ·Ï ¼öÁ¤
+	//ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ç¾ï¿½ ï¿½ï¿½ï¿½Ã°ï¿½ì¿¡ï¿½ï¿½ for ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ETX ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ä½ï¿½ï¿½Ø¼ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ã¼ï¿½ ï¿½Öµï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 	CString strData, m_strHeader, m_strCommand, m_strContents, strParsing;
 	int iFind, iFindSTX;
 	MultiByteToWideChar(CP_ACP, 0, reinterpret_cast<LPCSTR>(lpBuffer), dwCount, strData.GetBuffer(dwCount + 1), dwCount + 1);
@@ -605,9 +605,9 @@ BOOL CViewingAngleThread::getConectCheck()
 	GetSockName(addrin);
 	LONG  uAddr = addrin.GetIPAddr();
 	if (uAddr == 0)
-		return FALSE;	//Á¢¼Ó¾ÈÇÔ
+		return FALSE;	//ï¿½ï¿½ï¿½Ó¾ï¿½ï¿½ï¿½
 	else
-		return TRUE;	//Á¢¼ÓÇÔ
+		return TRUE;	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 }
 
 bool CViewingAngleThread::SocketServerOpen(CString strServerPort)
@@ -639,7 +639,7 @@ BOOL CViewingAngleThread::CreateTask(){
 	m_pThreadViewingAngle = ::AfxBeginThread(ViewingAngleThreadProc, this, THREAD_PRIORITY_NORMAL, 0, CREATE_SUSPENDED);
 	if (!m_pThreadViewingAngle)
 		bRet = FALSE;
-	m_pThreadViewingAngle->m_bAutoDelete = FALSE;	/// ¾²·¹µå Á¾·á½Ã WaitForSingleObject Àû¿ëÀ§ÇØ...
+	m_pThreadViewingAngle->m_bAutoDelete = FALSE;	/// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ WaitForSingleObject ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½...
 	m_pThreadViewingAngle->ResumeThread();
 	return TRUE;
 }

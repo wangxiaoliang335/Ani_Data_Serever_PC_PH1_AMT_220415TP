@@ -73,6 +73,7 @@ CDFSClient::CDFSClient()
 	m_strPassword = "";
 	m_strRemotePath = "";
 	m_hQuit = CreateEvent(NULL, TRUE, FALSE, NULL);
+	m_hDfsUploadQuit = CreateEvent(NULL, TRUE, FALSE, NULL);
 }
 
 CDFSClient::~CDFSClient()
@@ -638,9 +639,6 @@ void CDFSClient::RunDfsUploadThread()
 				CreateFolders(strAoiImagePath);
 				strViewingImagePath = DFS_VIEWING_ANGLE_SHARE_PATH + GetDateString2() + _T("\\") + strPanelID + _T("\\VIEWING\\Image");
 
-				DfsInfo.CopyImage(strAoiImagePath, strSumImagePath);
-					//DfsInfo.CopyImage(strViewingImagePath, strSumImagePath);
-
 					strSumPath = strTemp1 + strPanelID + _T(".csv");
 					//strSumImagePath = strTemp1 + _T("Image");
 
@@ -663,8 +661,8 @@ void CDFSClient::RunDfsUploadThread()
 							result.m_Lumitop = _T("NG");
 
 						// 将点灯检测结果填充到 DFS 数据中
-						DfsInfo.m_PanelSummaryInfo.LUMITOP_PAENL_GRADE = strAOIResult;
-						DfsInfo.m_strLumitopResult = strAOIResult;
+						DfsInfo.m_PanelSummaryInfo.AOI_PAENL_GRADE = strAOIResult;
+						DfsInfo.m_strVisionResult = strAOIResult;
 
 						// 如果有点灯缺陷，更新 MainDefectCode
 						if (!strCodeAOI.IsEmpty() && strAOIResult.CompareNoCase(_T("OK")) != 0)
@@ -919,6 +917,9 @@ void CDFSClient::RunDfsUploadThread()
 									_T("[DFS Strategy 3] QueryByUniqueID failed for UniqueID=%s"), strUniqueID));
 							}
 						}
+
+						// 等 AOI\Image 目录中的图片全部写入完成后，再汇总到 SUM\Image
+						DfsInfo.CopyImage(strAoiImagePath, strSumImagePath);
 
 						if (_ttoi(result.m_ChNum) > 2)
 						{

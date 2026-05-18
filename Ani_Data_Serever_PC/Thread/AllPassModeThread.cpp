@@ -586,7 +586,7 @@ void CAllPassModeThread::ThreadRun()
 //				}
 //			}
 //
-//			//TWICE				AllPassMode ÃßÈÄ Ãß°¡ ÇÏÀÚ
+//			//TWICE				AllPassMode ï¿½ï¿½ï¿½ï¿½ ï¿½ß°ï¿½ ï¿½ï¿½ï¿½ï¿½
 //			//theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AlignReady1, OffSet_0, TRUE);
 //			//theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AlignReady2, OffSet_0, TRUE);
 //
