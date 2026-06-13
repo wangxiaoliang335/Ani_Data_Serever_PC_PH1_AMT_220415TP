@@ -1,4 +1,4 @@
-﻿// SerialCom.cpp: implementation of the CSerialCom class.
+// SerialCom.cpp: implementation of the CSerialCom class.
 //
 //////////////////////////////////////////////////////////////////////
 
@@ -22,6 +22,7 @@ static char THIS_FILE[] = __FILE__;
 CSerialCom::CSerialCom()
 {
 	m_bFirstFlag = TRUE;
+	m_hQuit = CreateEvent(NULL, TRUE, FALSE, NULL);
 }
 
 CSerialCom::~CSerialCom()

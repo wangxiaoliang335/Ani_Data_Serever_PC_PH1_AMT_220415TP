@@ -321,16 +321,16 @@ void CPgManager::AOIDataReceived(CString strContents)
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZoneContactOnEnd + iIndexNum, iPanelNum, TRUE);
 
 
-						CString strSendMsg;
-						strSendMsg.Format(_T("#FW*%d#"), iChNum + 1);
-						int iLen = strSendMsg.GetLength();
+						//CString strSendMsg;
+						//strSendMsg.Format(_T("#FW*%d#"), iChNum + 1);
+						//int iLen = strSendMsg.GetLength();
 
 
-						char *lpCommand = StringToChar(strSendMsg);
-						theApp.m_TpSocketManager.WriteComm((BYTE*)lpCommand, iLen, 100L);
+						//char *lpCommand = StringToChar(strSendMsg);
+						//theApp.m_TpSocketManager.WriteComm((BYTE*)lpCommand, iLen, 100L);
 
-						m_lastContent[iChNum] = strSendMsg;
-						delete lpCommand;
+						//m_lastContent[iChNum] = strSendMsg;
+						//delete lpCommand;
 					}
 					else
 					{

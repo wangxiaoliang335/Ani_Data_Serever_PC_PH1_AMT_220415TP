@@ -1,0 +1,245 @@
+
+=== 工作表: 屏表(IVS_LCD_InspectionResult) ===
+点灯屏表IVS_LCD_InspectionResult数据					
+			（注意，以下表述里，屏的分辨率 是指检测模板建模时输入的分辨率，一般就等于产品规格书的分辨率，但有时为了提计算效率，建立检测模板会故意把分辨率减半，此时相关的坐标、尺寸等就以减半后的分辨率为基准了，因此可能需要乘以个系数转换一下）
+（栅格图=软件将相机原始图降采样到检测模板所设置的分辨率大小的图像）		
+已有的（标红为相对重要的）					
+字段	含义	取值	说明	GMQM对应字段	DFS对应字段
+SysID	自增ID	数字			
+GUID	本条数据数据唯一标识符	如 {88596F57-D47D-4534-92B4-EBECBB2759B2}	全球唯一标识符	检测记录的全局唯一标识GUID	
+ScreenID	屏二维码				
+DeviceID	AOI检测设备号（来自主检配置文件）			设备标识（或由ICW单独提供）	
+PlatformID	屏在本主检工位的位置号	一般从左到右为0、1、2、3…			
+ShiftID	暂无用				
+LotID	暂无用				
+ModelName	主检检测模板名（配方名）	如 2020_03_22_ShenChao		检测配方ID（或由ICW单独提供）	
+StartTime	主检检测开始时间	如 2020-11-28 13:09:25.390		检测开始时间	
+StopTime	主检检测结束时间	如 2020-11-28 13:09:41.210		检测结束时间	
+Status	主检检测状态	当内部检测进行时时=正常；
+当内部检测未正常进行时，可能为=图像采集失败、缺失或严重不良、点灯异常、双目异常 等			
+AOIResult	主检检测结果	OK=良品
+NG=出现检测状态异常（此时Status不是 正常）
+BrightDot=点（亮）
+BlackDot=点（暗）
+Line=线
+Mura=色斑
+Block=块
+BM=边缘BM缺陷
+Other=其他类（未能判定类型，一般不会出现）		检测结果（OK/NG 等等）	
+ReviewResult_Worker	人工复判结果	常规情况下为OK或NG		屏人工复判后整体判定OK或NG（可能为空）	
+ReviewResult_Machine	自动复检检测结果	取值同AOIResult方式			
+AllPerspectiveResult	全视角检测结果	取值同AOIResult方式			
+MarkID	屏号	来自 IDMap 表中ICW写入的对应值，如05			
+ProcessType	暂无用				
+LineID	暂无用				
+UniqueID	UniqueID，ICW生成的唯一标识符	来自 IDMap 表中ICW写入的对应值，如20200427124000_1			
+MainAoiFixID	主检治具号	来自 IDMap 表中ICW写入的对应值，如03			
+ReviewFixID_Worker	暂无用				
+ReviewFixID_Machine	暂无用				
+AllPerspectiveFixID	暂无用				
+LocateShiftX	主检定位计算的偏移量X				
+LocateShiftY	主检定位计算的偏移量Y				
+LocateAngle	主检定位计算的偏移量角度				
+RawImageXLen	主检大相机原始图X方向长度，单位图像像素				
+RawImageYLen	主检大相机原始图Y方向长度，单位图像像素				
+GridImageXLen	主检栅格图X方向长度，单位像素			产品机种显示区像素尺寸X方向	
+GridImageYLen	主检栅格图Y方向长度，单位像素			产品机种显示区像素尺寸Y方向	
+PanelPhysicalXLen	主检屏X方向毫米数，单位毫米			产品机种显示区物理尺寸X方向	
+PanelPhysicalYLen	主检屏Y方向毫米数，单位毫米			产品机种显示区物理尺寸Y方向	
+LocalIP	暂无用				
+CIMMode	暂无用				
+RuncardID	暂无用				
+CassetteID	暂无用				
+SlotID	暂无用				
+OperatorID	操作员ID，来自主检配置				
+ProductID	暂无用				
+L255_Grayscale	白画面灰度				
+L0_Grayscale	黑画面灰度				
+DevUnitID	暂无用				
+Code_AOI	主检缺陷分类后的缺陷Code代码				
+Grade_AOI	主检缺陷分类后的缺陷Grade等级			主检检测 产品等级（S,A,B 等）	
+Level_AOI	主检缺陷分类后的缺陷Level				
+Code_AllView	全视角（或斜拍）缺陷分类后的缺陷Code代码				
+Grade_AllView	全视角Grade				
+Level_AllView	全视角Level				
+Code_AutoReview	自动复检缺陷分类后的缺陷Code代码				
+Grade_AutoReview	自动复检Grade			自动复检检测 产品等级（S,A,B 等）	
+Level_AutoReview	自动复检Level				
+Code_ManualReview	人工复判的缺陷Code			屏人工复判后缺陷代码	
+Grade_ManualReview	人工复判Grade			屏人工复判后等级	
+Level_ManualReview	人工复判Level				
+Station_AllView					
+Station_AutoReview					
+Station_ManualReview	人工复判工站/工位号			人工复判工站/工位号	
+Operator_ManualReview	人工复判操作员ID			人工复判操作员ID	
+StartTime_AllView					
+StopTime_AllView					
+StartTime_AutoReview					
+StopTime_AutoReview					
+StartTime_ManualReview	人工复判操作开始时间			人工复判操作开始时间	
+StopTime_ManualReview	人工复判操作结束时间			人工复判操作结束时间	
+XMLInfo	其他的屏的相关信息，以XML格式编码的字符串。
+DefClass=主检缺陷分类的所属缺陷大类；
+ImgPath=主检IPU存图本地路径（除根目录）；
+Screenshot=主检向ICW映射盘存的屏幕截图路径；
+Grid=主检向ICW映射盘存的栅格图路径；
+MarkImg=主检向ICW映射盘存的缺陷标记图路径。
+	<D>
+  <TypeEx></TypeEx>
+  <Reason>Mura_ID11_A589552_C7.9_J2.5</Reason>
+  <DefID>0</DefID>
+  <DefClass>MURA</DefClass>
+  <ImgPath></ImgPath>
+  <Screenshot>MainAOI\A面\\192.168.1.200\2020-12-01\Test2\Screenshot.jpg</Screenshot>
+  <Grid>MainAOI\A面\\192.168.1.200\2020-12-01\Test2\bb.jpg;MainAOI\A面\\192.168.1.200\2020-12-01\Test2\bb_1.jpg</Grid>
+  <MarkImg>MainAOI\A面\\192.168.1.200\2020-12-01\Test2\MarkImg.jpg</MarkImg>
+</D>		检测结果图像路径=<ImgPath>	
+				GMQM列出但数据库中没有或无效的：	
+				产品机种盖板物理尺寸
+设备IP地址
+设备类型
+产品机种盖板物理尺寸
+产品玻璃大板ID
+玻璃大板在Array大板中的位置
+工序编号
+工单编号
+检测批次
+检测班次（日班/夜班）
+值班人员ID	
+需要新增的					
+主检					
+DefClass_AOI	主检，缺陷分类大类		varchar[100]		
+DefName_AOI	主检，缺陷分类名字		varchar[100]		
+DefClass_AllView	全视角，缺陷分类大类				
+DefName_AllView	全视角，缺陷分类名字				
+Pats_AOI	主检，分号分隔的画面名字符串		varchar[1000]		
+					
+					
+自动复检					
+DefClass_AutoReview	自动复检，缺陷分类大类		varchar[100]		
+DefName_AutoReview	自动复检，缺陷分类名字		varchar[100]		
+
+=== 工作表: 缺陷表(IVS_LCD_AOIResult) ===
+点灯缺陷表IVS_LCD_AOIDefect数据					
+			（注意，以下表述里，屏的分辨率 是指检测模板建模时输入的分辨率，一般就等于产品规格书的分辨率，但有时为了提计算效率，建立检测模板会故意把分辨率减半，此时相关的坐标、尺寸等就以减半后的分辨率为基准了，因此需要乘以个系数转换一下）
+（栅格图=软件将相机原始图降采样到检测模板分辨率大小的图像）		
+已有的（标红为相对重要的）					
+字段	含义	取值	说明	GMQM对应字段	DFS对应字段
+SysID	自增ID				
+GUID_IVS_LCD_InspectionResult	关联屏表某行的GUID			检测记录全局标识GUID	
+DefectIndex	缺陷编号			缺陷编号	
+Type	缺陷类型（大类）	BrightDot=点（亮）
+BlackDot=点（暗）
+Line=线
+Mura=色斑
+Block=块
+BM=边缘BM缺陷
+Other=其他类（未能判定类型，一般不会出现）	这是算法判定的检测大类	缺陷类型（固定大类）	
+PatternID	缺陷所在画面号（检测模板里号码）	范围0~29	按照检测软件建模人员建立的模板里画面顺序	缺陷所在的图像ID	
+PatternName	缺陷所在画面名（检测模板里画面名字）	如White、Gray等等	检测软件建模人员自己填写的名字	缺陷所在的图像名称	
+Pos_x	缺陷中心坐标横向，整数	如 100	单位以屏的分辨率为基准，单位=像素	缺陷中心X坐标	
+Pos_y	缺陷中心坐标纵向，整数	如 100	单位以屏的分辨率为基准，单位=像素	缺陷中心Y坐标	
+Pos_width	缺陷长度横向，整数	如 1	单位以屏的分辨率为基准，单位=像素	缺陷盒距宽度	
+Pos_height	缺陷长度纵向，整数	如 1	单位以屏的分辨率为基准，单位=像素	缺陷盒距高度	
+TrueSize	等于(TrueLongSize+TrueShortSize)/2.0		单位=mm	主检 缺陷尺寸	
+TrueDiameter	等于TrueLongSize		单位=mm	主检 缺陷直径	
+TrueLongSize	缺陷长边（长轴）长度，小数	如 1 或 10.23	当前单位=物理尺寸mm	主检 缺陷长尺寸（长轴长）	
+TrueShortSize	缺陷短边（短轴）长度，小数	如 1 或 10.23	当前单位=物理尺寸mm	主检 缺陷短尺寸（短轴长）	
+GrayScale	缺陷灰度值	如 112	色斑为栅格图的；其他为原始图	缺陷灰度	
+GrayScale_BK	缺陷背景灰度值	如 181	色斑为栅格图的；其他为原始图	缺陷背景灰度	
+GrayScaleDiff	缺陷灰度差	如 52	色斑为栅格图的；其他为原始图	缺陷灰度差异	
+ReviewResult_Worker	缺陷人工复判结果			缺陷人工复判后整体判定OK或NG（可能为空）	
+ReviewResult_Machine	缺陷自动复检结果	OK或NG			
+MachineReviewDefectName	缺陷自动复检后的精细缺陷名	如 上偏异物 等			
+InspType	是什么工位检出的	MainAOI=主检
+AllView=斜拍		检测类型	
+Layer	缺陷所在层（例如在液晶屏的哪层）	2021华为AOI取值：
+TP、OCA、U-POL、Cell、D-POL、Air_GAP、BL1、BL2、BL3、Dust、Other		缺陷层级	
+Area	缺陷面积，整数	如 27	单位以屏的分辨率为基准，单位=像素个数，栅格图的	缺陷面积	
+Roundness	圆度	如  0.502303	大概为接近圆形的程度	缺陷圆度	
+GrayscaleMean	缺陷平均灰度，等于fLocalEnergy	如 134		缺陷灰度中间值	
+GrayscaleMin	缺陷最大灰度	如 82		缺陷灰度最小值	
+GrayscaleMax	缺陷最小灰度	如 186		缺陷灰度最大值	
+JND	色斑JND值		色斑特有	缺陷JND	
+MajorAxisAngle	缺陷主轴角度	如 -44		主轴角度	
+Code_AOI	主检缺陷分类模块输出的Code			主检检测 缺陷代码	
+Grade_AOI	主检缺陷分类模块输出的等级			主检检测 缺陷等级	
+Level_AOI	主检缺陷分类模块输出的Level				
+Code_AutoReview	自动复检缺陷分类模块输出的Code				
+Grade_AutoReview	自动复检缺陷分类模块输出的等级				
+Level_AutoReview	自动复检缺陷分类模块输出的Level				
+Code_ManualReview	人工复判缺陷分类模块输出的Code			缺陷人工复判后缺陷代码	
+Grade_ManualReview	人工复判缺陷分类模块输出的等级			缺陷人工复判后等级	
+Level_ManualReview	人工复判缺陷分类模块输出的Level				
+ImagePath	缺陷小图路径	如 MainAOI\-6501\1\2020-11-28\Test1\Test1_001_0049_0115_0016_0022_BlackDot_White.bmp		缺陷图像所在的路径	
+XMLInfo	其他缺陷相关信息，以XML格式编码的字符串。
+OriArea=缺陷在相机原始图面积（原始图像素个数）；
+BriBlack=缺陷亮暗（0=暗、1=亮、2=不区分）；
+MuraType=色斑缺陷形状类型（0=斑痕Spot、1=线状Line、2=纹理Stripe、3=边缘Edge）；
+DotShapeLine=点缺陷形状类型（0=点状、1=线状）；
+BlobW=缺陷Blob宽（以屏分辨率为基准）；
+BlobH=缺陷Blob高（以屏分辨率为基准）；
+Alg=缺陷由什么算法检出；
+Proc以及Reason=算法计算调试信息；	如
+<D>
+ <Name></Name>
+ <Desc></Desc>
+ <SizeD>0.20780</SizeD>
+ <DefGroup></DefGroup>
+ <OriArea>28</OriArea>
+ <Mean>0</Mean>
+ <Energy>0</Energy>
+ <BriBlack>0</BriBlack>
+ <MuraType>0</MuraType>
+ <DotShapeLine>0</DotShapeLine>
+ <BlobW>2</BlobW><BlobH>3</BlobH>
+ <Alg>普通二次分析</Alg>
+ <Reason>BlkDot_A(4)28</Reason>
+ <Proc>画面2暗点二次分析：X=614_Y=588;面积=28;长度=7.0</Proc>
+ <IP>192.168.250.11</IP>
+ <OriImg></OriImg>
+ <GridImg></GridImg>
+ <DustImg></DustImg>
+ <DustUpImg></DustUpImg>
+ <DustDownImg></DustDownImg>
+<DefClass>Dot</DefClass>
+<Name></Name>
+</D>	其他缺陷相关数据
+
+OriArea 原始图面积
+Energy 亮点能量
+Alg 检出算法名
+Reason 原因Code
+DefClass 缺陷分类模块输出的缺陷大类
+Name 缺陷分类模块输出的缺陷名称
+	缺陷XML详情	
+				GMQM列出但数据库中没有或无效的：	
+需要新增的				缺陷名称
+缺陷类型扩展（暂无用了）
+缺陷形状
+点状贴合异物（字段组合来判定）
+检测相机	
+主检					
+OriArea	主检，当前缺陷面积（原始图像素）		int		
+OriLongSize	主检，缺陷长边（长轴）长度（原始图像素）		int		
+OriShortSize	主检，缺陷短边（短轴）长度（原始图像素）		int		
+DefClass_AOI	主检，缺陷分类大类		varchar[100]		
+DefName_AOI	主检，缺陷分类名字		varchar[100]		
+AlgName	主检，算法名		varchar[100]		
+AlgID	主检，算法ID		int		
+ReasonCode	主检，ReasonCode		varchar[200]		
+FeatureName	主检，缺陷特征名	从ReasonCode拆分出的规则特征值/上下限	varchar[100]		
+FeatureMin	主检，缺陷特征规格下限		varchar[100]		
+FeatureMax	主检，缺陷特征规格上限		varchar[100]		
+FeatureUnit	主检，缺陷特征单位		varchar[100]		
+FeatureValue	主检，缺陷特征值		varchar[100]		
+					
+自动复检					
+DefColor	自动复检，缺陷主颜色	White、Red、Green、Blue	varchar[100]		
+DefColorValue	自动复检，缺陷主颜色亮度（灰度 或 能量）	数字	float		
+DefClass_AutoReview	自动复检，缺陷分类大类		varchar[100]		
+DefName_AutoReview	自动复检，缺陷分类名字		varchar[100]		
+PointType	自动复检，点缺陷类型（像素暗点、亮点、杂质点）	PixBlkDot、BriDot、ForeignDot	varchar[100]		
+					
+					
+					

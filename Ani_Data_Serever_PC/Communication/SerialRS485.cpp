@@ -1,4 +1,4 @@
-﻿// SerialCom.cpp: implementation of the CSerialRS485 class.
+// SerialCom.cpp: implementation of the CSerialRS485 class.
 //
 //////////////////////////////////////////////////////////////////////
 
@@ -22,6 +22,7 @@ static char THIS_FILE[] = __FILE__;
 CSerialRS485::CSerialRS485()
 {
 	m_bFirstCheck = FALSE;
+	m_hQuit = CreateEvent(NULL, TRUE, FALSE, NULL);
 }
 
 CSerialRS485::~CSerialRS485()

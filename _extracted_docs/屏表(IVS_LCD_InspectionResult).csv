@@ -1,0 +1,118 @@
+﻿点灯屏表IVS_LCD_InspectionResult数据,Unnamed: 1,Unnamed: 2,Unnamed: 3,Unnamed: 4,Unnamed: 5
+,,,"（注意，以下表述里，屏的分辨率 是指检测模板建模时输入的分辨率，一般就等于产品规格书的分辨率，但有时为了提计算效率，建立检测模板会故意把分辨率减半，此时相关的坐标、尺寸等就以减半后的分辨率为基准了，因此可能需要乘以个系数转换一下）
+（栅格图=软件将相机原始图降采样到检测模板所设置的分辨率大小的图像）",,
+已有的（标红为相对重要的）,,,,,
+字段,含义,取值,说明,GMQM对应字段,DFS对应字段
+SysID,自增ID,数字,,,
+GUID,本条数据数据唯一标识符,如 {88596F57-D47D-4534-92B4-EBECBB2759B2},全球唯一标识符,检测记录的全局唯一标识GUID,
+ScreenID,屏二维码,,,,
+DeviceID,AOI检测设备号（来自主检配置文件）,,,设备标识（或由ICW单独提供）,
+PlatformID,屏在本主检工位的位置号,一般从左到右为0、1、2、3…,,,
+ShiftID,暂无用,,,,
+LotID,暂无用,,,,
+ModelName,主检检测模板名（配方名）,如 2020_03_22_ShenChao,,检测配方ID（或由ICW单独提供）,
+StartTime,主检检测开始时间,如 2020-11-28 13:09:25.390,,检测开始时间,
+StopTime,主检检测结束时间,如 2020-11-28 13:09:41.210,,检测结束时间,
+Status,主检检测状态,"当内部检测进行时时=正常；
+当内部检测未正常进行时，可能为=图像采集失败、缺失或严重不良、点灯异常、双目异常 等",,,
+AOIResult,主检检测结果,"OK=良品
+NG=出现检测状态异常（此时Status不是 正常）
+BrightDot=点（亮）
+BlackDot=点（暗）
+Line=线
+Mura=色斑
+Block=块
+BM=边缘BM缺陷
+Other=其他类（未能判定类型，一般不会出现）",,检测结果（OK/NG 等等）,
+ReviewResult_Worker,人工复判结果,常规情况下为OK或NG,,屏人工复判后整体判定OK或NG（可能为空）,
+ReviewResult_Machine,自动复检检测结果,取值同AOIResult方式,,,
+AllPerspectiveResult,全视角检测结果,取值同AOIResult方式,,,
+MarkID,屏号,来自 IDMap 表中ICW写入的对应值，如05,,,
+ProcessType,暂无用,,,,
+LineID,暂无用,,,,
+UniqueID,UniqueID，ICW生成的唯一标识符,来自 IDMap 表中ICW写入的对应值，如20200427124000_1,,,
+MainAoiFixID,主检治具号,来自 IDMap 表中ICW写入的对应值，如03,,,
+ReviewFixID_Worker,暂无用,,,,
+ReviewFixID_Machine,暂无用,,,,
+AllPerspectiveFixID,暂无用,,,,
+LocateShiftX,主检定位计算的偏移量X,,,,
+LocateShiftY,主检定位计算的偏移量Y,,,,
+LocateAngle,主检定位计算的偏移量角度,,,,
+RawImageXLen,主检大相机原始图X方向长度，单位图像像素,,,,
+RawImageYLen,主检大相机原始图Y方向长度，单位图像像素,,,,
+GridImageXLen,主检栅格图X方向长度，单位像素,,,产品机种显示区像素尺寸X方向,
+GridImageYLen,主检栅格图Y方向长度，单位像素,,,产品机种显示区像素尺寸Y方向,
+PanelPhysicalXLen,主检屏X方向毫米数，单位毫米,,,产品机种显示区物理尺寸X方向,
+PanelPhysicalYLen,主检屏Y方向毫米数，单位毫米,,,产品机种显示区物理尺寸Y方向,
+LocalIP,暂无用,,,,
+CIMMode,暂无用,,,,
+RuncardID,暂无用,,,,
+CassetteID,暂无用,,,,
+SlotID,暂无用,,,,
+OperatorID,操作员ID，来自主检配置,,,,
+ProductID,暂无用,,,,
+L255_Grayscale,白画面灰度,,,,
+L0_Grayscale,黑画面灰度,,,,
+DevUnitID,暂无用,,,,
+Code_AOI,主检缺陷分类后的缺陷Code代码,,,,
+Grade_AOI,主检缺陷分类后的缺陷Grade等级,,,"主检检测 产品等级（S,A,B 等）",
+Level_AOI,主检缺陷分类后的缺陷Level,,,,
+Code_AllView,全视角（或斜拍）缺陷分类后的缺陷Code代码,,,,
+Grade_AllView,全视角Grade,,,,
+Level_AllView,全视角Level,,,,
+Code_AutoReview,自动复检缺陷分类后的缺陷Code代码,,,,
+Grade_AutoReview,自动复检Grade,,,"自动复检检测 产品等级（S,A,B 等）",
+Level_AutoReview,自动复检Level,,,,
+Code_ManualReview,人工复判的缺陷Code,,,屏人工复判后缺陷代码,
+Grade_ManualReview,人工复判Grade,,,屏人工复判后等级,
+Level_ManualReview,人工复判Level,,,,
+Station_AllView,,,,,
+Station_AutoReview,,,,,
+Station_ManualReview,人工复判工站/工位号,,,人工复判工站/工位号,
+Operator_ManualReview,人工复判操作员ID,,,人工复判操作员ID,
+StartTime_AllView,,,,,
+StopTime_AllView,,,,,
+StartTime_AutoReview,,,,,
+StopTime_AutoReview,,,,,
+StartTime_ManualReview,人工复判操作开始时间,,,人工复判操作开始时间,
+StopTime_ManualReview,人工复判操作结束时间,,,人工复判操作结束时间,
+XMLInfo,"其他的屏的相关信息，以XML格式编码的字符串。
+DefClass=主检缺陷分类的所属缺陷大类；
+ImgPath=主检IPU存图本地路径（除根目录）；
+Screenshot=主检向ICW映射盘存的屏幕截图路径；
+Grid=主检向ICW映射盘存的栅格图路径；
+MarkImg=主检向ICW映射盘存的缺陷标记图路径。
+","<D>
+  <TypeEx></TypeEx>
+  <Reason>Mura_ID11_A589552_C7.9_J2.5</Reason>
+  <DefID>0</DefID>
+  <DefClass>MURA</DefClass>
+  <ImgPath></ImgPath>
+  <Screenshot>MainAOI\A面\\192.168.1.200\2020-12-01\Test2\Screenshot.jpg</Screenshot>
+  <Grid>MainAOI\A面\\192.168.1.200\2020-12-01\Test2\bb.jpg;MainAOI\A面\\192.168.1.200\2020-12-01\Test2\bb_1.jpg</Grid>
+  <MarkImg>MainAOI\A面\\192.168.1.200\2020-12-01\Test2\MarkImg.jpg</MarkImg>
+</D>",,检测结果图像路径=<ImgPath>,
+,,,,GMQM列出但数据库中没有或无效的：,
+,,,,"产品机种盖板物理尺寸
+设备IP地址
+设备类型
+产品机种盖板物理尺寸
+产品玻璃大板ID
+玻璃大板在Array大板中的位置
+工序编号
+工单编号
+检测批次
+检测班次（日班/夜班）
+值班人员ID",
+需要新增的,,,,,
+主检,,,,,
+DefClass_AOI,主检，缺陷分类大类,,varchar[100],,
+DefName_AOI,主检，缺陷分类名字,,varchar[100],,
+DefClass_AllView,全视角，缺陷分类大类,,,,
+DefName_AllView,全视角，缺陷分类名字,,,,
+Pats_AOI,主检，分号分隔的画面名字符串,,varchar[1000],,
+,,,,,
+,,,,,
+自动复检,,,,,
+DefClass_AutoReview,自动复检，缺陷分类大类,,varchar[100],,
+DefName_AutoReview,自动复检，缺陷分类名字,,varchar[100],,
