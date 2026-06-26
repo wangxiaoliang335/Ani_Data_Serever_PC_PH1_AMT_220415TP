@@ -43,6 +43,10 @@ public:
 
 	LightingInspectionResult QueryInspectionResult(CString uniqueID);
 	LightingInspectionResult QueryInspectionResultThreadSafe(CString uniqueID, SQLHDBC pConn);
+
+	LightingInspectionResult QueryInspectionResult2(CString panelID);
+	LightingInspectionResult QueryInspectionResultThreadSafe2(CString panelID, SQLHDBC pConn);
+
 	BOOL QueryAOIDefectList(CString strUniqueID, CString strGUID, std::vector<SDFSDefectDataBegin>& vecDefects, SQLHDBC pConn);
 	BOOL QueryAOIDefectListThreadSafe(CString strUniqueID, CString strGUID, std::vector<SDFSDefectDataBegin>& vecDefects, SQLHDBC pConn);
 	BOOL QueryAOIDefectListThreadSafe(CString strUniqueID, CString strGUID, CDefectInfoList& vecDefects, SQLHDBC pConn);
@@ -58,6 +62,7 @@ public:
 	BOOL UpdateLightingInspectionResult(CString uniqueID);
 
 	void GetLightingResultByBarcode(CString strBarcode, CString& strAOIResult, CString& strCodeAOI, CString& strGradeAOI, CString& strGUID, BOOL& bValid);
+	void GetLightingResultByBarcode2(CString strBarcode, CString& strAOIResult, CString& strCodeAOI, CString& strGradeAOI, CString& strUniqueID, CString& strGUID, BOOL& bValid);
 	LightingInspectionResult GetLightingResultByUniqueID(CString uniqueID);
 
 	// Query defect code by barcode (used by SetLoadResultCode)

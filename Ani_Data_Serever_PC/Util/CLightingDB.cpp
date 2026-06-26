@@ -198,6 +198,19 @@ void CLightingDB::GetLightingResultByBarcode(CString strBarcode, CString& strAOI
 	}
 }
 
+void CLightingDB::GetLightingResultByBarcode2(CString strBarcode, CString& strAOIResult, CString& strCodeAOI, CString& strGradeAOI, CString& strUniqueID, CString& strGUID, BOOL& bValid)
+{
+	LightingInspectionResult result = QueryInspectionResult2(strBarcode);
+	if (result.m_bValid) {
+		strAOIResult = result.m_strAOIResult;
+		strCodeAOI = result.m_strCodeAOI;
+		strGradeAOI = result.m_strGradeAOI;
+		strUniqueID = result.m_strUniqueID;
+		strGUID = result.m_strGUID;
+		bValid = TRUE;
+	}
+}
+
 BOOL CLightingDB::QueryLightingDefectList(CString strUniqueID, std::vector<LUMITOP_SDFSDefectDataBegin>& vecDefects)
 {
 	vecDefects.clear();
@@ -668,6 +681,131 @@ LightingInspectionResult CLightingDB::QueryInspectionResult(CString uniqueID)
 	if (conn == SQL_NULL_HANDLE)
 		return LightingInspectionResult();
 	return QueryInspectionResultThreadSafe(uniqueID, conn);
+}
+
+
+LightingInspectionResult CLightingDB::QueryInspectionResult2(CString panelID)
+{
+	SQLHDBC conn = EnsureTlsConnection();
+	if (conn == SQL_NULL_HANDLE)
+		return LightingInspectionResult();
+	return QueryInspectionResultThreadSafe2(panelID, conn);
+}
+
+LightingInspectionResult CLightingDB::QueryInspectionResultThreadSafe2(CString panelID, SQLHDBC pConn)
+{
+	LightingInspectionResult result;
+	result.m_bValid = FALSE;
+	m_strLastError = _T("");  // 先清空，确保 GetLastError() 只反映本次调用
+
+	SQLHDBC pUseConn = pConn;
+	if (pUseConn == SQL_NULL_HANDLE) {
+		pUseConn = EnsureTlsConnection();
+		if (pUseConn == SQL_NULL_HANDLE)
+			pUseConn = GetOrCreateConn();
+	}
+	if (pUseConn == SQL_NULL_HANDLE) {
+		m_strLastError = _T("QueryInspectionResultThreadSafe2: no database connection");
+		return result;
+	}
+
+	SQLHSTMT stmt = SQL_NULL_HANDLE;
+	SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
+	if (!SQL_SUCCEEDED(ret)) {
+		PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
+		m_strLastError = _T("QueryInspectionResultThreadSafe2: failed to allocate statement handle");
+		return result;
+	}
+
+	string sqlStr = "SELECT GUID, ScreenID, AOIResult, Code_AOI, Grade_AOI, StartTime, StopTime, LocalIP, UniqueID "
+		"FROM ivs_lcd_inspectionresult WHERE ScreenID = '" + UnicodeToMultiByte(panelID.GetString()) + "'";
+
+	// 重试循环：SQLExecDirect 失败或 SQLFetch 失败都重试一次（断线重连后重试）
+	for (int nRetry = 0; nRetry < 2; ++nRetry) {
+		if (nRetry > 0) {
+			// 重新获取连接并重建语句句柄
+			SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+			stmt = SQL_NULL_HANDLE;
+			pUseConn = EnsureTlsConnection();
+			if (pUseConn == SQL_NULL_HANDLE)
+				pUseConn = GetOrCreateConn();
+			if (pUseConn == SQL_NULL_HANDLE)
+				break;
+			ret = SQLAllocHandle(SQL_HANDLE_STMT, pUseConn, &stmt);
+			if (!SQL_SUCCEEDED(ret)) {
+				PrintOdbcError(pUseConn, SQL_HANDLE_DBC);
+				break;
+			}
+			OutputDebugString(CStringSupport::FormatString(
+				_T("[CLightingDB] QueryInspectionResultThreadSafe2: retry %d for ScreenID=%s\n"), nRetry, panelID));
+			m_strLastError.Format(_T("QueryInspectionResultThreadSafe2: retry %d for ScreenID=%s"), nRetry, panelID);
+		}
+
+		ret = SQLExecDirectA(stmt, (SQLCHAR*)sqlStr.c_str(), SQL_NTS);
+		if (!SQL_SUCCEEDED(ret)) {
+			PrintOdbcError(stmt, SQL_HANDLE_STMT);
+			continue;  // 重试
+		}
+
+		ret = SQLFetch(stmt);
+		if (SQL_SUCCEEDED(ret))
+			break;  // 成功，退出重试循环
+		if (ret == SQL_NO_DATA)
+			break;  // 无数据，不需要重试
+		// SQLFetch 失败（如连接断开），继续重试
+		PrintOdbcError(stmt, SQL_HANDLE_STMT);
+		// 不 break，让循环自然重试
+	}
+
+	BOOL bNoData = (ret == SQL_NO_DATA);
+	if (!SQL_SUCCEEDED(ret)) {
+		if (!bNoData) {
+			// SQL_ERROR: 查询失败（可能是一次失败也可能是两次都失败）
+			OutputDebugString(CStringSupport::FormatString(
+				_T("[CLightingDB] QueryInspectionResultThreadSafe2: SQL execution failed for ScreenID=%s\n"), panelID));
+			m_strLastError.Format(_T("QueryInspectionResultThreadSafe2: SQL execution failed for ScreenID=%s"), panelID);
+		}
+		else {
+			// SQL_NO_DATA: 查询成功但无符合条件的数据
+			OutputDebugString(CStringSupport::FormatString(
+				_T("[CLightingDB] QueryInspectionResultThreadSafe2: no record found for ScreenID=%s\n"), panelID));
+			m_strLastError.Format(_T("QueryInspectionResultThreadSafe2: no record found for ScreenID=%s"), panelID);
+		}
+		SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+		return result;
+	}
+
+	SQLCHAR guidBuf[101] = { 0 }, screenIDBuf[101] = { 0 }, aoiResultBuf[51] = { 0 },
+		codeAOIBuf[51] = { 0 }, gradeAOIBuf[51] = { 0 }, startTimeBuf[51] = { 0 }, stopTimeBuf[51] = { 0 }, localIPBuf[101] = { 0 }, uniqueIDBuf[101] = { 0 };
+	SQLLEN lenGUID = 0, lenScreenID = 0, lenAOIResult = 0, lenCodeAOI = 0, lenGradeAOI = 0, lenStartTime = 0, lenStopTime = 0, lenLocalIP = 0, lenUniqueID = 0;
+
+	SQLGetData(stmt, 1, SQL_C_CHAR, guidBuf, sizeof(guidBuf), &lenGUID);
+	SQLGetData(stmt, 2, SQL_C_CHAR, screenIDBuf, sizeof(screenIDBuf), &lenScreenID);
+	SQLGetData(stmt, 3, SQL_C_CHAR, aoiResultBuf, sizeof(aoiResultBuf), &lenAOIResult);
+	SQLGetData(stmt, 4, SQL_C_CHAR, codeAOIBuf, sizeof(codeAOIBuf), &lenCodeAOI);
+	SQLGetData(stmt, 5, SQL_C_CHAR, gradeAOIBuf, sizeof(gradeAOIBuf), &lenGradeAOI);
+	SQLGetData(stmt, 6, SQL_C_CHAR, startTimeBuf, sizeof(startTimeBuf), &lenStartTime);
+	SQLGetData(stmt, 7, SQL_C_CHAR, stopTimeBuf, sizeof(stopTimeBuf), &lenStopTime);
+	SQLGetData(stmt, 8, SQL_C_CHAR, localIPBuf, sizeof(localIPBuf), &lenLocalIP);  // 8: LocalIP
+	SQLGetData(stmt, 9, SQL_C_CHAR, uniqueIDBuf, sizeof(uniqueIDBuf), &lenUniqueID);  // 8: uniqueID
+
+	result.m_strGUID = CA2W((char*)guidBuf);
+	result.m_strScreenID = CA2W((char*)screenIDBuf);
+	result.m_strUniqueID = CA2W((char*)uniqueIDBuf);
+	result.m_strAOIResult = CA2W((char*)aoiResultBuf);
+	result.m_strCodeAOI = CA2W((char*)codeAOIBuf);
+	result.m_strGradeAOI = CA2W((char*)gradeAOIBuf);
+	result.m_strStartTime = CA2W((char*)startTimeBuf);
+	result.m_strStopTime = CA2W((char*)stopTimeBuf);
+	result.m_strLocalIP = CA2W((char*)localIPBuf);
+	result.m_bValid = TRUE;
+
+	OutputDebugString(CStringSupport::FormatString(
+		_T("[CLightingDB] QueryInspectionResultThreadSafe2: ScreenID=%s, AOIResult=%s, Code=%s, Grade=%s\n"),
+		result.m_strScreenID, result.m_strAOIResult, result.m_strCodeAOI, result.m_strGradeAOI));
+
+	SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+	return result;
 }
 
 LightingInspectionResult CLightingDB::QueryInspectionResultThreadSafe(CString uniqueID, SQLHDBC pConn)

@@ -71,10 +71,19 @@ private:
 	BOOL              m_bConnected;
 	CCriticalSection  m_csSocketSend;
 	CCriticalSection  m_csReconnect;
+	CCriticalSection  m_csOfflineMonitor;
 	ILightingEventHandler* m_pHandler;
 
 	// TCP 可能出现半包/粘包：用 '@' 作为消息结束符
 	CString           m_recvCache;
+
+	// OfflineState 监控相关
+	HANDLE            m_hOfflineMonitorThread;
+	HANDLE            m_hOfflineMonitorStopEvent;
+	CCriticalSection  m_csOfflineState;
+	BOOL              m_bOfflineState;
+	ULONGLONG         m_ullLastOfflineStateTime;
+	static DWORD WINAPI OfflineMonitorThread(LPVOID lpParam);
 
 	// 定时器：连接成功后自动发送测试信号
 	HANDLE            m_hAutoTestTimer;

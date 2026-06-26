@@ -176,7 +176,7 @@ void CTopCtrl::OnTimer(UINT_PTR nIDEvent)
 	m_netWorkIf[NUM_NETWORK_VISION_2].SetValue(theApp.m_LightingConectStatus);
 
 	//m_netWorkIf[NUM_NETWORK_VISION_3].SetValue(theApp.m_VisionConectStatus[PC2]);
-	m_netWorkIf[NUM_NETWORK_VISION_3].SetValue(theApp.m_LightingThreadOpenFlag && theApp.m_LightingConectStatus);
+	m_netWorkIf[NUM_NETWORK_VISION_3].SetValue(/*theApp.m_LightingThreadOpenFlag &&*/ theApp.m_LightingConectStatus);
 
 	m_netWorkIf[NUM_NETWORK_ALIGN].SetValue(m_bAlignFlag);
 	m_netWorkIf[NUM_NETWORK_PLC].SetValue(theApp.m_PlcConectStatus);

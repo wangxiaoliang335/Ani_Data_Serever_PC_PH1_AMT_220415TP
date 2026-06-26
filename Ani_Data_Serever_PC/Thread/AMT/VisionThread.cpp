@@ -185,7 +185,7 @@ void CVisionThread::ThreadRun()
 			}
 
 			// 点灯调用移到循环外：有治具从 FALSE->TRUE 时才调用一次
-			if (bAnyStartNeeded && theApp.m_LightingThreadOpenFlag && theApp.m_LightingConectStatus)
+			if (bAnyStartNeeded && /*theApp.m_LightingThreadOpenFlag &&*/ theApp.m_LightingConectStatus)
 			{
 				theApp.m_VisionLog->LOG_INFO(_T("[VisionThread] Using Lighting protocol (6501 port) for inspection"));
 				theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
@@ -944,7 +944,7 @@ BOOL CVisionThread::TryStartLightingFromPlc(const BOOL startFlags[4])
 		startFlags[0], startFlags[1], startFlags[2], startFlags[3],
 		theApp.m_LightingThreadOpenFlag, theApp.m_LightingConectStatus));
 
-	if (!theApp.m_LightingThreadOpenFlag || !theApp.m_LightingConectStatus)
+	if (/*!theApp.m_LightingThreadOpenFlag ||*/ !theApp.m_LightingConectStatus)
 	{
 		theApp.m_VisionLog->LOG_INFO(_T("[Lighting] TryStartLightingFromPlc: Lighting not ready, skipping"));
 		return FALSE;
@@ -953,6 +953,25 @@ BOOL CVisionThread::TryStartLightingFromPlc(const BOOL startFlags[4])
 	theApp.m_csLightingFlow.Lock();
 	if (theApp.m_bLightingCycleInProgress)
 	{
+		// 周期未完成，向已请求但当前未在检测中的治具位发送PLC超时信号
+		// 正在AOI检测中的治具位（m_bLightingActiveSlot=TRUE）不处理，等待其正常返回
+		for (int i = 0; i < 4; ++i)
+		{
+			if (startFlags[i] && !theApp.m_bLightingActiveSlot[i])
+			{
+				USHORT tmpResult = m_codeTimeOut;
+				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + i, &tmpResult);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + i, OffSet_0, TRUE);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + i, OffSet_0, TRUE);
+				theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+					_T("[Lighting] Cycle busy, sending Timeout to Fixture %d (not in current cycle)"), i + 1));
+			}
+			else if (startFlags[i] && theApp.m_bLightingActiveSlot[i])
+			{
+				theApp.m_VisionLog->LOG_INFO(CStringSupport::FormatString(
+					_T("[Lighting] Fixture %d requested but already in cycle, waiting for result"), i + 1));
+			}
+		}
 		theApp.m_csLightingFlow.Unlock();
 		theApp.m_VisionLog->LOG_INFO(_T("Lighting Start requested but previous cycle still in progress (ignored)"));
 		return FALSE;

@@ -649,8 +649,9 @@ void CDFSClient::RunDfsUploadThread()
 					CString strAOIResult, strCodeAOI, strGradeAOI, strGUID;
 					BOOL bValid = FALSE;
 					BOOL bAnyImageCopied = FALSE;  // 策略1 图片复制成功标记
-					CString strUniqueID = CLightingDB::Get().GetLightingUniqueIDByBarcode(strPanelID);
-					CLightingDB::Get().GetLightingResultByBarcode(strPanelID, strAOIResult, strCodeAOI, strGradeAOI, strGUID, bValid);
+					//CString strUniqueID = CLightingDB::Get().GetLightingUniqueIDByBarcode(strPanelID);
+					CString strUniqueID;
+					CLightingDB::Get().GetLightingResultByBarcode2(strPanelID, strAOIResult, strCodeAOI, strGradeAOI, strUniqueID, strGUID, bValid);
 					if (bValid)
 					{
 						// 将点灯结果填充到 result 结构
@@ -671,8 +672,8 @@ void CDFSClient::RunDfsUploadThread()
 						}
 
 						theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
-							_T("DFS: Lighting result from MySQL for PanelID=%s: AOIResult=%s, Code=%s, Grade=%s"),
-							strPanelID, strAOIResult, strCodeAOI, strGradeAOI));
+							_T("DFS: Lighting result from MySQL for PanelID=%s: AOIResult=%s, Code=%s, Grade=%s, strUniqueID=%s"),
+							strPanelID, strAOIResult, strCodeAOI, strGradeAOI, strUniqueID));
 
 						// 从 MySQL 数据库查询点灯缺陷详情列表（AOI 缺陷详情）
 						if (!strUniqueID.IsEmpty())
@@ -804,8 +805,9 @@ void CDFSClient::RunDfsUploadThread()
 						}
 						else
 						{
+							CString strDBError = CLightingDB::Get().GetLastError();
 							theApp.m_pFTPLog->LOG_INFO(CStringSupport::FormatString(
-								_T("DFS: No lighting result found in MySQL for PanelID=%s"), strPanelID));
+								_T("DFS: No lighting result found in MySQL for PanelID=%s, DBError=%s"), strPanelID, (LPCTSTR)strDBError));
 						}
 
 						///////////////////////////////////////////////////////////////////////////////
@@ -1169,6 +1171,9 @@ void CDFSClient::RunDfsUploadThread()
 							}
 
 						}
+					// ===== DFS 处理完成日志 =====
+					theApp.m_pFTPLog->Info(_T("[DFS] <<< PanelID=%s DFS Process COMPLETE, Queue remaining=%d"), 
+						strPanelID, m_DfsUploadtransferFileList.size());
 					}
 
 					Delay(10, TRUE);
@@ -1480,9 +1485,10 @@ void CDFSClient::RunFtpUploadThread()
 							}
 							else
 							{
+								CString strDBError = CLightingDB::Get().GetLastError();
 								theApp.m_pFTPLog->LOG_ERR(CStringSupport::FormatString(
-									_T("[OPV Image] Stage2 Priority2: QueryByScreenID failed for m_PanelID=%s"),
-									(LPCTSTR)dfsData.m_PanelID));
+									_T("[OPV Image] Stage2 Priority2: QueryByScreenID failed for m_PanelID=%s, DBError=%s"),
+									(LPCTSTR)dfsData.m_PanelID, (LPCTSTR)strDBError));
 							}
 						}
 						else

@@ -28,12 +28,34 @@ CLightingSocketClient::CLightingSocketClient()
 	, m_hReconnectStopEvent(NULL)
 	, m_dwReconnectInterval(30000)
 	, m_dwMaxReconnectAttempts(0)
+	, m_hOfflineMonitorThread(NULL)
+	, m_hOfflineMonitorStopEvent(NULL)
+	, m_bOfflineState(FALSE)
+	, m_ullLastOfflineStateTime(0)
 {
+	m_hOfflineMonitorStopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	m_hOfflineMonitorThread = CreateThread(NULL, 0, OfflineMonitorThread, this, 0, NULL);
 }
 
 CLightingSocketClient::~CLightingSocketClient()
 {
 	Close();
+
+	if (m_hOfflineMonitorStopEvent)
+	{
+		SetEvent(m_hOfflineMonitorStopEvent);
+	}
+	if (m_hOfflineMonitorThread)
+	{
+		WaitForSingleObject(m_hOfflineMonitorThread, INFINITE);
+		CloseHandle(m_hOfflineMonitorThread);
+		m_hOfflineMonitorThread = NULL;
+	}
+	if (m_hOfflineMonitorStopEvent)
+	{
+		CloseHandle(m_hOfflineMonitorStopEvent);
+		m_hOfflineMonitorStopEvent = NULL;
+	}
 }
 
 void CLightingSocketClient::SetConnectionParameters(const CString& ip, const CString& port)
@@ -179,7 +201,6 @@ void CLightingSocketClient::OnEvent(UINT uEvent, LPVOID /*lpvData*/)
 		m_bConnected = TRUE;
 		theApp.m_LightingConectStatus = TRUE;
 		LightingDbgPrint(_T("[Lighting] Connection established!\n"));
-		//theApp.m_pLightingLog->LOG_INFO(_T("Connection established"));
 		if (_ttoi(theApp.m_strLightingAutoTest) != 0)
 		{
 			StartAutoTestTimer(10000);
@@ -187,7 +208,6 @@ void CLightingSocketClient::OnEvent(UINT uEvent, LPVOID /*lpvData*/)
 		else
 		{
 			LightingDbgPrint(_T("[Lighting] Auto-test disabled by config, skipping timer...\n"));
-			//theApp.m_pLightingLog->LOG_INFO(_T("Auto-test disabled by config"));
 		}
 		break;
 	case EVT_CONDROP:
@@ -198,13 +218,12 @@ void CLightingSocketClient::OnEvent(UINT uEvent, LPVOID /*lpvData*/)
 			m_bConnected = FALSE;
 			theApp.m_LightingConectStatus = FALSE;
 			LightingDbgPrint(_T("[Lighting] Connection lost!\n"));
-			//theApp.m_pLightingLog->LOG_INFO(_T("Connection lost"));
 			if (_ttoi(theApp.m_strLightingAutoTest) != 0)
 			{
 				StopAutoTestTimer();
 			}
 			StopComm();
-			
+
 			StartReconnectThread();
 		}
 		break;
@@ -221,7 +240,27 @@ void CLightingSocketClient::SetEventHandler(ILightingEventHandler* pHandler)
 void CLightingSocketClient::HandleSingleMessage(const CString& msg)
 {
 	LightingDbgPrint(_T("[Lighting -> MC] HANDLE msg: '%s'\n"), msg);
-	//theApp.m_pLightingLog->LOG_INFO(CStringSupport::FormatString(_T("HANDLE msg: '%s'"), msg));
+
+	// 检查是否包含OfflineState子字符串（对方Socket连接但实际掉线）
+	BOOL bHasOfflineState = (msg.Find(_T("OfflineState")) >= 0);
+
+	{
+		CSingleLock lock(&m_csOfflineState, TRUE);
+
+		if (bHasOfflineState)
+		{
+			LightingDbgPrint(_T("[Lighting -> MC] OfflineState detected in message, setting offline state to TRUE\n"));
+			m_bOfflineState = TRUE;
+			theApp.m_LightingConectStatus = FALSE;
+		}
+		else
+		{
+			// 收到其他任何消息，说明对方是连接状态
+			m_bOfflineState = FALSE;
+		}
+
+		m_ullLastOfflineStateTime = GetTickCount64();
+	}
 
 	if (msg.CompareNoCase(_T("Running")) == 0)
 	{
@@ -238,7 +277,7 @@ void CLightingSocketClient::HandleSingleMessage(const CString& msg)
 	}
 	else
 	{
-		theApp.m_pLightingSendReceiverLog->LOG_INFO(CStringSupport::FormatString(_T("[%s] [Lighting -> MC] Unknown message: %s"), 
+		theApp.m_pLightingSendReceiverLog->LOG_INFO(CStringSupport::FormatString(_T("[%s] [Lighting -> MC] Unknown message: %s"),
 			GetNowSystemTimeMilliseconds(), msg));
 	}
 }
@@ -533,7 +572,7 @@ DWORD WINAPI CLightingSocketClient::ReconnectThread(LPVOID lpParam)
 				{
 					pThis->StartAutoTestTimer(10000);
 				}
-				
+
 				break;
 			}
 			else
@@ -554,6 +593,71 @@ DWORD WINAPI CLightingSocketClient::ReconnectThread(LPVOID lpParam)
 			LightingDbgPrint(_T("[Lighting] Reconnect thread received stop signal during wait\n"));
 			//theApp.m_pLightingLog->LOG_INFO(_T("Reconnect thread received stop signal during wait"));
 			break;
+		}
+	}
+
+	return 0;
+}
+
+//==============================================================================
+// OfflineState 监控线程实现
+// 程序启动时创建，程序退出时销毁
+// 每4秒检查一次，如果12秒内没有收到 OfflineState 则认为连接恢复
+//==============================================================================
+
+DWORD WINAPI CLightingSocketClient::OfflineMonitorThread(LPVOID lpParam)
+{
+	CLightingSocketClient* pThis = static_cast<CLightingSocketClient*>(lpParam);
+	if (!pThis)
+		return 0;
+
+	LightingDbgPrint(_T("[Lighting] OfflineState monitor thread started\n"));
+
+	const DWORD CHECK_INTERVAL_MS = 4000;
+	const DWORD OFFLINE_TIMEOUT_MS = 12000;
+	HANDLE hStopEvent = pThis->m_hOfflineMonitorStopEvent;
+	BOOL bPrevOfflineState = FALSE;
+
+	while (TRUE)
+	{
+		DWORD dwRet = WaitForSingleObject(hStopEvent, CHECK_INTERVAL_MS);
+
+		if (dwRet == WAIT_OBJECT_0)
+		{
+			LightingDbgPrint(_T("[Lighting] OfflineState monitor thread received stop signal\n"));
+			break;
+		}
+
+		{
+			CSingleLock lock(&pThis->m_csOfflineState, TRUE);
+
+			if (!pThis->m_bConnected)
+			{
+				bPrevOfflineState = FALSE;
+				continue;
+			}
+
+			BOOL bCurrentOfflineState = pThis->m_bOfflineState;
+			ULONGLONG ullNow = GetTickCount64();
+
+			// 从离线状态变为非离线状态（收到正常消息恢复）
+			if (bPrevOfflineState && !bCurrentOfflineState)
+			{
+				LightingDbgPrint(_T("[Lighting] Received normal message, connection restored: status set to TRUE\n"));
+				theApp.m_LightingConectStatus = TRUE;
+			}
+			// 之前是离线状态且一直保持，超过12秒超时，认为对方重新连接
+			else if (bPrevOfflineState && bCurrentOfflineState)
+			{
+				ULONGLONG ullElapsed = ullNow - pThis->m_ullLastOfflineStateTime;
+				if (ullElapsed >= OFFLINE_TIMEOUT_MS)
+				{
+					LightingDbgPrint(_T("[Lighting] No normal message for %llums after OfflineState, connection restored: status set to TRUE\n"), ullElapsed);
+					theApp.m_LightingConectStatus = TRUE;
+				}
+			}
+
+			bPrevOfflineState = bCurrentOfflineState;
 		}
 	}
 
