@@ -146,7 +146,7 @@
     <ReferencePath>$(ReferencePath)</ReferencePath>
     <LibraryPath>D:\ZSDK\OpenCV\lib;$(LibraryPath)</LibraryPath>
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>D:\\ANI\\DataServer\\Bin</OutDir>
+    <OutDir>D:\\ANI\\DataServer\\Bin_提前</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_UNLOADER_|x64'">
     <IncludePath>D:\ZSDK\OpenCV;D:\ZSDK\OpenCV\include;$(IncludePath)</IncludePath>

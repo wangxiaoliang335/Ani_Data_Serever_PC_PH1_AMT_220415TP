@@ -386,6 +386,7 @@
     <ClInclude Include="Communication\SocketServerBase.h">
       <Filter>Communication</Filter>
     </ClInclude>
+    <ClInclude Include="Util\DataModels.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Comm\ImageViewNG.cpp">
